@@ -1,0 +1,17 @@
+[
+  {"idioma": "pt", "tema": "regularizacao", "pergunta": "O que é autorização de residência e como peço na Polícia Federal?", "espera_fonte": ["regularizacao"]},
+  {"idioma": "pt", "tema": "reuniao_familiar", "pergunta": "Meu marido é brasileiro, posso pedir residência por reunião familiar?", "espera_fonte": ["regularizacao", "visto"]},
+  {"idioma": "pt", "tema": "naturalizacao", "pergunta": "Quantos anos preciso morar no Brasil para me naturalizar?", "espera_fonte": ["naturalizacao"]},
+  {"idioma": "pt", "tema": "refugio", "pergunta": "Como faço a solicitação de refúgio e o que é o CONARE?", "espera_fonte": ["refugio", "regularizacao"]},
+  {"idioma": "pt", "tema": "mercosul", "pergunta": "Sou argentino, como consigo residência pelo acordo do Mercosul?", "espera_fonte": ["mercosul", "regularizacao"]},
+  {"idioma": "pt", "tema": "visto", "pergunta": "Quais documentos preciso para tirar visto de trabalho no consulado?", "espera_fonte": ["visto"]},
+  {"idioma": "pt", "tema": "legislacao", "pergunta": "Em quais casos a pessoa pode ser impedida de ingressar no país?", "espera_fonte": ["legislacao"]},
+  {"idioma": "pt", "tema": "irregular", "pergunta": "Estou com o visto vencido há dois anos, vou ser deportado?", "espera_fonte": ["regularizacao", "legislacao"]},
+  {"idioma": "es", "tema": "regularizacao", "pergunta": "¿Cómo puedo regularizar mi situación migratoria en Brasil?", "espera_fonte": ["regularizacao"]},
+  {"idioma": "es", "tema": "refugio", "pergunta": "¿Qué necesito para solicitar refugio en Brasil?", "espera_fonte": ["refugio"]},
+  {"idioma": "es", "tema": "mercosul", "pergunta": "¿Puedo trabajar en Brasil con el acuerdo de residencia del Mercosur?", "espera_fonte": ["mercosul", "regularizacao"]},
+  {"idioma": "en", "tema": "naturalizacao", "pergunta": "How do I apply for Brazilian citizenship?", "espera_fonte": ["naturalizacao"]},
+  {"idioma": "en", "tema": "visto", "pergunta": "What documents do I need for a family reunion visa?", "espera_fonte": ["visto", "regularizacao"]},
+  {"idioma": "fr", "tema": "refugio", "pergunta": "Comment demander l'asile au Brésil ?", "espera_fonte": ["refugio"]},
+  {"idioma": "ht", "tema": "regularizacao", "pergunta": "Mwen soti Ayiti, kijan pou m jwenn papye rezidans nan Brezil?", "espera_fonte": ["regularizacao"]}
+]

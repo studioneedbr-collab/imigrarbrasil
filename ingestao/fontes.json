@@ -1,0 +1,192 @@
+{
+  "colecoes": {
+    "cartilha": "Linguagem acessível, orientada ao migrante. PRIORIDADE na resposta ao usuário.",
+    "legislacao": "Texto legal bruto. Usar como lastro/citação, nunca como resposta principal.",
+    "doutrina": "Comentários jurídicos. Apoio ao advogado, não ao usuário final."
+  },
+  "fontes": [
+    {
+      "id": "regularizacao",
+      "arquivo": "CARTILHA DE REGULARIZAÇÃO MIGRATÓRIA.pdf",
+      "titulo": "Cartilha de Orientação sobre Regularização Migratória",
+      "orgao": "DPU / OIM",
+      "colecao": "cartilha",
+      "estrutura": "qa",
+      "atualizado_em": "2022-02",
+      "paginas": [
+        [
+          8,
+          98
+        ]
+      ],
+      "temas": [
+        "regularizacao",
+        "residencia",
+        "reuniao_familiar",
+        "acolhida_humanitaria",
+        "mercosul"
+      ]
+    },
+    {
+      "id": "naturalizacao",
+      "arquivo": "CARTILHA SOBRE NATURALIZAÇÃO DPU.pdf",
+      "titulo": "Cartilha de Orientação sobre Naturalização e Nacionalidade",
+      "orgao": "DPU",
+      "colecao": "cartilha",
+      "estrutura": "qa",
+      "atualizado_em": "2022-02",
+      "paginas": [
+        [
+          10,
+          80
+        ]
+      ],
+      "temas": [
+        "naturalizacao",
+        "nacionalidade"
+      ]
+    },
+    {
+      "id": "visto",
+      "arquivo": "CARTILHA PARA EMISSÃO DE VISTO.pdf",
+      "titulo": "Cartilha para Emissão/Solicitação de Vistos no Exterior",
+      "orgao": "DPU",
+      "colecao": "cartilha",
+      "estrutura": "qa",
+      "atualizado_em": "2020-12",
+      "paginas": [
+        [
+          17,
+          56
+        ]
+      ],
+      "temas": [
+        "visto",
+        "consulado",
+        "exterior",
+        "reuniao_familiar"
+      ],
+      "nota_paginas": "As divisórias de seção desta cartilha estão rasterizadas — não há texto para detectar. O mapa abaixo foi ancorado pela ordem do sumário, que confere com a ordem do corpo. Reconferir se o cliente trocar o PDF.",
+      "secoes_manuais": [
+        [
+          17,
+          "Parte I — Orientações gerais sobre vistos"
+        ],
+        [
+          24,
+          "Parte II — Visto temporário: noções gerais"
+        ],
+        [
+          27,
+          "Visto temporário para acolhida humanitária — Haiti"
+        ],
+        [
+          31,
+          "Visto de reunião familiar"
+        ],
+        [
+          38,
+          "Visto de reunião familiar — familiares de pessoas beneficiadas pela acolhida humanitária"
+        ],
+        [
+          41,
+          "Visto de reunião familiar — familiares de pessoas refugiadas"
+        ],
+        [
+          46,
+          "Visto de visita para fins de turismo"
+        ],
+        [
+          49,
+          "Não concessão do visto e atuação da Defensoria Pública da União"
+        ]
+      ]
+    },
+    {
+      "id": "mercosul",
+      "arquivo": "Cartilha Mercosul - COMO TRABALHAR NO MERCOSUL.pdf",
+      "titulo": "Cartilha Mercosul — Como Trabalhar nos Países do Bloco",
+      "orgao": "MTE / Mercosul",
+      "colecao": "cartilha",
+      "estrutura": "prosa",
+      "atualizado_em": "2010-05",
+      "alerta_desatualizacao": "Material anterior à Lei 13.445/2017. Conferir contra a legislação vigente antes de qualquer resposta operacional.",
+      "paginas": [
+        [
+          6,
+          67
+        ]
+      ],
+      "temas": [
+        "mercosul",
+        "trabalho",
+        "residencia"
+      ]
+    },
+    {
+      "id": "refugio",
+      "arquivo": "Cartilha para refugiados no Brasil.pdf",
+      "titulo": "Cartilha para Refugiados no Brasil",
+      "orgao": "ACNUR / CONARE",
+      "colecao": "cartilha",
+      "estrutura": "prosa",
+      "atualizado_em": "2010-11",
+      "alerta_desatualizacao": "Material anterior à Lei 13.445/2017. Conferir contra a legislação vigente antes de qualquer resposta operacional.",
+      "paginas": [
+        [
+          4,
+          29
+        ],
+        [
+          133,
+          138
+        ]
+      ],
+      "nota_paginas": "O PDF traz o mesmo conteúdo em 5 idiomas em blocos sequenciais (PT 4-27, EN 30-53, FR 56-79, ES 82-105, AR 108-132). Indexamos APENAS o bloco PT — os demais são tradução do mesmo texto e só competiriam na recuperação. 133-138 é o anexo multilíngue de contatos.",
+      "temas": [
+        "refugio",
+        "conare",
+        "solicitacao_refugio"
+      ]
+    },
+    {
+      "id": "legislacao",
+      "arquivo": "COMPILAÇÃO DE LEGISLAÇÃO MIGRATÓRIA.pdf",
+      "titulo": "Compilação de Legislação Migratória",
+      "orgao": "OAB/RS",
+      "colecao": "legislacao",
+      "estrutura": "artigos",
+      "atualizado_em": "2018-02",
+      "paginas": [
+        [
+          8,
+          448
+        ]
+      ],
+      "temas": [
+        "lei_13445",
+        "decreto_9199",
+        "portarias"
+      ]
+    },
+    {
+      "id": "comentarios",
+      "arquivo": "LIVRO SOBRE IMIGRAÇÃO.pdf",
+      "titulo": "Comentários à Lei 13.445/2017 — A Lei de Migração",
+      "orgao": "—",
+      "colecao": "doutrina",
+      "estrutura": "prosa",
+      "atualizado_em": "2020-03",
+      "paginas": [
+        [
+          20,
+          380
+        ]
+      ],
+      "temas": [
+        "lei_13445",
+        "doutrina"
+      ]
+    }
+  ]
+}

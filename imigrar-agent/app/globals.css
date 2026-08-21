@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f1f6fa;
+  --foreground: #0d1b2c;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Títulos usam a Archivo apertada. O eixo de largura entra só no lockup da marca. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /*
+   * FAIXA MRZ — o elemento de assinatura do painel.
+   *
+   * MRZ é a zona de leitura mecânica no rodapé de todo passaporte: caixa alta,
+   * largura fixa, os vazios preenchidos com "<". É o artefato mais reconhecível do
+   * mundo de quem atravessa fronteira, e é literalmente o que a pessoa do outro
+   * lado da conversa carrega no bolso. Aqui ela identifica o console, sem enfeite:
+   * aparece no rail, no login e como formato de protocolo nas listas.
+   */
+  .mrz {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-ligatures: none;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  /* Trilho onde a faixa MRZ é "lida" — a luz atravessa uma vez a cada ciclo. */
+  .mrz-rail {
+    position: relative;
+    overflow: hidden;
+  }
+  .mrz-rail::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 28%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 150, 135, 0.28),
+      rgba(204, 236, 251, 0.5),
+      transparent
+    );
+    animation: mrz-scan 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+
+  /* Grade pontilhada de console. Agora no azul da marca, não no ciano genérico. */
+  .grid-field {
+    background-image: radial-gradient(rgba(0, 94, 196, 0.13) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .grid-field-dark {
+    background-image: radial-gradient(rgba(0, 150, 135, 0.18) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Quem pediu menos movimento não recebe a leitura da faixa. */
+@media (prefers-reduced-motion: reduce) {
+  .mrz-rail::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Custom scrollbars inside console surfaces */
+.console-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.console-scroll::-webkit-scrollbar-thumb {
+  background: #cfdded;
+  border-radius: 9999px;
+}
+.console-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Sidebar (rail navy escuro) — barra fina e discreta, sem "roubar" espaço nem
+   encadear o scroll pra página. Firefox usa scrollbar-width/color; WebKit as regras abaixo. */
+.rail-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+.rail-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.rail-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rail-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+.rail-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.26);
+}
+.rail-scroll::-webkit-scrollbar-thumb:active {
+  background-color: rgba(0, 150, 135, 0.55); /* ib-selo ao arrastar */
+}
