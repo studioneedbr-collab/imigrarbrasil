@@ -18,10 +18,14 @@ describe("bloco AGORA — a Shayene sabe que horas são", () => {
     expect(buildAgoraBlock(new Date("2026-08-07T23:00:00Z"))).toContain('"boa noite"');
   });
 
-  it("proíbe copiar a saudação do cliente", () => {
+  it("proíbe copiar a saudação de quem escreveu", () => {
     expect(buildAgoraBlock(new Date("2026-08-07T12:00:00Z"))).toMatch(
-      /NUNCA copie a saudação que o cliente usou/,
+      /NUNCA copie a saudação que a pessoa usou/,
     );
+  });
+
+  it("manda traduzir a saudação para o idioma da conversa", () => {
+    expect(buildAgoraBlock(new Date("2026-08-07T12:00:00Z"))).toMatch(/idioma da conversa/i);
   });
 
   it("sabe quando está fora do horário comercial", () => {
@@ -48,26 +52,31 @@ describe("candidato a vaga entra na pipeline de RH", () => {
   it("o pedido de vaga vale mesmo quando ficou lá atrás no histórico", async () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("cand:2");
-    await processMessage({ conversationId: conv.id, userText: "quero trabalhar na Shine Rio" });
+    await processMessage({ conversationId: conv.id, userText: "quero trabalhar aí com vocês" });
     await processMessage({ conversationId: conv.id, userText: "tá bom, muito obrigada" });
     expect((await repo.getLeadByConversation(conv.id))?.setor).toBe("rh");
   });
 
-  it("reconhece o jeito que a pessoa fala quando vem do site", async () => {
+  // A DIFERENÇA QUE ESTE DOMÍNIO EXIGE: quem quer trabalhar NO BRASIL está pedindo
+  // atendimento de imigração. Mandar essa pessoa para o funil de RH seria não atendê-la.
+  it("quem quer trabalhar NO BRASIL não vira candidato a vaga", async () => {
     const repo = getRepository();
-    const conv = await repo.getOrCreateConversation("cand:4");
+    const conv = await repo.getOrCreateConversation("cand:5");
     await processMessage({
       conversationId: conv.id,
-      userText: "Olá, vim do site da Shine Rio e quero mais informações como trabalhar com vocês",
+      userText: "sou venezuelano e quero trabalhar no Brasil, preciso de documento",
     });
-    await processMessage({ conversationId: conv.id, userText: "Vaga de emprego com vocês" });
-    expect((await repo.getLeadByConversation(conv.id))?.setor).toBe("rh");
+    const lead = await repo.getLeadByConversation(conv.id);
+    expect(lead?.setor ?? "comercial").not.toBe("rh");
   });
 
-  it("não sequestra lead comercial", async () => {
+  it("não sequestra o atendimento de imigração", async () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("cand:3");
-    await processMessage({ conversationId: conv.id, userText: "preciso de 2 porteiros na Barra" });
+    await processMessage({
+      conversationId: conv.id,
+      userText: "quero saber como faço para trazer minha esposa para o Brasil",
+    });
     const lead = await repo.getLeadByConversation(conv.id);
     expect(lead?.setor ?? "comercial").not.toBe("rh");
   });

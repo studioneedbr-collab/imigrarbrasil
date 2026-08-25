@@ -20,12 +20,16 @@ async function driveToOrcamento(number: string) {
 }
 
 describe("funil guiado — triagem por menu", () => {
-  it("S0 dá boas-vindas e pede o nome", async () => {
+  it("S0 se apresenta em PT e ES e pergunta como chamar a pessoa", async () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("g:welcome");
     const r = await processMessage({ conversationId: conv.id, userText: "oi" });
-    expect(r.reply.toLowerCase()).toMatch(/nome/);
-    expect(r.reply.toLowerCase()).not.toMatch(/^olá! sou a ana/);
+    expect(r.reply.toLowerCase()).toMatch(/imigrar brasil/);
+    // Regra da ambiguidade: um "oi" não diz o idioma, então a porta de entrada é bilíngue.
+    expect(r.reply.toLowerCase()).toMatch(/hola/);
+    expect(r.reply.toLowerCase()).toMatch(/chamar/);
+    // E não pede CPF na segunda mensagem, como a base herdada pedia.
+    expect(r.reply.toLowerCase()).not.toMatch(/cpf/);
   });
 
   it("persiste o cliente identificado em S1 e avança a triagem", async () => {
@@ -122,10 +126,13 @@ describe("orçamento (S5) — qualificação → preço → proposta", () => {
     expect(lead?.employeesNeeded).toBe(4);
   });
 
-  it("responde objeção de preço com argumento (não repete o menu)", async () => {
+  it("pergunta sobre garantia de resultado não promete nada e leva ao time jurídico", async () => {
     const conv = await driveToOrcamento("g:obj");
-    const r = await processMessage({ conversationId: conv.id, userText: "achei caro" });
-    expect(r.reply.toLowerCase()).toMatch(/compliance|passivo|comparativo|valor|qualidade|risco/);
+    const r = await processMessage({
+      conversationId: conv.id,
+      userText: "vocês garantem que eu consigo?",
+    });
+    expect(r.reply.toLowerCase()).toMatch(/ninguém pode garantir|time jurídico/);
   });
 
   it("off-topic no orçamento é redirecionado para o serviço", async () => {
@@ -136,13 +143,13 @@ describe("orçamento (S5) — qualificação → preço → proposta", () => {
 });
 
 describe("guardrails e transferência (em qualquer ponto)", () => {
-  it("transfere para humano em assunto trabalhista", async () => {
+  it("transfere para humano em caso que exige advogado", async () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("g:transfer");
     await processMessage({ conversationId: conv.id, userText: "oi" });
     const r = await processMessage({
       conversationId: conv.id,
-      userText: "tenho uma dúvida sobre demissão e férias de um funcionário",
+      userText: "meu visto venceu e recebi uma notificação da Polícia Federal",
     });
     expect(r.toolCalls.some((t) => t.name === "transferir_para_humano")).toBe(true);
     expect(r.status).toBe("transferred");

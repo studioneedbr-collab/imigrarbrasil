@@ -29,11 +29,12 @@ import {
 // ao prompt e ao motor determinístico. Enquanto isso não é verdade, a tela é decorativa.
 
 describe("padrões vindos do código", () => {
-  it("traz as 15 objeções, as regras de encaminhamento e os guardrails", () => {
-    expect(DEFAULT_TRAINING.objections).toHaveLength(15);
+  it("traz as preocupações frequentes, as regras de encaminhamento e os guardrails", () => {
+    expect(DEFAULT_TRAINING.objections.length).toBeGreaterThan(5);
     expect(DEFAULT_TRAINING.transferRules.length).toBeGreaterThan(5);
-    expect(DEFAULT_TRAINING.guardrails.termos).toContain("margem");
-    expect(DEFAULT_TRAINING.identity.agentName).toBe("Shayene");
+    expect(DEFAULT_TRAINING.guardrails.termos).toContain("honorários");
+    expect(DEFAULT_TRAINING.identity.agentName).toBe("Ana");
+    expect(DEFAULT_TRAINING.identity.companyName).toBe("Imigrar Brasil");
   });
 
   it("toda regra de encaminhamento tem palavras legíveis que casam com o próprio regex", () => {
@@ -69,57 +70,56 @@ describe("o prompt reflete o que foi editado", () => {
   it("leva a resposta de objeção editada, e não a original", () => {
     const editada: ObjectionConfig = {
       id: "obj_1",
-      objecao: "O preço está muito alto.",
-      querDizer: "Não percebeu o valor.",
-      resposta: "RESPOSTA NOVA DO EDUARDO",
-      keywords: ["caro"],
+      objecao: "Quanto vocês cobram?",
+      querDizer: "Quer saber se cabe no bolso.",
+      resposta: "RESPOSTA NOVA DA EQUIPE",
+      keywords: ["quanto custa"],
       ativo: true,
     };
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE, { objections: [editada] });
-    expect(prompt).toContain("RESPOSTA NOVA DO EDUARDO");
-    expect(prompt).not.toContain("Faz sentido pesar o valor");
+    expect(prompt).toContain("RESPOSTA NOVA DA EQUIPE");
+    expect(prompt).not.toContain("Os valores quem passa é o time jurídico");
   });
 
   it("omite a objeção desativada", () => {
+    const alvo = "Quanto tempo demora?";
     const ativas = DEFAULT_TRAINING.objections
-      .filter((o) => o.objecao !== "Vou pensar.")
+      .filter((o) => o.objecao !== alvo)
       .filter((o) => o.ativo);
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE, { objections: ativas });
-    expect(prompt).not.toContain('"Vou pensar."');
+    expect(prompt).not.toContain(`"${alvo}"`);
   });
 
   it("lista só as categorias de encaminhamento que sobraram", () => {
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE, {
-      transferRules: [{ categoria: "financeiro", resposta: "Vou te passar para o financeiro." }],
+      transferRules: [{ categoria: "refugio_e_protecao", resposta: "Vou chamar o time jurídico." }],
     });
-    // Mirar na linha do mapa de setores, e não no prompt inteiro: "trabalhista" também
-    // aparece na base de conhecimento ("conformidade trabalhista"), que nada tem a ver.
-    const mapa = prompt
-      .split("\n")
-      .find((l) => l.includes("estiverem cumpridas:"))!;
-    expect(mapa).toContain("financeiro");
-    expect(mapa).not.toContain("trabalhista");
-    expect(prompt).toContain("Vou te passar para o financeiro.");
+    const mapa = prompt.split("\n").find((l) => l.includes("SAEM das suas mãos"))!;
+    expect(mapa).toContain("refugio_e_protecao");
+    expect(mapa).not.toContain("honorarios_e_contratacao");
+    expect(prompt).toContain("Vou chamar o time jurídico.");
   });
 
   it("usa os termos confidenciais editados", () => {
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE, { confidential: ["senha do wifi"] });
     expect(prompt).toContain("senha do wifi");
-    expect(prompt).not.toContain("NUNCA revele: custo interno");
+    expect(prompt).not.toContain("NUNCA revele nem estime: honorários");
   });
 
   it("regra de comportamento desligada some do prompt", () => {
-    const regras = { ...DEFAULT_TRAINING.guardrails.regras, gerar_pdf: false };
+    const regras = { ...DEFAULT_TRAINING.guardrails.regras, nao_falar_honorarios: false };
     const bloco = buildBehaviorRulesBlock(regras);
-    expect(bloco).not.toContain("proposta em PDF você mesma");
-    expect(bloco).toContain("Nunca ofereça falar com uma pessoa");
+    expect(bloco).not.toContain("Nunca informe, estime ou dê faixa de honorários");
+    expect(bloco).toContain("Nunca transfira sem avisar");
   });
 
-  it("o conhecimento técnico entra com o glossário e as escalas", () => {
+  it("o conhecimento técnico entra com o glossário e os caminhos migratórios", () => {
     const bloco = buildTechnicalBlock(DEFAULT_TRAINING.technical);
-    expect(bloco).toContain("Posto 24h");
-    expect(bloco).toContain("4 funcionários");
-    expect(bloco).toContain("12x36");
+    expect(bloco).toContain("CRNM");
+    expect(bloco).toContain("CONARE");
+    expect(bloco).toContain("Reunião familiar");
+    // O glossário orienta a conversa; ele NÃO é fonte de procedimento.
+    expect(bloco).toMatch(/NÃO é procedimento/i);
   });
 
   it("sem overrides, o prompt continua idêntico ao de antes", () => {
@@ -145,15 +145,15 @@ describe("o motor determinístico honra as edições", () => {
   });
 
   it("sem lista editada, continua valendo o regex do código", () => {
-    expect(detectTransfer("tenho dúvida sobre férias")?.categoria).toBe("trabalhista");
+    expect(detectTransfer("meu visto venceu, estou irregular")?.categoria).toBe("situacao_irregular");
   });
 
   it("findObjection usa a lista editada quando ela é passada", () => {
     const pool = [
-      { objecao: "X", querDizer: "Y", resposta: "resposta nova", keywords: ["orçamento gordo"] },
+      { objecao: "X", querDizer: "Y", resposta: "resposta nova", keywords: ["carta convite"] },
     ];
-    expect(findObjection("esse orçamento gordo demais", pool)?.resposta).toBe("resposta nova");
-    expect(findObjection("achei caro", pool)).toBeUndefined();
+    expect(findObjection("preciso de carta convite?", pool)?.resposta).toBe("resposta nova");
+    expect(findObjection("quanto custa", pool)).toBeUndefined();
   });
 });
 
@@ -186,8 +186,8 @@ describe("normalização do que vem do banco", () => {
 
   it("item sem 'ativo' explícito é tratado como ativo", () => {
     expect(normalizeObjections([{ id: "a", objecao: "X", resposta: "Y", keywords: [] }])[0].ativo).toBe(true);
-    expect(normalizeGuardrails({ regras: {} }).regras.gerar_pdf).toBe(true);
-    expect(normalizeGuardrails({ regras: { gerar_pdf: false } }).regras.gerar_pdf).toBe(false);
+    expect(normalizeGuardrails({ regras: {} }).regras.nao_falar_honorarios).toBe(true);
+    expect(normalizeGuardrails({ regras: { nao_falar_honorarios: false } }).regras.nao_falar_honorarios).toBe(false);
   });
 });
 
@@ -197,7 +197,8 @@ describe("raciocínio editável", () => {
     expect(blocos.length).toBeGreaterThanOrEqual(6);
     const titulos = blocos.map((b) => b.title);
     expect(titulos[0]).toContain("COMO VOCÊ PENSA");
-    expect(titulos).toContain("COMO VOCÊ VENDE");
+    expect(titulos).toContain("REGRA DE IDIOMA — PRIORIDADE MÁXIMA");
+    expect(titulos).toContain("QUANDO ENCAMINHAR PARA O TIME JURÍDICO");
     expect(titulos).toContain("GUARDRAILS — NUNCA FAZER");
     // Nenhum bloco pode sair vazio: seria conteúdo do prompt perdido no caminho.
     for (const b of blocos) expect(b.body.length, `bloco ${b.title} vazio`).toBeGreaterThan(0);
@@ -208,7 +209,7 @@ describe("raciocínio editável", () => {
     const duas = serializeReasoning(parseReasoning(uma));
     expect(duas).toBe(uma);
     // E o conteúdo real continua lá, não só a moldura.
-    expect(uma).toContain("FORNECEDOR / PARCEIRO COMERCIAL");
+    expect(uma).toContain("REGRA DE IDIOMA");
     expect(uma).toContain("SITUAÇÃO:");
   });
 
@@ -220,7 +221,7 @@ describe("raciocínio editável", () => {
     });
     expect(prompt.startsWith("════════ REGRA NOVA ════════")).toBe(true);
     expect(prompt).toContain("Pense assim e mais nada.");
-    expect(prompt).not.toContain("COMO VOCÊ VENDE");
+    expect(prompt).not.toContain("EXEMPLOS DE RACIOCÍNIO");
   });
 
   it("raciocínio vazio cai no bloco do código em vez de deixar o prompt sem cabeça", () => {

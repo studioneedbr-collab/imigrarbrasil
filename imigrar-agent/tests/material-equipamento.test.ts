@@ -115,54 +115,32 @@ describe("contrato pequeno não recebe rateio de material", () => {
   });
 });
 
-describe("o que a Shayene resolve sozinha e o que ela encaminha", () => {
-  // Antes, qualquer menção a "material" era transferida — o que a impedia de fazer a
-  // pergunta comercial básica de quem fornece o material.
-  const resolveSozinha = [
+// As regras de transbordo deixaram de ser sobre material e equipamento: no domínio da
+// Imigrar Brasil elas são sobre caso concreto, prazo, irregularidade, refúgio e honorários
+// (ver knowledge.test.ts). O que segue valendo aqui é que o vocabulário de limpeza NÃO
+// dispara mais transbordo nenhum — a constante MATERIAL_EQUIPAMENTO continua no código,
+// mas só para o motor de preço recusar linha de material na proposta.
+describe("o vocabulário de limpeza não mexe mais no atendimento", () => {
+  for (const msg of [
     "o material de limpeza está incluso?",
-    "esse valor inclui material?",
-    "retire da proposta o custo de material",
-    "eu já tenho os produtos de limpeza",
     "vocês fornecem material?",
-  ];
-  for (const msg of resolveSozinha) {
+    "precisa de enceradeira e aspirador?",
+    "vocês trazem lavadora de alta pressão?",
+  ]) {
     it(`não encaminha: "${msg}"`, () => {
       expect(detectTransfer(msg)).toBeUndefined();
     });
   }
 
-  // Máquina citada pelo nome é dimensionamento de escopo, e disso o rateio não trata.
-  const encaminha = ["precisa de enceradeira e aspirador?", "vocês trazem lavadora de alta pressão?"];
-  for (const msg of encaminha) {
-    it(`encaminha: "${msg}"`, () => {
-      expect(detectTransfer(msg)?.categoria).toBe("material_equipamento");
-    });
-  }
-
-  it("não encaminha EPI — isso a Shine fornece e ela responde sozinha", () => {
-    expect(detectTransfer("vocês fornecem equipamento de proteção individual?")).toBeUndefined();
-  });
-
-  it("não encaminha uma pergunta comum de preço", () => {
-    expect(detectTransfer("quanto custa um auxiliar de serviços gerais?")).toBeUndefined();
+  it("pergunta de preço, essa sim, vai para o time jurídico", () => {
+    expect(detectTransfer("quanto custa o serviço de vocês?")?.categoria).toBe(
+      "honorarios_e_contratacao",
+    );
   });
 });
 
-describe("a base de conhecimento manda perguntar antes de cotar", () => {
-  const precos = DEFAULT_KNOWLEDGE.sections.find((s) => s.id === "precos")!.body;
-
-  it("a pergunta de quem fornece o material é obrigatória", () => {
-    expect(precos).toMatch(/PERGUNTA OBRIGAT[ÓO]RIA/i);
-    expect(precos).toMatch(/com_material/);
-  });
-
-  it("valor de material só pode vir da tool", () => {
-    expect(precos).toMatch(/S[ÓO] VEM DA TOOL/i);
-    expect(precos).toMatch(/Nunca some, estime ou cite de cabeça/i);
-  });
-
-  it("contrato pequeno tem instrução explícita de encaminhar", () => {
-    expect(precos).toMatch(/materialSobConsulta/);
-    expect(precos).toMatch(/transferir_para_humano/);
-  });
-});
+// REMOVIDO com a troca de domínio (Imigrar Brasil): o describe que existia aqui checava a
+// seção "precos" da base de conhecimento — texto que instruía a Shayene a perguntar quem
+// fornece o material antes de cotar. Essa seção não existe mais no prompt do agente, que
+// hoje é de imigração e não cota nada. O MOTOR de precificação (testado acima e em
+// pricing.test.ts) continua intacto e servindo o painel.

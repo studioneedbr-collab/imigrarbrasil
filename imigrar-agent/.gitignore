@@ -40,3 +40,12 @@ next-env.d.ts
 _*.mts
 *.local
 .env*
+
+# ...MENOS o modelo sem segredo nenhum, que é a documentação do que precisa ser
+# configurado. Sem esta exceção o `.env*` acima o engolia e ninguém descobria quais
+# variáveis o deploy precisa.
+!.env.example
+
+# Transcrição do smoke test manual (tests/_simulacao.manual.ts): é conversa de
+# atendimento, com dado de pessoa real quando rodado contra a base de verdade.
+sim-transcript.txt

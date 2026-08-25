@@ -61,7 +61,7 @@ const SEM_FOLLOWUP: RegExp[] = [
 
 /** Despedida única antes do silêncio. Não promete retorno de ninguém — seria o oposto do pedido. */
 export const MENSAGEM_DESPEDIDA =
-  "Entendido, não te mando mais mensagem por aqui. Se um dia precisar da Shine Rio, é só chamar neste mesmo número. 🙏";
+  "Entendido, não te mando mais mensagem por aqui. Se um dia precisar da Imigrar Brasil, é só chamar neste mesmo número. 🙏\nEntendido, no te escribo más por aquí. Si algún día necesitas a Imigrar Brasil, solo escribe a este mismo número.";
 
 export function detectarOptOut(texto: string): OptOut | null {
   const t = (texto || "").toLowerCase().trim();

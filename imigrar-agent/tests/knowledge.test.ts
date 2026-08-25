@@ -4,46 +4,110 @@ import {
 } from "@/lib/agent/knowledge";
 
 describe("base de conhecimento", () => {
-  it("persona é a Shayene", () => {
-    expect(DEFAULT_KNOWLEDGE.persona.toLowerCase()).toContain("shayene");
+  it("persona é a Ana, da Imigrar Brasil, e não uma advogada", () => {
+    const p = DEFAULT_KNOWLEDGE.persona.toLowerCase();
+    expect(p).toContain("ana");
+    expect(p).toContain("imigrar brasil");
+    expect(p).toMatch(/não é advogada|nao é advogada/);
   });
-  it("tem as 15 objeções do Anexo II", () => {
-    expect(DEFAULT_KNOWLEDGE.objections.length).toBe(15);
+
+  it("cobre os seis caminhos migratórios do escopo", () => {
+    const escopo = DEFAULT_KNOWLEDGE.sections.find((s) => s.id === "escopo")!.body.toLowerCase();
+    for (const tema of ["visto", "regulariza", "naturaliza", "refúgio", "mercosul", "reunião familiar"]) {
+      expect(escopo, `escopo sem ${tema}`).toContain(tema);
+    }
   });
-  it("findObjection mapeia 'tá caro' para a resposta de preço", () => {
-    const o = findObjection("achei muito caro esse valor");
-    expect(o?.resposta.toLowerCase()).toMatch(/risco|comparativo|valor|terceiriza/);
+
+  it("findObjection mapeia pergunta de preço para a resposta que NÃO dá valor", () => {
+    const o = findObjection("quanto custa para vocês fazerem isso?");
+    expect(o?.resposta.toLowerCase()).toMatch(/time jurídico/);
+    expect(o?.resposta).not.toMatch(/R\$\s?\d/);
   });
-  it("regras de transferência cobrem trabalhista e financeiro", () => {
-    expect(TRANSFER_RULES.some((r) => r.regex.test("dúvida sobre demissão"))).toBe(true);
-    expect(TRANSFER_RULES.some((r) => r.regex.test("preciso de reembolso"))).toBe(true);
+
+  it("nenhuma preocupação frequente promete resultado ou cita valor", () => {
+    for (const o of DEFAULT_KNOWLEDGE.objections) {
+      expect(o.resposta, `objeção "${o.objecao}"`).not.toMatch(/R\$\s?\d/);
+      expect(o.resposta.toLowerCase(), `objeção "${o.objecao}"`).not.toMatch(
+        /garanto|com certeza vai|é certo que|você consegue sim/,
+      );
+    }
   });
-  it("guardrail lista custo e salário como confidenciais", () => {
-    expect(CONFIDENTIAL.some((c) => /custo|salári|margem/.test(c))).toBe(true);
+
+  it("os gatilhos de transbordo cobrem o que o documento manda encaminhar", () => {
+    const casos: Array<[string, string]> = [
+      ["meu visto venceu faz três meses", "situacao_irregular"],
+      ["recebi uma exigência e tenho prazo para responder", "processo_em_andamento"],
+      ["preciso pedir refúgio, estou sendo perseguido", "refugio_e_protecao"],
+      ["quanto custa o serviço de vocês?", "honorarios_e_contratacao"],
+      ["queria falar com um advogado", "advogado_ou_juridico"],
+      ["no meu caso vocês acham que dá certo?", "pedido_de_analise"],
+      ["vocês fazem visto americano?", "fora_do_escopo"],
+    ];
+    for (const [texto, categoria] of casos) {
+      const regra = TRANSFER_RULES.find((r) => r.regex.test(texto));
+      expect(regra?.categoria, `"${texto}" não caiu em ${categoria}`).toBe(categoria);
+    }
+  });
+
+  it("uma dúvida geral NÃO dispara transbordo automático", () => {
+    // Se "visto" ou "residência" fossem gatilho, o agente viraria um encaminhador que
+    // nunca informa nada — e o cliente pediu justamente um agente que informa.
+    for (const generica of [
+      "o que é a CRNM?",
+      "vocês atendem quem está no exterior?",
+      "como funciona a residência pelo Mercosul?",
+    ]) {
+      expect(TRANSFER_RULES.some((r) => r.regex.test(generica)), `"${generica}"`).toBe(false);
+    }
+  });
+
+  it("guardrail trata honorários e dados de terceiros como confidenciais", () => {
+    expect(CONFIDENTIAL.some((c) => /honor[áa]rio/.test(c))).toBe(true);
+    expect(CONFIDENTIAL.some((c) => /outros clientes|terceiros/.test(c))).toBe(true);
   });
 });
 
-// O PDF é o que faz a venda andar. Estas três regras foram o que tirou a Shayene do loop
-// de pedir cadastro (17/08/2026) — se saírem do prompt, o loop volta.
-describe("o prompt manda gerar o PDF cedo", () => {
+// O que este projeto não pode perder de vista: o agente informa, não opina. Se qualquer
+// uma destas regras sair do prompt, ele volta a ser um agente comercial com outro assunto.
+describe("o prompt segura o agente do lado certo da linha", () => {
   const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
 
-  it("proíbe pedir CNPJ antes da proposta", () => {
-    expect(prompt).toContain("NUNCA PEÇA CNPJ ANTES DO PDF");
+  it("põe a regra de idioma como prioridade máxima", () => {
+    expect(prompt).toContain("REGRA DE IDIOMA — PRIORIDADE MÁXIMA");
+    expect(prompt).toMatch(/responda em português E em espanhol na MESMA mensagem/i);
+    expect(prompt).toMatch(/nunca presuma a nacionalidade/i);
   });
 
-  it("fecha a triagem em quatro campos, não em sete", () => {
-    expect(prompt).toContain("qual serviço · quantos postos · a cidade/região do serviço · o nome da empresa");
-    expect(prompt).not.toContain("você precisa ter SETE coisas");
+  it("proíbe responder fora do material oficial", () => {
+    expect(prompt).toContain("DE ONDE VEM O QUE VOCÊ DIZ");
+    expect(prompt).toMatch(/NUNCA cite de cabeça/i);
+    expect(prompt).toMatch(/não tenho essa informação/i);
   });
 
-  it("classifica a primeira mensagem antes de responder", () => {
-    expect(prompt).toContain("LEIA A PRIMEIRA MENSAGEM COM ATENÇÃO");
-    expect(prompt).toMatch(/quanto menos passos até o PDF/i);
+  it("marca o limite da consultoria jurídica", () => {
+    expect(prompt).toContain("O LIMITE — ISTO NÃO É CONSULTORIA JURÍDICA");
+    expect(prompt).toMatch(/Prometa resultado, aprovação, prazo ou chance de sucesso/i);
+    expect(prompt).toMatch(/Informe honorários/i);
   });
 
-  it("manda confirmar a quantidade, com posto 24h obrigatório", () => {
-    expect(prompt).toContain("CONFIRME A QUANTIDADE");
-    expect(prompt).toMatch(/Em posto 24h a confirmação é OBRIGATÓRIA/);
+  it("manda avisar e confirmar antes de transferir", () => {
+    expect(prompt).toContain("QUANDO ENCAMINHAR PARA O TIME JURÍDICO");
+    expect(prompt).toMatch(/NUNCA transfira sem avisar/i);
+    expect(prompt).toMatch(/risco imediato/i);
+  });
+
+  it("proíbe pedir documento e dado sensível", () => {
+    expect(prompt).toMatch(/NUNCA PEÇA DADO SENSÍVEL/i);
+    expect(prompt).toMatch(/nunca peça foto de documento|NUNCA peça foto de documento/i);
+  });
+
+  it("não sobrou nada do atendimento comercial herdado", () => {
+    expect(prompt).not.toMatch(/Shayene|Shine Rio/);
+    expect(prompt).not.toMatch(/proposta em PDF|gerar_proposta_pdf|calcular_preco_servico/);
+    expect(prompt).not.toMatch(/posto|CCT|conven[çc][ãa]o coletiva/i);
+    // "CNPJ" só pode aparecer na lista do que o agente NÃO tem para informar.
+    for (const linha of prompt.split("\n").filter((l) => l.includes("CNPJ"))) {
+      expect(linha).toMatch(/DADOS QUE VOCÊ NÃO TEM/);
+    }
   });
 });

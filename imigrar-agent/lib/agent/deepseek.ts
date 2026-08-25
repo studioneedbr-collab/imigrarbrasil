@@ -7,7 +7,8 @@ const MAX_TOOL_ITERATIONS = 6;
 // Vai como PRIMEIRA linha do system prompt: mata o vazamento de raciocínio interno na
 // resposta ao cliente (ex.: "já calculei", "vou apresentar o valor", "seguindo o fluxo").
 const ABSOLUTE_RULE =
-  "REGRA ABSOLUTA: nunca exponha seu raciocínio interno na resposta. Nunca escreva o que você 'vai fazer' ou 'já fez'. Simplesmente faça e responda de forma natural. Frases como 'vou calcular agora', 'já tenho os dados', 'vou apresentar o valor', 'seguindo o fluxo' NUNCA devem aparecer na mensagem enviada ao cliente. A resposta é SÓ o que o cliente leria no WhatsApp.";
+  "REGRA ABSOLUTA 1 — IDIOMA: responda SEMPRE no idioma em que a pessoa escreveu, e mantenha esse idioma até o fim da conversa, mesmo que o material de apoio esteja em português. Nunca comente o idioma dela nem diga que está traduzindo.\n" +
+  "REGRA ABSOLUTA 2: nunca exponha seu raciocínio interno na resposta. Nunca escreva o que você 'vai fazer' ou 'já fez'. Simplesmente faça e responda de forma natural. Frases como 'vou verificar', 'já tenho os dados', 'seguindo o fluxo' NUNCA devem aparecer na mensagem enviada. A resposta é SÓ o que a pessoa leria no WhatsApp.";
 
 // AGENT_TOOLS está no formato name/description/input_schema. O DeepSeek
 // usa o formato OpenAI (type:"function" + function.parameters). Convertido uma vez.
@@ -115,9 +116,10 @@ export async function runDeepseek({
     }
   }
 
-  // Excedeu as iterações de tool — encaminha para um humano finalizar.
+  // Excedeu as iterações de tool — encaminha para uma pessoa finalizar.
   return {
-    reply: "Vou te encaminhar para um de nossos consultores finalizar os detalhes. 🙌",
+    reply:
+      "Deixa eu pedir para alguém do nosso time jurídico falar com você sobre isso. Continuo por aqui se precisar de mais alguma coisa.",
     toolCalls,
   };
 }

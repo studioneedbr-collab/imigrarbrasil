@@ -5,7 +5,7 @@ describe("máquina de estados (menu-estrito)", () => {
   it("S0 boas-vindas → S1 identidade", () => {
     const r = nextState("S0", "");
     expect(r.state).toBe("S1");
-    expect(r.reply.toLowerCase()).toMatch(/nome/);
+    expect(r.reply.toLowerCase()).toMatch(/chamar/);
   });
   it("S2 triagem: '1' Cliente → S3 setor", () => {
     expect(nextState("S2", "1").state).toBe("S3");

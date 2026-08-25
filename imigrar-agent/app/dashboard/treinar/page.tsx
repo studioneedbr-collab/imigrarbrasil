@@ -1325,8 +1325,8 @@ function TabTecnico({
       <Card className="p-5 sm:p-6">
         <BlockHeading
           eyebrow="Seção 1"
-          title="Termos do setor"
-          description="O vocabulário que o cliente usa. Errar um destes é cotar errado — um posto 24h não é uma pessoa."
+          title="Termos que a Ana explica"
+          description="Sigla e termo técnico que ela precisa traduzir em uma linha na conversa. Nada aqui é procedimento: requisito, prazo e documento vêm do material oficial."
           right={
             <button type="button" onClick={onRestore} className={btnGhost}>
               <Icon name="bolt" className="h-4 w-4" />
@@ -1346,7 +1346,7 @@ function TabTecnico({
                   value={x.termo}
                   onChange={(e) => setTermo(x.id, { termo: e.target.value })}
                   className={`${inputCls} font-semibold`}
-                  placeholder="Posto 24h"
+                  placeholder="CRNM"
                 />
                 <button
                   type="button"
@@ -1366,7 +1366,7 @@ function TabTecnico({
                 onChange={(e) => setTermo(x.id, { definicao: e.target.value })}
                 rows={2}
                 className={`${areaCls} mt-2`}
-                placeholder="4 funcionários na escala 12x36 (2 diurnos + 2 noturnos)"
+                placeholder="Carteira de Registro Nacional Migratório: o documento de identificação de quem é migrante e tem residência no Brasil."
               />
             </div>
           ))}
@@ -1390,27 +1390,27 @@ function TabTecnico({
       <Card className="p-5 sm:p-6">
         <BlockHeading
           eyebrow="Seção 3"
-          title="Escalas de trabalho"
-          description="Quantas pessoas cada escala exige e em que situação ela se aplica."
+          title="Caminhos migratórios"
+          description="O que é cada caminho atendido e quando ele entra na conversa. Serve para a Ana orientar — não para afirmar requisito nem prazo."
         />
         <div className="grid gap-3 pt-5 md:grid-cols-3">
           {t.escalas.map((e) => (
             <div key={e.id} className="rounded-xl border border-ib-line bg-white p-4">
               <div className="flex items-start gap-2">
                 <label htmlFor={`esc-n-${e.id}`} className="sr-only">
-                  Nome da escala
+                  Nome do caminho
                 </label>
                 <input
                   id={`esc-n-${e.id}`}
                   value={e.nome}
                   onChange={(ev) => setEscala(e.id, { nome: ev.target.value })}
                   className={`${inputCls} font-semibold`}
-                  placeholder="12x36"
+                  placeholder="Regularização migratória"
                 />
                 <button
                   type="button"
                   onClick={() => setT({ escalas: t.escalas.filter((y) => y.id !== e.id) })}
-                  aria-label={`Excluir escala ${e.nome}`}
+                  aria-label={`Excluir caminho ${e.nome}`}
                   className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ib-slate transition hover:bg-ib-danger/10 hover:text-ib-danger"
                 >
                   <Icon name="trash" className="h-4 w-4" />
@@ -1452,7 +1452,7 @@ function TabTecnico({
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-ib-line bg-white py-3 text-sm font-medium text-ib-mar transition hover:border-ib-mar/40 hover:bg-ib-bruma"
         >
           <Icon name="plus" className="h-4 w-4" />
-          Adicionar escala
+          Adicionar caminho
         </button>
       </Card>
     </div>
@@ -1815,3 +1815,4 @@ function TabTestar({
     </div>
   );
 }
+

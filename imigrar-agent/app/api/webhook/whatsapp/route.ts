@@ -7,6 +7,8 @@ import { sendMessage, sendDocument, sendButtons } from "@/lib/whatsapp/send";
 import { getZapiConfig } from "@/lib/whatsapp/config";
 import { sendBrevoEmailWithUrl } from "@/lib/email/brevo";
 import { readDocument, mediaKindFor } from "@/lib/agent/vision";
+import { transcreverAudio } from "@/lib/agent/audio";
+import { registrarIdioma } from "@/lib/agent/idioma";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
 
 // Agrupamento: no WhatsApp o cliente costuma mandar a frase quebrada em várias
@@ -50,10 +52,18 @@ interface ZApiWebhookBody {
   // Documento/imagem recebido (currículo etc.). Campos variam conforme a Z-API.
   document?: { documentUrl?: string; url?: string; fileName?: string; title?: string; caption?: string; mimeType?: string };
   image?: { imageUrl?: string; url?: string; caption?: string; mimeType?: string };
+  // Áudio/PTT. A Z-API varia entre `audio` e `ptt` conforme o tipo de gravação.
+  audio?: { audioUrl?: string; url?: string; mimeType?: string; seconds?: number };
+  ptt?: { audioUrl?: string; url?: string; mimeType?: string; seconds?: number };
 }
 
-// E-mail do RH que recebe currículos/documentos encaminhados. Trocável depois.
-const RH_EMAIL = process.env.RH_EMAIL ?? "rh@shinerio.com";
+// E-mail do RH que recebe currículos/documentos encaminhados.
+//
+// SEM DEFAULT DE PROPÓSITO. Aqui havia um endereço da Shine Rio herdado da duplicação, o
+// que significa que um currículo enviado ao WhatsApp da Imigrar Brasil ia, com anexo,
+// para a caixa de outra empresa. Vazio agora significa "não encaminha" — configure
+// RH_EMAIL para ligar o encaminhamento.
+const RH_EMAIL = env.rhEmail;
 
 // URL do documento/imagem recebido, se houver. A legenda vira o texto da mensagem.
 function incomingMediaUrl(
@@ -75,6 +85,18 @@ function incomingMediaUrl(
       name: "imagem.jpg",
       mime: img.mimeType ?? "image/jpeg",
       caption: (img.caption ?? "").trim(),
+    };
+  }
+  // ÁUDIO. Antes não era reconhecido aqui: a mensagem não tinha texto nem mídia, caía no
+  // early-return de "nada para tratar" e o atendimento simplesmente não acontecia para
+  // quem manda voz — que neste público é muita gente.
+  const aud = body.audio ?? body.ptt;
+  if (aud && (aud.audioUrl || aud.url)) {
+    return {
+      url: (aud.audioUrl || aud.url)!,
+      name: "audio.ogg",
+      mime: aud.mimeType ?? "audio/ogg",
+      caption: "",
     };
   }
   return null;
@@ -182,27 +204,60 @@ export async function POST(req: NextRequest) {
       // ANEXO: antes a URL era descartada (só ficava "📎 Documento recebido: imagem.jpg"),
       // o arquivo ia direto pro e-mail do RH e a Shayene nem via a mensagem. Agora o
       // arquivo é LIDO, o texto lido entra no histórico e ela responde com contexto.
-      const lido = await readDocument({ url: media.url, name: media.name });
       const kind = mediaKindFor(media.mime, media.name);
       const tipo = kind === "image" ? "imagem" : kind === "audio" ? "áudio" : "documento";
-      const conteudo = [
-        `📎 Arquivo recebido: ${media.name}`,
-        media.caption ? `Legenda do cliente: ${media.caption}` : "",
-        lido
-          ? `[Conteúdo lido do arquivo]\n${lido}`
-          : // A Shayene não enxerga o conteúdo (não há modelo de visão configurado), mas o
-            // arquivo CHEGOU e está salvo. Sem esta instrução ela pedia reenvio — chegou a
-            // pedir para a candidata reenviar "em PDF" um currículo que já era PDF.
-            `[Este ${tipo} chegou certinho e já está salvo no sistema — você só não consegue ENXERGAR o conteúdo dele. NUNCA peça para reenviar e NUNCA diga que o arquivo não abriu ou deu erro: o problema não é da pessoa e reenviar não muda nada. Se a legenda ou o histórico já disserem do que se trata, siga o atendimento normalmente. Se não, diga que recebeu e pergunte de um jeito natural o que ela precisa que seja feito com isso.]`,
-      ]
-        .filter(Boolean)
-        .join("\n");
+
+      // ÁUDIO passa por transcrição, não por visão. E o resultado NÃO entra como "arquivo
+      // recebido": entra como o que a pessoa DISSE. Um áudio é uma mensagem, não um anexo
+      // — tratá-lo como anexo fazia a Ana responder sobre o arquivo em vez de responder à
+      // pessoa. O idioma detectado aqui é o mesmo sinal que a regra de idioma usa.
+      let lido: string | null = null;
+      let transcrito = false;
+      let idiomaDoAudio: string | undefined;
+      if (kind === "audio") {
+        const t = await transcreverAudio({ url: media.url, mime: media.mime });
+        if (t) {
+          lido = t.texto;
+          transcrito = true;
+          idiomaDoAudio = t.idioma;
+        }
+      } else {
+        lido = await readDocument({ url: media.url, name: media.name });
+      }
+
+      const conteudo = transcrito
+        ? `🎤 Mensagem de voz (transcrita):\n${lido}`
+        : [
+            `📎 Arquivo recebido: ${media.name}`,
+            media.caption ? `Legenda do cliente: ${media.caption}` : "",
+            lido
+              ? `[Conteúdo lido do arquivo]\n${lido}`
+              : kind === "audio"
+                ? // Áudio chegou mas a transcrição não está configurada (falta OPENAI_API_KEY).
+                  // Pedir para escrever é ACEITÁVEL aqui — e é a única saída honesta —, mas
+                  // tem de ser pedido com cuidado: quem manda áudio muitas vezes manda porque
+                  // escrever é difícil.
+                  `[A pessoa mandou um ÁUDIO e você não consegue ouvir. Não invente o que ela disse e não peça para reenviar o áudio (reenviar não muda nada). Peça, com delicadeza e no idioma da conversa, que ela escreva o que precisa — e diga que se preferir você já pode passar para alguém do time jurídico falar com ela.]`
+                : // Não há modelo de visão configurado, mas o arquivo CHEGOU e está salvo.
+                  // Sem esta instrução ela pedia reenvio — chegou a pedir para a candidata
+                  // reenviar "em PDF" um currículo que já era PDF.
+                  `[Este ${tipo} chegou certinho e já está salvo no sistema — você só não consegue ENXERGAR o conteúdo dele. NUNCA peça para reenviar e NUNCA diga que o arquivo não abriu ou deu erro: o problema não é da pessoa e reenviar não muda nada. Se a legenda ou o histórico já disserem do que se trata, siga o atendimento normalmente. Se não, diga que recebeu e pergunte de um jeito natural o que ela precisa que seja feito com isso.]`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+
       await repo.addMessage(conv.id, "user", conteudo, body.messageId, {
         url: media.url,
-        kind: mediaKindFor(media.mime, media.name),
+        kind,
         name: media.name,
         text: lido,
       });
+
+      // Idioma detectado no áudio: gravado no contato para os próximos turnos (inclusive
+      // os de texto, e o follow-up automático, que sai sem ninguém por perto).
+      if (idiomaDoAudio) {
+        await registrarIdioma(conv.id, idiomaDoAudio).catch(() => {});
+      }
 
       // Encaminha ao RH SÓ quando é currículo. Antes qualquer anexo virava e-mail pro RH
       // — foto de ponto de colaborador, comprovante de cliente, tudo.
@@ -214,7 +269,7 @@ export async function POST(req: NextRequest) {
       const lead = await repo.getLeadByConversation(conv.id);
       const ehCandidato = lead?.setor === "rh";
       const nomeDizCurriculo = pareceCurriculo(media.name, media.caption, lido);
-      if (nomeDizCurriculo || (ehCandidato && kind !== "audio")) {
+      if (RH_EMAIL && (nomeDizCurriculo || (ehCandidato && kind !== "audio"))) {
         const quem = escapeHtml(lead?.contactName || conv.contactName || phone);
         const arquivo = escapeHtml(media.name);
         // Contexto da triagem: sem isto o RH recebe um arquivo solto e não sabe para
@@ -234,7 +289,7 @@ export async function POST(req: NextRequest) {
             ? `Currículo recebido no WhatsApp — ${media.name}`
             : `Documento de candidato recebido no WhatsApp — ${media.name}`,
           html:
-            `<p>Enviado por <strong>${quem}</strong> no WhatsApp da Shine Rio.</p>` +
+            `<p>Enviado por <strong>${quem}</strong> no WhatsApp da Imigrar Brasil.</p>` +
             `<p>${ficha.join("<br>")}</p>` +
             `<p>Arquivo: ${arquivo}.${anexoSeguro ? " Segue em anexo." : " (anexo não encaminhado: origem não confiável)"}</p>`,
           attachmentUrl: anexoSeguro ? media.url : undefined,

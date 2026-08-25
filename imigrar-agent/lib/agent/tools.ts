@@ -9,15 +9,17 @@ import { sendMessage } from "@/lib/whatsapp/send";
 import { MATERIAL_EQUIPAMENTO } from "@/lib/agent/knowledge";
 import { detectTransfer } from "@/lib/agent/transfer";
 import { avaliarEncaminhamentoComercial } from "@/lib/agent/transfer-gate";
-import { dossieComercialFaltando } from "@/lib/agent/lead-capture";
+import { qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { resolveFunctionName } from "@/lib/agent/function-catalog";
 import { dimensionar, descreverPosto } from "@/lib/agent/dimensionamento";
+import { buscarChunks, filtrarRelevantes, citacaoDe } from "@/lib/agent/rag";
 import type { ServiceSchedule, ProposalServiceLine, Urgency, LeadStage, LeadSetor } from "@/lib/domain/types";
 
 export const AGENT_TOOLS = [
   {
     name: "calcular_preco_servico",
-    description: "Calcula o preço de um serviço com base no número de funcionários, tipo de serviço e escala de trabalho. Retorna custo e preço de venda.",
+    description:
+      "NÃO USE NO ATENDIMENTO DA IMIGRAR BRASIL. Motor de precificação de mão de obra terceirizada, herdado da base do sistema e mantido para o painel. A Imigrar Brasil NÃO cota serviço pelo assistente: honorários e valores são sempre do time jurídico. Se perguntarem preço, não chame esta tool — diga que valores quem passa é o time e ofereça o encaminhamento.",
     input_schema: {
       type: "object",
       properties: {
@@ -85,11 +87,9 @@ export const AGENT_TOOLS = [
   {
     name: "gerar_proposta_pdf",
     description:
-      "Gera uma proposta comercial em PDF e retorna a URL para envio no WhatsApp. " +
-      "Você informa APENAS quais funções e quantos postos — o preço de cada linha é " +
-      "calculado pelo sistema a partir da composição de custos da CCT. Não existe campo " +
-      "de valor: você não define preço de proposta. Se alguma função não tiver preço " +
-      "validado, a tool recusa e você deve encaminhar para um consultor.",
+      "NÃO USE NO ATENDIMENTO DA IMIGRAR BRASIL. Gerador de proposta comercial em PDF, " +
+      "herdado da base do sistema e mantido para o painel. Quem apresenta proposta e " +
+      "honorários aqui é o time jurídico, depois de analisar o caso — nunca o assistente.",
     input_schema: {
       type: "object",
       properties: {
@@ -152,7 +152,8 @@ export const AGENT_TOOLS = [
   },
   {
     name: "registrar_dados_lead",
-    description: "Salva ou atualiza os dados coletados do lead durante a conversa.",
+    description:
+      "Salva ou atualiza, em silêncio, o que você foi descobrindo na conversa. Neste atendimento: client_type = NACIONALIDADE da pessoa; region = ONDE ELA ESTÁ agora (país/cidade, ou 'Brasil'); services_interested = o que ela procura (visto, regularização, naturalização, refúgio, Mercosul, reunião familiar); contract_duration = a situação atual dela (como entrou, que documento tem); urgency = se há prazo. Nunca comente que está anotando.",
     input_schema: {
       type: "object",
       properties: {
@@ -167,21 +168,22 @@ export const AGENT_TOOLS = [
         contract_duration: { type: "string", description: "Duração pretendida do contrato, como o cliente falou (ex.: '12 meses', 'indeterminado', 'só o período da obra')." },
         urgency: { type: "string", enum: ["immediate", "short", "medium", "long"] },
         estimated_value: { type: "number" },
-        stage: { type: "string", enum: ["novo", "qualificado", "orcado", "transferido", "ganho", "perdido", "desqualificado"], description: "Estágio no funil do SETOR escolhido. Candidato a vaga NÃO é 'desqualificado': é 'novo' no funil de rh. Use 'desqualificado' para curioso, engano, spam e fornecedor (quem quer vender para a Shine não é lead comercial)." },
-        setor: { type: "string", enum: ["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"], description: "Setor de destino do lead. Cliente→comercial/operacional/rh. Funcionário/candidato→departamento_pessoal/rh. Vaga de emprego/currículo→rh. Fornecedor/quem quer VENDER para a Shine→suprimentos. Imprensa, ONG, universidade, parceria institucional→diretoria." },
+        stage: { type: "string", enum: ["novo", "qualificado", "orcado", "transferido", "ganho", "perdido", "desqualificado"], description: "Estágio no funil. 'novo' quando a conversa começa, 'qualificado' quando você já sabe nacionalidade, onde a pessoa está e o que ela quer, 'transferido' quando o caso foi para o time jurídico. NUNCA use 'desqualificado' para alguém pedindo ajuda com imigração — só para engano, spam ou propaganda." },
+        setor: { type: "string", enum: ["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"], description: "Destino do contato. Use SEMPRE 'comercial' — é o funil do time jurídico, onde ficam os atendimentos de imigração. 'rh' só para quem procura vaga de emprego na assessoria; 'diretoria' para imprensa e instituições." },
       },
       required: ["conversation_id"],
     },
   },
   {
     name: "transferir_para_humano",
-    description: "Transfere o atendimento para um consultor humano e notifica a equipe.",
+    description:
+      "Encaminha o atendimento para o TIME JURÍDICO (advogados) e avisa a equipe. Use sempre que a conversa virar caso concreto: processo em andamento, indeferimento, prazo correndo, situação irregular, refúgio, risco à pessoa, pedido de valores ou de falar com um advogado, aflição significativa, ou quando você não souber responder com segurança. AVISE E CONFIRME ANTES de chamar — a única exceção é risco imediato. Depois de chamar, CONTINUE na conversa.",
     input_schema: {
       type: "object",
       properties: {
         conversation_id: { type: "string" }, reason: { type: "string" },
         summary: { type: "string" }, priority: { type: "string", enum: ["normal", "urgent"] },
-        setor: { type: "string", enum: ["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"], description: "Setor responsável pelo atendimento. Ex.: colaborador já alocado, escala, substituição, reclamação em campo → 'operacional'; folha/benefícios/férias → 'departamento_pessoal'; fornecedor/cotação de produto → 'suprimentos'; imprensa/institucional → 'diretoria'." },
+        setor: { type: "string", enum: ["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"], description: "Destino do atendimento. Use SEMPRE 'comercial' — é o funil do TIME JURÍDICO da Imigrar Brasil, para onde vai todo atendimento de imigração. Os outros valores são estruturais e quase nunca se aplicam: 'rh' só para quem procura vaga de emprego na assessoria; 'diretoria' para imprensa e instituições." },
       },
       required: ["conversation_id", "reason", "summary"],
     },
@@ -200,7 +202,7 @@ export const AGENT_TOOLS = [
   },
   {
     name: "registrar_funcionario",
-    description: "Cadastra um FUNCIONÁRIO/colaborador da Shine Rio no sistema (não use para candidato a emprego). Use quando um colaborador interno entra em contato para Departamento Pessoal ou RH.",
+    description: "Cadastra alguém que TRABALHA na Imigrar Brasil (não use para quem está sendo atendido, nem para candidato a vaga). Raríssimo neste atendimento — praticamente só quando uma pessoa da própria equipe escreve pelo WhatsApp público.",
     input_schema: {
       type: "object",
       properties: {
@@ -212,8 +214,29 @@ export const AGENT_TOOLS = [
     },
   },
   {
+    name: "buscar_material_oficial",
+    description:
+      "Procura um assunto nas cartilhas oficiais e na legislação migratória brasileira. Você JÁ RECEBE automaticamente os trechos relevantes para a última mensagem da pessoa — use esta tool só quando precisar de algo que não veio: um termo específico, um tipo de visto que apareceu no meio da conversa, ou o texto da lei quando a pessoa pedir o dispositivo. Se a busca não trouxer nada, NÃO responda pelo que você sabe: diga que não tem essa informação e ofereça o encaminhamento ao time jurídico.",
+    input_schema: {
+      type: "object",
+      properties: {
+        consulta: {
+          type: "string",
+          description:
+            "O que procurar, em português, escrito como uma pergunta ou um assunto (ex.: 'prazo para pedir refúgio', 'documentos para reunião familiar'). Traduza para português mesmo que a conversa esteja em outro idioma — o material é em português e a busca acerta mais assim.",
+        },
+        incluir_legislacao: {
+          type: "boolean",
+          description:
+            "true quando a pessoa pediu a lei, o artigo ou o dispositivo. Padrão false, que busca só nas cartilhas (linguagem acessível).",
+        },
+      },
+      required: ["consulta"],
+    },
+  },
+  {
     name: "enviar_opcoes",
-    description: "Envia a pergunta com BOTÕES de resposta rápida (2 a 3 opções curtas), em vez de texto. Use nos pontos de decisão: triagem (Cliente/Funcionário), escolha de setor, confirmação de dados (Sim/Corrigir). Não use em conversa livre. Quando chamar esta tool, NÃO escreva a mesma pergunta em texto.",
+    description: "Envia a pergunta com BOTÕES de resposta rápida (2 a 3 opções curtas), em vez de texto. Use com muita parcimônia neste atendimento: menu é o que mais faz a conversa parecer robô, e quem chega aflito precisa contar a história com as próprias palavras. Serve para uma escolha objetiva (ex.: 'está no Brasil ou no exterior?', ou confirmar o encaminhamento). Os rótulos vão no IDIOMA DA CONVERSA. Quando chamar esta tool, NÃO escreva a mesma pergunta em texto.",
     input_schema: {
       type: "object",
       properties: {
@@ -255,6 +278,7 @@ const priceSchema = z.object({ service_name: z.string().max(120), employees_coun
 const leadSchema = z.object({ conversation_id: z.string() }).passthrough();
 const transferSchema = z.object({ conversation_id: z.string(), reason: z.string(), summary: z.string(), priority: z.string().optional(), setor: z.enum(["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"]).optional() });
 const followupSchema = z.object({ conversation_id: z.string(), message: z.string(), delay_hours: z.number() });
+const buscaSchema = z.object({ consulta: z.string().min(2).max(500), incluir_legislacao: z.coerce.boolean().optional() });
 const funcionarioSchema = z.object({ nome: z.string(), cpf: z.string().optional(), cargo: z.string().optional(), setor: z.string().optional(), telefone: z.string().optional(), email: z.string().optional() });
 // unit_price e total_value continuam aceitos porque os dois chamadores internos (o motor
 // determinístico e o simulador do painel) já mandam o valor que eles mesmos calcularam —
@@ -283,8 +307,10 @@ const proposalSchema = z.object({
 // nenhum regex de "pediu humano" reconheceria o pedido — mas ele pediu, e explicitamente.
 const PEDIDO_EXPLICITO = /^(consultor_comercial|contratos|supervisor_operacional)$/;
 
+// O funil "comercial" é onde caem os atendimentos de imigração — quem os recebe é o time
+// jurídico. O rótulo aqui é o que aparece no aviso de WhatsApp e no painel.
 const SETOR_LABELS: Record<string, string> = {
-  comercial: "Comercial",
+  comercial: "Time jurídico",
   operacional: "Operacional",
   rh: "Recursos Humanos",
   departamento_pessoal: "Departamento Pessoal",
@@ -543,10 +569,10 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
       // senão, cai no setor já registrado no lead.
       const setor = i.setor ?? lead?.setor ?? undefined;
 
-      // A PROPOSTA VEM ANTES DO COMERCIAL. Fica aqui, na tool, e não só no prompt: o
-      // modelo ignora pedido, e tanto o motor determinístico quanto a rede anti-repetição
-      // chamam esta mesma função. Quem tenta encaminhar cedo demais recebe de volta o que
-      // falta perguntar, em vez de um chamado aberto.
+      // ATENDA ANTES DE DESPACHAR. Fica aqui, na tool, e não só no prompt: o modelo ignora
+      // pedido, e tanto o motor determinístico quanto a rede anti-repetição chamam esta
+      // mesma função. O portão é frouxo de propósito neste domínio (ver transfer-gate.ts):
+      // qualquer sinal de caso concreto libera. O que ele barra é o "oi" virando chamado.
       if ((setor ?? "comercial") === "comercial") {
         const [jaTemProposta, msgs] = await Promise.all([
           repo.hasProposalForConversation(i.conversation_id).catch(() => false),
@@ -557,7 +583,7 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
           .slice(-3)
           .map((m) => m.content)
           .join("  ");
-        const falta = dossieComercialFaltando(lead);
+        const falta = qualificacaoFaltando(lead);
         const portao = avaliarEncaminhamentoComercial({
           jaTemProposta,
           dossieCompleto: falta.completo,
@@ -568,12 +594,14 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
         if (!portao.liberado) {
           return {
             ok: false,
-            error: "proposta_antes_do_comercial",
+            error: "atenda_antes_de_encaminhar",
             faltam: falta.faltam,
             motivo:
-              `Você ainda NÃO pode passar esta cotação para o comercial — a proposta em PDF sai antes, e quem monta é você. ` +
-              `Falta só isto para o PDF: ${falta.faltam.join(", ")}. Pergunte isso e nada além disso, uma coisa por vez, ` +
-              `e assim que tiver tudo chame gerar_proposta_pdf. Não diga ao cliente que chamou alguém do comercial: ninguém foi chamado.`,
+              `Ainda não há caso nenhum para levar ao time jurídico — ${portao.motivo}. ` +
+              `Acolha, se apresente em uma linha e pergunte o que a pessoa precisa. Ao longo da conversa, descubra: ` +
+              `${falta.faltam.join(", ")} — uma pergunta por vez. ` +
+              `NÃO diga que encaminhou: ninguém foi chamado. Assim que aparecer caso concreto, prazo, situação irregular, ` +
+              `refúgio, risco ou pedido de valores, chame esta tool de novo que ela passa.`,
           };
         }
       }
@@ -608,6 +636,36 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
         );
       }
       return { ok: true, transferred: true, setor };
+    }
+    case "buscar_material_oficial": {
+      const i = buscaSchema.parse(input);
+      const chunks = filtrarRelevantes(
+        await buscarChunks(i.consulta, {
+          colecoes: i.incluir_legislacao ? ["cartilha", "legislacao"] : ["cartilha"],
+        }),
+      );
+      if (!chunks.length) {
+        // Resposta EXPLÍCITA de vazio, não uma lista vazia: um `[]` seco o modelo lê como
+        // "a tool não funcionou" e responde pelo que ele sabe — que é exatamente o que
+        // não pode acontecer com informação migratória.
+        return {
+          encontrou: false,
+          instrucao:
+            "Nada no material oficial sobre isso. NÃO responda pelo seu conhecimento próprio: diga que não tem essa informação e ofereça o encaminhamento ao time jurídico.",
+        };
+      }
+      return {
+        encontrou: true,
+        trechos: chunks.map((c) => ({
+          titulo: c.secao ? `${c.titulo} — ${c.secao}` : c.titulo,
+          fonte: citacaoDe(c),
+          atualizado_em: c.atualizado_em,
+          // O alerta viaja junto com o trecho: sem ele o modelo explica com segurança uma
+          // regra revogada (Mercosul e refúgio são de 2010, anteriores à Lei 13.445/2017).
+          alerta_desatualizacao: c.alerta_desatualizacao ?? undefined,
+          texto: c.texto,
+        })),
+      };
     }
     case "enviar_opcoes": {
       // O envio real (com botões) é orquestrado por respondToConversation + webhook,

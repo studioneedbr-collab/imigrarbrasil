@@ -1,99 +1,73 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
-import { computeCostBreakdown } from "@/lib/agent/pricing";
-import { getPricingParams } from "@/lib/agent/pricing-params";
+import { DEFAULT_TRAINING, buildTechnicalBlock } from "@/lib/agent/training";
 
-const secao = (id: string) => DEFAULT_KNOWLEDGE.sections.find((s) => s.id === id)!;
+// Este arquivo testava a composição de custos em 6 módulos que a Shayene decorava (piso da
+// CCT, percentual de encargo, valor do vale-refeição) e conferia se o texto batia com o
+// motor de preço. Nada disso existe no prompt do agente da Imigrar Brasil.
+//
+// O que ficou no lugar é o invariante que este domínio exige: o prompt NÃO carrega número
+// que envelhece. Requisito, prazo, taxa e documento mudam por portaria e só podem vir do
+// material oficial recuperado na hora (RAG) — nunca de uma constante do código, que fica
+// desatualizada em silêncio e vira informação errada na mão de quem vai agir sobre ela.
 
-describe("conhecimento técnico de composição de custos", () => {
-  it("a seção existe e entra no system prompt", () => {
-    expect(secao("conhecimento_tecnico")).toBeDefined();
-    const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
-    expect(prompt).toContain("CONHECIMENTO TÉCNICO");
-    expect(prompt).toContain("COMO VOCÊ VENDE");
+const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
+
+describe("o prompt não carrega número que envelhece", () => {
+  it("não tem valor em reais", () => {
+    expect(prompt).not.toMatch(/R\$\s?\d/);
   });
 
-  it("descreve os 6 módulos", () => {
-    const b = secao("conhecimento_tecnico").body;
-    for (const m of ["MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "MÓDULO 4", "MÓDULO 5", "MÓDULO 6"]) {
-      expect(b, m).toContain(m);
-    }
+  it("não tem percentual", () => {
+    expect(prompt).not.toMatch(/\d+\s?%/);
   });
 
-  // Os números que a Shayene decora precisam ser os mesmos que o motor calcula. Se o
-  // motor mudar e o texto não, ela passa a explicar uma conta que o sistema não faz.
-  it("os valores do texto batem com o que o motor calcula", () => {
-    const b = computeCostBreakdown(getPricingParams("Auxiliar de Serviços Gerais")!);
-    const texto = secao("conhecimento_tecnico").body;
-    const fmt = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-    expect(texto).toContain(fmt(b.salarioBase)); // 1.851,90
-    expect(texto).toContain(fmt(b.custoPuro)); // 3.930,10
-    expect(texto).toContain(fmt(b.bdi)); // 943,42
-    expect(texto).toContain(fmt(b.precoVenda)); // 4.873,52
-    expect(texto).toContain(fmt(b.uniforme)); // 46,97 — Módulo 5
+  it("não cita artigo de lei nem número de lei", () => {
+    expect(prompt).not.toMatch(/\bart\.?\s?\d|\bartigo\s+\d|\bLei\s+n?º?\s?\d|13\.?445/i);
   });
 
-  // O Módulo 5 do preço PADRÃO é só uniforme. Material e equipamento entram por cima,
-  // e só quando o cliente pede — e sempre pela tool, nunca por conta da Shayene.
-  it("o Módulo 5 padrão é só uniforme, e o material vem da tool", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).toContain("MÓDULO 5 — INSUMOS: R$ 46,97");
-    expect(b).not.toContain("540,35"); // soma errada que incluía material e equipamento
-    expect(b).toMatch(/SÓ O UNIFORME/i);
-    expect(b).toMatch(/com_material/);
-    expect(b).toMatch(/NUNCA faz essa conta de cabeça/i);
+  it("não afirma prazo em dias, meses ou anos", () => {
+    // "30 dias", "em 2 anos", "após 4 anos de residência" — tudo isto é procedimento, e
+    // procedimento só sai do material oficial.
+    //
+    // O bloco de EXEMPLOS fica de fora da checagem de propósito: ali os prazos aparecem
+    // dentro da FALA DA PESSOA ("meu visto venceu faz 3 meses"), que é justamente o
+    // gatilho que a Ana precisa reconhecer — não uma afirmação dela.
+    const semExemplos = prompt.split("EXEMPLOS DE RACIOCÍNIO")[0];
+    expect(semExemplos).not.toMatch(/\b\d+\s?(dias?|meses|m[êe]s|anos?)\b/i);
   });
 
-  // Os rateios da planilha (102,20 e 391,18) pressupõem contrato de 12 postos. Se
-  // vazarem para o texto, a Shayene decora e passa a citá-los como se fossem fixos.
-  it("os números de rateio não aparecem no texto que a Shayene decora", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).not.toContain("102,20");
-    expect(b).not.toContain("391,18");
-  });
-
-  it("registra o BDI efetivo de 26,34%, não a soma de percentuais sobre bases diferentes", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).toContain("26,34%");
-    expect(b).not.toContain("22,81%"); // 2% + 8% + 12,81% somados a seco, sobre bases diferentes
-  });
-
-  // A taxa administrativa é decisão do Eduardo (17/08/2026). Se o texto continuar dizendo
-  // 6% de lucro depois de o motor passar a cobrar 8%, ela explica ao cliente uma margem
-  // que a Shine não pratica.
-  it("a margem que ela explica é a que o motor cobra", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).toContain("Lucro 8%");
-    expect(b).not.toContain("Lucro 6%");
-  });
-
-  it("não deixa ela calcular preço de outra praça de cabeça", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).toMatch(/N[ÃA]O calcula preço de outra praça/i);
-  });
-
-  it("desconto: fala da condição, nunca do percentual", () => {
-    const b = secao("conhecimento_tecnico").body;
-    expect(b).toMatch(/nunca anuncia um número com desconto/i);
-    // Percentuais concretos de desconto sairiam da boca dela como oferta fechada.
-    expect(b).not.toMatch(/desconto de \d+ a \d+%/i);
-  });
-
-  it("as escalas e as diferenças entre funções estão descritas", () => {
-    const b = secao("conhecimento_tecnico").body;
-    for (const t of ["5x2 44h", "12x36", "6x1 44h", "CBO 5143-20", "NR-10", "NR-35", "salva-vidas"]) {
-      expect(b, t).toContain(t);
-    }
+  it("manda dizer que não tem a informação em vez de completar a lacuna", () => {
+    expect(prompt).toMatch(/não tenho essa informação/i);
+    expect(prompt).toMatch(/Nunca preencha a lacuna com conhecimento próprio/i);
   });
 });
 
-describe("os scripts de venda são modelo, não frase pronta", () => {
-  it("o bloco manda falar com as próprias palavras", () => {
-    const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
-    const bloco = prompt.slice(prompt.indexOf("COMO VOCÊ VENDE"), prompt.indexOf("EXEMPLOS DE RACIOCÍNIO"));
-    expect(bloco).toMatch(/não frases para copiar|com as suas palavras/i);
-    expect(bloco).toMatch(/70%/); // comparativo com contratação direta
-    expect(bloco).toMatch(/quem fecha o número é o comercial/i);
+describe("o conhecimento técnico é glossário, não procedimento", () => {
+  const bloco = buildTechnicalBlock(DEFAULT_TRAINING.technical);
+
+  it("traz os termos que a Ana precisa traduzir em uma linha", () => {
+    for (const termo of ["CRNM", "CONARE", "Polícia Federal", "Autorização de residência"]) {
+      expect(bloco, `glossário sem ${termo}`).toContain(termo);
+    }
+  });
+
+  it("lista os seis caminhos migratórios atendidos", () => {
+    expect(bloco).toContain("CAMINHOS MIGRATÓRIOS ATENDIDOS");
+    for (const caminho of ["Visto", "Regularização", "refúgio", "Naturalização", "Mercosul", "Reunião familiar"]) {
+      expect(bloco, `caminhos sem ${caminho}`).toContain(caminho);
+    }
+  });
+
+  it("avisa, no próprio bloco, que ele não é fonte de requisito nem de prazo", () => {
+    expect(bloco).toMatch(/NÃO é procedimento/i);
+    expect(bloco).toMatch(/material oficial/i);
+  });
+
+  it("nenhuma definição do glossário afirma requisito ou prazo", () => {
+    for (const t of DEFAULT_TRAINING.technical.termos) {
+      expect(t.definicao, t.termo).not.toMatch(/\b\d+\s?(dias?|meses|anos?)\b/i);
+      expect(t.definicao, t.termo).not.toMatch(/R\$\s?\d/);
+    }
   });
 });

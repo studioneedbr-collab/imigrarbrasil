@@ -17,9 +17,11 @@ const VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL ?? "";
 // Extração curta e objetiva: a saída vai para uma conversa de WhatsApp, não é um laudo.
 const MAX_TOKENS = 1024;
 
-const PROMPT = `Você trabalha no atendimento da Shine Rio (terceirização de mão de obra) e recebeu este arquivo pelo WhatsApp de um cliente, colaborador ou candidato.
+const PROMPT = `Você trabalha no atendimento da Imigrar Brasil (assessoria jurídica de imigração) e recebeu este arquivo pelo WhatsApp de alguém que está sendo atendido.
 
-Descreva o que é o documento e TRANSCREVA as informações relevantes que der para ler: nomes, CPF, matrícula, empresa/condomínio, cargo, datas, horários, valores, números de protocolo, o que estiver escrito.
+Descreva o que é o documento e TRANSCREVA as informações relevantes que der para ler: nomes, nacionalidade, número de passaporte/RNM/protocolo, tipo de visto, datas de entrada e validade, órgão emissor, carimbos, o que estiver escrito.
+
+Documentos migratórios costumam estar em outro idioma e em alfabeto não latino. Transcreva o que estiver escrito como está e, se souber, diga em que idioma está.
 
 Formato da resposta:
 Tipo: <o que é o documento em poucas palavras>

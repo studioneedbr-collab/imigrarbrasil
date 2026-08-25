@@ -41,21 +41,54 @@ as migrations de `imigrar-agent/supabase/migrations/`.
 
 ### Testes
 
-`npm test` — 476 testes, 50 arquivos. Todos passam na cópia inicial. São os testes
-da Shine Rio: cobrem webhook, sessão, transbordo, anti-loop e máquina de estados
-(que reaproveitamos), mas também precificação de limpeza e CCT (que não). Vão
-precisar de poda quando o domínio for trocado.
+`npm test` — 507 testes, 52 arquivos, todos passando. Cobrem webhook, sessão, transbordo,
+anti-loop e máquina de estados (reaproveitados), a precificação e a CCT (que continuam no
+sistema), o atendimento do domínio novo (gatilhos de transbordo jurídico, "não inventar
+informação migratória", "não falar de honorários") e, desde que o RAG foi ligado, a
+recuperação do material oficial e a detecção de idioma.
 
 ## Estado por fase
 
 | fase | estado |
 |---|---|
-| 1 — duplicação e setup | estrutura clonada e rodando local; identidade visual aplicada; falta instância Z-API dedicada, projeto Supabase e chave DeepSeek |
-| 2 — base de conhecimento | pipeline pronto, 1.723 chunks gerados; falta subir ao Supabase e testar recuperação real |
-| 3 — camada multi-idioma | não iniciada |
-| 4 — prompt e calibragem | prompt v1.0 escrito, com 4 pendências apontadas |
-| 5 — transbordo e integração comercial | não iniciada |
-| 6 — homologação e piloto | não iniciada |
+| 1 — duplicação e setup | código pronto; falta **criar as contas**: instância Z-API dedicada, projeto Supabase, chave DeepSeek, deploy e domínio → [docs/COLOCAR-NO-AR.md](imigrar-agent/docs/COLOCAR-NO-AR.md) |
+| 2 — base de conhecimento | pipeline pronto e **busca ligada ao agente** (`lib/agent/rag.ts`); falta rodar `embed_upsert.py` contra o Supabase real |
+| 3 — camada multi-idioma | **aplicada** — regra de idioma no prompt, detecção persistida no contato (`conversations.idioma`) e transcrição de áudio (`lib/agent/audio.ts`) |
+| 4 — prompt e calibragem | **aplicado** — persona, escopo, limite jurídico, gatilhos de transbordo e guardrails no código (`lib/agent/knowledge.ts` e `training.ts`) |
+| 5 — transbordo e integração comercial | **parcial** — o encaminhamento aponta para o time jurídico; falta definir horário real, destinatário do aviso e mensagem de fila |
+| 6 — homologação e piloto | não iniciada — o roteiro está no passo 8 de [COLOCAR-NO-AR.md](imigrar-agent/docs/COLOCAR-NO-AR.md) |
+
+**Tudo que falta agora depende de conta externa, não de código.** O passo a passo, na
+ordem em que um depende do outro, está em
+[imigrar-agent/docs/COLOCAR-NO-AR.md](imigrar-agent/docs/COLOCAR-NO-AR.md).
+
+### O que muda quando a base sobe
+
+`/api/health` mostra `rag: true/false`. Enquanto for `false`, a Ana **não responde nada
+sobre imigração**: o prompt manda responder só com base no material oficial, então sem
+material ela diz que não tem a informação e encaminha todos os casos. É o comportamento
+seguro e correto — não é o produto. É o passo 2 do runbook que muda isso.
+
+### O que a Fase 4 mudou, e o que ela NÃO mudou
+
+Mudou a **cabeça** do agente: base de conhecimento, raciocínio, regras de transbordo,
+guardrails, blocos que o orquestrador injeta a cada turno, descrições das tools e as
+mensagens prontas (follow-up, opt-out, impasse). O agente agora é a Ana, da Imigrar Brasil
+— acolhe, informa o que é informação geral e leva o caso concreto ao time jurídico.
+
+Não mudou **nada da maquinaria**: motor de precificação, CCT, proposta em PDF, planilha,
+rotas e telas do painel continuam no lugar e testados (471 testes passam). As tools
+comerciais seguem existindo, mas a descrição delas manda o agente não usá-las.
+
+Duas coisas a saber antes de testar:
+
+1. **Sem `DEEPSEEK_API_KEY`, o app cai no motor determinístico** (`lib/agent/flow/`), que é
+   um menu — e o menu ainda é o comercial herdado, com a porta de entrada rebrandada. Para
+   ver a personalidade nova de verdade, configure a chave.
+2. **O RAG está ligado no código, mas a base precisa estar carregada.** `lib/agent/rag.ts`
+   recupera o material oficial a cada turno e injeta no prompt; sem Supabase, sem
+   `OPENAI_API_KEY` ou com a tabela `rag_chunks` vazia, ele devolve vazio em silêncio e o
+   agente volta a dizer que não tem a informação. Confira em `/api/health` → `rag`.
 
 ## Identidade visual
 
@@ -63,9 +96,10 @@ Aplicada. Paleta tirada pixel a pixel do logotipo, tipografia própria (Archivo 
 Public Sans / IBM Plex Mono) e a faixa MRZ como elemento de assinatura. O detalhe
 das decisões está em [imigrar-agent/IDENTIDADE.md](imigrar-agent/IDENTIDADE.md).
 
-Segue com cara de Shine Rio: a lógica de domínio em `lib/agent/*` (precificação de
-limpeza, CCT) e as rotas Propostas/Preços/Orçamento/Funcionários, que saíram do menu
-mas continuam no disco. Ambas são trabalho da Fase 4.
+O atendimento já é o da Imigrar Brasil. O que segue com cara de Shine Rio é a maquinaria
+comercial herdada — precificação, CCT, proposta em PDF e as rotas
+Propostas/Preços/Orçamento/Funcionários, que saíram do menu mas continuam no disco e nos
+testes. Está desligada do agente, e retirá-la do repositório é uma decisão à parte.
 
 ## O que NÃO fazer
 

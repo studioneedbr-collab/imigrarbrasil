@@ -47,6 +47,12 @@ export interface Conversation {
   // Disse que não tem interesse. Continua conversando (pode mudar de ideia agora), mas
   // nenhuma mensagem automática vai atrás dele depois.
   noFollowupAt?: string | null;
+  // IDIOMA DO CONTATO (ISO-639-1: "pt", "es", "en", "ht"…). Detectado na conversa e
+  // guardado aqui. Importa em dois lugares onde a regra de idioma do prompt não alcança:
+  // a mensagem automática de follow-up, que sai sem ninguém por perto e ia sempre em
+  // português, e o atendente humano que abre o painel e precisa saber em que língua
+  // responder antes de escrever.
+  idioma?: string | null;
 }
 
 export type MediaKind = "image" | "document" | "audio";

@@ -94,12 +94,12 @@ describe("impasse — para quem vai o atendimento travado", () => {
     faltamNoDossie: [] as string[],
   };
 
-  it("conversa comercial travada com a triagem completa vai para o comercial, como urgente", () => {
+  it("atendimento de imigração travado vai para o time jurídico, como urgente", () => {
     const r = avaliarImpasse(base);
     expect(r?.acao).toBe("encaminhar");
-    expect(r?.setor).toBe("comercial");
+    expect(r?.setor).toBe("comercial"); // o funil "comercial" é o do time jurídico
     expect(r?.priority).toBe("urgent");
-    expect(r?.msg).toMatch(/comercial/i);
+    expect(r?.msg).toMatch(/jurídico/i);
   });
 
   // Decisão do Eduardo: o comercial humano é 1% dos atendimentos, e só depois do PDF.
@@ -140,8 +140,8 @@ describe("impasse — para quem vai o atendimento travado", () => {
     });
     expect(r?.setor).toBe("rh");
     expect(r?.priority).toBe("normal");
-    expect(r?.msg).toMatch(/RH/);
-    expect(r?.msg).not.toMatch(/comercial|valores/i);
+    expect(r?.msg).toMatch(/vagas/i);
+    expect(r?.msg).not.toMatch(/jurídico|valores/i);
   });
 
   it("o agradecimento do Wanderson não vira transferência nenhuma", () => {
@@ -156,10 +156,10 @@ describe("impasse — para quem vai o atendimento travado", () => {
     ).toBeNull();
   });
 
-  it("respeita o setor de operacional e DP", () => {
-    expect(avaliarImpasse({ ...base, setor: "operacional" })?.msg).toMatch(/operacional/i);
+  it("respeita o setor da conversa e nunca promete quem não existe", () => {
+    expect(avaliarImpasse({ ...base, setor: "operacional" })?.msg).toMatch(/nosso time/i);
     expect(avaliarImpasse({ ...base, setor: "departamento_pessoal" })?.msg).toMatch(
-      /Departamento Pessoal/i,
+      /administrativo/i,
     );
   });
 

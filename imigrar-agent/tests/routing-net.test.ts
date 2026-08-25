@@ -24,8 +24,22 @@ describe("classifyRouting — rede de segurança", () => {
     expect(classifyRouting("queria saber sobre as minhas férias")?.kind).toBe("departamento_pessoal");
   });
 
-  it("candidato: quer trabalhar", () => {
-    expect(classifyRouting("tenho interesse em trabalhar na Shine Rio")?.kind).toBe("candidato");
+  it("candidato: quer trabalhar NA ASSESSORIA", () => {
+    expect(classifyRouting("tenho interesse em trabalhar aí com vocês")?.kind).toBe("candidato");
+  });
+
+  // A armadilha deste domínio: quem quer trabalhar NO BRASIL está pedindo atendimento de
+  // imigração, não vaga de emprego. Se a rede confundisse os dois, metade do público real
+  // cairia no funil de RH em vez de chegar ao time jurídico.
+  it("quem quer trabalhar NO BRASIL não é candidato a vaga", () => {
+    for (const msg of [
+      "quero trabalhar no Brasil, como faço?",
+      "posso trabalhar com esse visto?",
+      "estou procurando emprego, preciso de documento para isso",
+      "preciso de autorização de trabalho",
+    ]) {
+      expect(classifyRouting(msg)?.kind, msg).not.toBe("candidato");
+    }
   });
   it("candidato: enviar currículo", () => {
     expect(classifyRouting("posso mandar meu currículo?")?.kind).toBe("candidato");

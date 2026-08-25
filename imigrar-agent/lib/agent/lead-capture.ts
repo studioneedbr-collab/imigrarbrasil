@@ -62,6 +62,28 @@ export function dossieComercialFaltando(lead: Lead | null): DossieFaltando {
 }
 
 /**
+ * A QUALIFICAÇÃO DA IMIGRAR BRASIL — o que o advogado precisa ter na mão quando pegar
+ * esta conversa: nacionalidade, onde a pessoa está, o que ela quer conseguir e se há prazo.
+ *
+ * Usa os mesmos campos do lead, com a leitura deste domínio: `clientType` guarda a
+ * nacionalidade, `region` onde a pessoa está agora e `servicesInterested` o que ela
+ * procura. Nada aqui SEGURA nada: diferente da triagem comercial, um caso concreto vai
+ * para o time jurídico mesmo com a lista pela metade.
+ */
+export function qualificacaoFaltando(lead: Lead | null): DossieFaltando {
+  const faltam = [
+    !lead?.clientType && "a nacionalidade",
+    !lead?.region && "onde a pessoa está agora (no Brasil ou no exterior)",
+    !lead?.servicesInterested?.length && "o que ela quer conseguir",
+    !lead?.urgency && "se há prazo ou urgência",
+  ].filter((x): x is string => typeof x === "string");
+  const complementares = [!lead?.contactName && "o nome dela"].filter(
+    (x): x is string => typeof x === "string",
+  );
+  return { faltam, completo: faltam.length === 0, complementares };
+}
+
+/**
  * Lê o que o cliente escreveu e devolve o patch do que AINDA NÃO está no lead.
  * Devolve `null` quando não há novidade — assim o chamador não escreve à toa.
  */

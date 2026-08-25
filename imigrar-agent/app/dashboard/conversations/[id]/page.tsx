@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, Lead, Message, TransferTicket, Urgency } from "@/lib/domain/types";
+import { nomeDoIdioma } from "@/lib/domain/idiomas";
 
 const SETORES = [
   "Comercial",
@@ -399,8 +400,16 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
             </span>
             <div className="min-w-0">
               <p className="truncate font-semibold text-ib-ink">{title}</p>
-              <p className="font-mono text-xs tabular-nums text-ib-slate">
+              <p className="flex items-center gap-2 font-mono text-xs tabular-nums text-ib-slate">
                 {conversation.whatsappNumber}
+                {/* O idioma do contato, detectado no atendimento. Quem assume a conversa
+                    precisa saber em que língua responder ANTES de escrever a primeira
+                    linha — o histórico acima pode terminar num "ok" que não diz nada. */}
+                {conversation.idioma && conversation.idioma !== "pt" ? (
+                  <span className="rounded-full bg-ib-selo/12 px-2 py-0.5 font-sans text-[11px] font-medium uppercase tracking-wide text-[#0B7285]">
+                    fala {nomeDoIdioma(conversation.idioma)}
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>

@@ -91,12 +91,15 @@ export function ehFechamentoCordial(texto: string): boolean {
 // exatos" — foi assim que um candidato a vaga caiu na fila de vendas ouvindo que
 // alguém ia fechar preço com ele. Quem destrava o atendimento é o setor DAQUELA
 // conversa, e a mensagem tem que combinar com ele.
+// Na Imigrar Brasil, "comercial" é o funil onde caem os atendimentos de imigração — quem
+// os recebe é o TIME JURÍDICO. Os outros setores continuam existindo na estrutura (e no
+// painel) e ganham aqui a redação deste domínio.
 const QUEM: Record<LeadSetor, string> = {
-  comercial: "uma pessoa do nosso comercial",
-  rh: "uma pessoa do nosso RH",
-  operacional: "uma pessoa do nosso time operacional",
-  departamento_pessoal: "o nosso Departamento Pessoal",
-  suprimentos: "uma pessoa do nosso time de suprimentos",
+  comercial: "um advogado do nosso time jurídico",
+  rh: "quem cuida das vagas aqui",
+  operacional: "uma pessoa do nosso time",
+  departamento_pessoal: "o nosso administrativo",
+  suprimentos: "uma pessoa do nosso time",
   diretoria: "uma pessoa da nossa diretoria",
 };
 
@@ -106,12 +109,12 @@ const QUEM: Record<LeadSetor, string> = {
 // está olhando naquele instante.
 function msgImpasse(setor: LeadSetor, proximoRetorno?: string): string {
   const quem = QUEM[setor] ?? QUEM.comercial;
-  const abertura = "Deixa eu te dar um retorno certinho em vez de ficar repetindo a mesma coisa 😊 ";
-  const fecho = " Continuo por aqui: se quiser adiantar algum detalhe, pode me mandar.";
+  const abertura = "Deixa eu te dar um retorno certinho em vez de ficar repetindo a mesma coisa. ";
+  const fecho = " Continuo por aqui: se quiser me contar mais algum detalhe, pode mandar.";
   if (proximoRetorno) {
-    return `${abertura}Já deixei o seu caso com ${quem}. Nosso atendimento é de segunda a sexta, das 8h às 18h, então eles te retornam ${proximoRetorno}.${fecho}`;
+    return `${abertura}Já deixei o seu caso com ${quem}. O atendimento é de segunda a sexta, das 8h às 18h, então eles te retornam ${proximoRetorno}.${fecho}`;
   }
-  return `${abertura}Já chamei ${quem} para cuidar disso com você.${fecho}`;
+  return `${abertura}Já pedi para ${quem} falar com você sobre isso.${fecho}`;
 }
 
 export interface ImpasseInput {
@@ -169,10 +172,10 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
     return {
       acao: "destravar",
       setor,
-      motivo: `Cotação travada: falta ${faltam.join(", ")}. Nada encaminhado — a proposta sai daqui.`,
+      motivo: `Atendimento travado: ainda falta saber ${faltam.join(", ")}. Nada encaminhado — a conversa continua aqui.`,
       msg:
-        `Acho que me embolei aqui, desculpa 😊 Para eu fechar o orçamento e te mandar a proposta em PDF, ` +
-        `só me falta ${faltam.slice(0, 2).join(" e ")}.`,
+        `Acho que me embolei aqui, desculpa. Para eu te ajudar direito, me conta ` +
+        `${faltam.slice(0, 1).join("")}?`,
       priority: "normal",
     };
   }
@@ -180,10 +183,10 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
   return {
     acao: "encaminhar",
     setor,
-    motivo: `Atendimento travado (${setor}): a Shayene repetiu a mesma resposta sem conseguir avançar.`,
+    motivo: `Atendimento travado (${setor}): a Ana repetiu a mesma resposta sem conseguir avançar.`,
     msg: msgImpasse(setor, i.proximoRetorno),
-    // Só a fila comercial trata impasse como urgente: ali cada minuto parado é proposta
-    // que não sai. Nos outros setores urgência é decisão de quem recebe.
+    // O funil de imigração ("comercial") trata impasse como urgente: quem está travado numa
+    // conversa dessas costuma estar com prazo correndo ou com medo.
     priority: setor === "comercial" ? "urgent" : "normal",
   };
 }

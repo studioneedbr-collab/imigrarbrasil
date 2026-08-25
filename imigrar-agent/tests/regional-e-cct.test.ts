@@ -248,19 +248,18 @@ describe("migration 015 não pode divergir dos pisos do código", () => {
   });
 });
 
-describe("guardrail de preço não validado", () => {
-  it("o prompt proíbe qualquer número para função sem piso", () => {
+// O guardrail de preço mudou de forma com o domínio: o agente da Imigrar Brasil não cota
+// nada, então em vez de "nunca invente preço sem CCT" o prompt diz "nunca informe nem
+// estime honorários — valor é do time jurídico". Isso é testado em knowledge.test.ts.
+describe("guardrail de valores no prompt do agente", () => {
+  it("o prompt proíbe informar ou estimar honorários", () => {
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
     expect(prompt).toContain("GUARDRAILS — NUNCA FAZER");
-    expect(prompt).toMatch(/NUNCA INVENTE OU ESTIME UM PREÇO/);
-    expect(prompt).toMatch(/sobConsulta: true/);
-    expect(prompt).toMatch(/priceConfirmed: false/);
-    // Não basta proibir "R$": o modelo contorna com "em torno de" e faixa.
-    expect(prompt).toMatch(/em torno de.*a partir de.*gira em|Zero número/);
+    expect(prompt).toMatch(/Informe honorários, valor de serviço ou forma de pagamento/i);
   });
 
-  it("o prompt proíbe converter o preço do Rio em outra praça por percentual", () => {
+  it("o prompt não fala mais em CCT, praça ou tabela de preço", () => {
     const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
-    expect(prompt).toMatch(/NUNCA aplique um percentual sobre o pre[çc]o do Rio/i);
+    expect(prompt).not.toMatch(/CCT|conven[çc][ãa]o coletiva|pra[çc]a/i);
   });
 });

@@ -1,20 +1,29 @@
 // FREIO DE ENCAMINHAMENTO.
 //
-// O prompt manda ela entender o caso antes de encaminhar, mas isso é pedido — e o
-// modelo, quando a mensagem toca em "contrato", "férias" ou "reclamação", dispara a
-// tool na primeira frase. Aqui a regra deixa de ser pedido e vira condição: enquanto
-// ela não tiver o mínimo de um atendimento (saber com quem está falando e ter trocado
-// pelo menos uma pergunta), a tool transferir_para_humano nem é oferecida ao modelo.
+// Num atendimento comercial este portão existia para EVITAR o encaminhamento precoce.
+// Aqui ele é bem mais frouxo, e de propósito: numa assessoria de imigração, encaminhar
+// cedo é o desenho do serviço, e segurar quem está com um prazo correndo ou com medo é
+// que seria o erro. O que sobrou de freio é só contra o reflexo de despachar quem mandou
+// um "oi": a primeira mensagem, sozinha e sem nenhum sinal, não vira transbordo.
 //
-// Duas exceções que passam sempre, desde a primeira mensagem: emergência de verdade e
-// pedido explícito para falar com uma pessoa. Segurar qualquer uma das duas seria pior
-// do que encaminhar cedo demais.
+// Passa sempre, desde a primeira mensagem: risco à pessoa, pedido explícito por um
+// humano/advogado, e qualquer sinal do domínio (situação irregular, processo em
+// andamento, refúgio, prazo, honorários). Note que NÃO se exige saber o nome — quem está
+// assustado pede ajuda antes de se apresentar.
 
 export const EMERGENCIA =
-  /\b(acidente|incend|inc[êe]ndio|fogo|amea[çc]|viol[êe]nc|agress|assalt|roub|emerg[êe]nc|socorro|ambul[âa]nc|passando mal|desmai|hospital|pol[íi]cia|bombeir|vazamento de g[áa]s)/i;
+  /\b(acidente|incend|inc[êe]ndio|fogo|amea[çc]|viol[êe]nc|agress|assalt|roub|emerg[êe]nc|socorro|ambul[âa]nc|passando mal|desmai|hospital|pol[íi]cia|bombeir|vazamento de g[áa]s|persegui[çc][ãa]o|risco de vida|tr[áa]fico de pessoas)/i;
+
+/**
+ * Sinais de que a conversa já é um CASO, e não uma dúvida geral. Qualquer um deles
+ * libera o encaminhamento na hora, mesmo na primeira mensagem: são exatamente as
+ * situações que o prompt manda levar ao time jurídico sem intermediar.
+ */
+export const CASO_JURIDICO =
+  /\b(ref[úu]gio|refugiad|as[íi]lo|conare|crian[çc]a desacompanhad|menor desacompanhad|apatrid|irregular|indocumentad|sem documento|documento vencido|visto vencido|passei do prazo|overstay|deporta|expuls[ãa]o|indefer|negaram|recurso|notifica[çc][ãa]o|intima[çc][ãa]o|exig[êe]ncia|protocolo|meu processo|prazo|vence|venceu|honor[áa]rio|quanto custa|quanto cobram|qual o valor)/i;
 
 export const PEDIU_HUMANO =
-  /\b(falar|conversar|atendimento)\s+com\s+(um[a]?\s+)?(atendente|humano|pessoa|algu[ée]m|respons[áa]vel|consultor|especialista|supervisor|gerente|vendedor)\b|\bme\s+(transfere|passa para)\b|\bquero\s+(um[a]?\s+)?(atendente|humano|consultor|supervisor|gerente)\b|\bchama[r]?\s+(o|a)\s+(respons[áa]vel|gerente|supervisor)\b|(^|[^a-zà-ú])rob[ôo](?![a-zà-ú])/i;
+  /\b(falar|conversar|atendimento)\s+com\s+(um[a]?\s+)?(atendente|humano|pessoa|algu[ée]m|respons[áa]vel|consultor|especialista|supervisor|gerente|vendedor|advogad[oa]|doutor[a]?)\b|\bme\s+(transfere|passa para)\b|\bquero\s+(um[a]?\s+)?(atendente|humano|consultor|advogad[oa]|especialista)\b|\bchama[r]?\s+(o|a)\s+(respons[áa]vel|advogad[oa])\b|(^|[^a-zà-ú])rob[ôo](?![a-zà-ú])/i;
 
 export interface TransferGateInput {
   /** Quantas mensagens o cliente já mandou nesta conversa. */
@@ -33,39 +42,37 @@ export interface TransferGateResult {
 
 export function avaliarTransferencia(i: TransferGateInput): TransferGateResult {
   const texto = i.ultimaMensagem ?? "";
-  if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "emergência" };
-  if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "cliente pediu uma pessoa" };
+  if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "risco à pessoa" };
+  if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };
+  if (CASO_JURIDICO.test(texto)) return { liberado: true, motivo: "caso que exige advogado" };
   if (i.userTurns < 2) {
-    return { liberado: false, motivo: "primeira mensagem — ainda não houve atendimento nenhum" };
+    return { liberado: false, motivo: "primeira mensagem, sem nenhum sinal de caso concreto" };
   }
-  if (!i.temNome) {
-    return { liberado: false, motivo: "ainda não sabe com quem está falando" };
-  }
-  return { liberado: true, motivo: "atendimento mínimo feito" };
+  // Saber o nome NÃO é condição aqui. Numa assessoria de imigração, exigir apresentação
+  // antes de levar o caso a um advogado atrasa justamente quem tem mais pressa.
+  return { liberado: true, motivo: "atendimento em andamento" };
 }
 
-// ─── O COMERCIAL SÓ ENTRA DEPOIS DO PDF ───
+// ─── O PORTÃO DA TOOL DE ENCAMINHAMENTO ───
 //
-// Decisão do Eduardo (17/08/2026): a Shayene faz o atendimento comercial inteiro sozinha
-// e MANDA A PROPOSTA EM PDF. O comercial humano entra em 1% dos casos, e só depois do
-// orçamento — nunca antes. O que acontecia era o contrário: no primeiro tropeço ela
-// mandava "já chamei aqui uma pessoa do nosso comercial para fechar isso com você com os
-// valores exatos", e um lead que só queria uma cotação virava fila de espera.
+// Este portão existe porque o prompt sozinho não segura o modelo: a mesma função é chamada
+// pelo motor determinístico e pela rede anti-repetição. O que mudou com o domínio foi o
+// SENTIDO dele.
 //
-// Três coisas continuam furando essa trava, porque segurar seria pior:
-//   1. o cliente pediu para falar com uma pessoa (ou é emergência);
-//   2. o assunto não é cotação — é contrato, financeiro, jurídico, reclamação;
-//   3. a triagem está COMPLETA e mesmo assim não dá para cotar (praça sem CCT cadastrada,
-//      evento por diária). Esse é o 1%.
+// Na base comercial, ele segurava o encaminhamento até a proposta sair. Numa assessoria de
+// imigração isso seria o avesso do serviço: quem descreve um caso concreto TEM que chegar
+// ao advogado, e rápido. Então aqui ele libera por padrão e segura um caso só — a conversa
+// que ainda não tem nada: nenhum sinal de caso, nenhum pedido por uma pessoa e nenhuma
+// qualificação. É o freio contra despachar quem acabou de mandar "oi".
 
 export interface EncaminhamentoComercialInput {
-  /** Esta conversa já recebeu proposta em PDF? */
+  /** Esta conversa já recebeu proposta em PDF? (herdado; libera, mas raro neste domínio) */
   jaTemProposta: boolean;
-  /** A triagem comercial (serviço, postos, região, nome, empresa, CNPJ, e-mail) está completa? */
+  /** A qualificação (nacionalidade, onde está, o que quer, prazo) está completa? */
   dossieCompleto: boolean;
-  /** Últimas mensagens do cliente — é nelas que se vê pedido de humano e assunto grave. */
+  /** Últimas mensagens da pessoa — é nelas que se vê o caso concreto e o pedido de humano. */
   textoRecente: string;
-  /** O assunto casa com uma regra de transferência (contrato, jurídico, financeiro…)? */
+  /** O assunto casa com uma regra de transbordo (processo, irregularidade, refúgio…)? */
   assuntoExigePessoa: boolean;
 }
 
@@ -77,16 +84,16 @@ export interface EncaminhamentoComercialResult {
 export function avaliarEncaminhamentoComercial(
   i: EncaminhamentoComercialInput,
 ): EncaminhamentoComercialResult {
-  if (i.jaTemProposta) return { liberado: true, motivo: "a proposta já foi enviada" };
+  if (i.jaTemProposta) return { liberado: true, motivo: "atendimento já formalizado" };
   const texto = i.textoRecente ?? "";
-  if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "emergência" };
-  if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "cliente pediu uma pessoa" };
-  if (i.assuntoExigePessoa) return { liberado: true, motivo: "assunto que exige decisão humana" };
-  if (i.dossieCompleto) {
-    return { liberado: true, motivo: "triagem completa e ainda assim não dá para cotar" };
-  }
+  if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "risco à pessoa" };
+  if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };
+  if (CASO_JURIDICO.test(texto)) return { liberado: true, motivo: "caso que exige advogado" };
+  if (i.assuntoExigePessoa) return { liberado: true, motivo: "assunto que exige análise jurídica" };
+  if (i.dossieCompleto) return { liberado: true, motivo: "qualificação completa" };
   return {
     liberado: false,
-    motivo: "cotação em andamento — a proposta em PDF sai antes de envolver o comercial",
+    motivo:
+      "a conversa ainda não tem caso nenhum — acolha, entenda o que a pessoa precisa e só então encaminhe",
   };
 }

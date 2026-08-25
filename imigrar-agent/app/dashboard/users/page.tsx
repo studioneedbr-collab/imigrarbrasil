@@ -261,7 +261,7 @@ export default function UsersPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="pessoa@shinerio.com"
+                placeholder="pessoa@imigrarbrasil.com.br"
                 className={inputCls}
               />
             </Field>

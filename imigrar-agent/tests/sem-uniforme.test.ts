@@ -71,15 +71,7 @@ describe("abatimento de uniforme", () => {
   });
 });
 
-describe("alimentação e CCT não saem do preço", () => {
-  const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
-
-  it("o prompt libera só o uniforme", () => {
-    expect(prompt).toMatch(/ÚNICO item que você pode tirar do preço sozinha/);
-  });
-
-  it("o prompt manda o pedido de tirar alimentação para o comercial", () => {
-    expect(prompt).toMatch(/ALIMENTAÇÃO \/ VALE-REFEIÇÃO: NÃO sai do preço/);
-    expect(prompt).toMatch(/cláusula da convenção coletiva/);
-  });
-});
+// REMOVIDO com a troca de domínio (Imigrar Brasil): o describe que existia aqui checava as
+// instruções de uniforme e vale-refeição no system prompt do agente comercial. O prompt
+// hoje é de imigração e não fala de preço; o cálculo de sem_uniforme continua testado
+// acima, direto no motor e na tool.

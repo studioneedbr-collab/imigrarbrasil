@@ -37,14 +37,22 @@ const DP_PATTERNS: RegExp[] = [
   /\bn[ãa]o\s+(caiu|recebi|veio)\b[^.]{0,20}\b(sal[áa]rio|pagamento|folha)\b/i,
 ];
 
-// Candidato a vaga (não é cliente nem funcionário).
+// Candidato a vaga NA PRÓPRIA IMIGRAR BRASIL.
+//
+// ATENÇÃO — a armadilha deste domínio: "quero trabalhar no Brasil", "posso trabalhar com
+// esse visto?" e "estou procurando emprego, preciso de documento" são atendimento de
+// IMIGRAÇÃO, não candidatura. Na base original, "quero trabalhar" bastava para classificar
+// alguém como candidato a vaga — aqui isso jogaria metade do público real no funil de RH.
+// Por isso todo padrão exige uma âncora na EMPRESA (vocês, aí, na assessoria) ou a palavra
+// currículo, e "trabalhar no Brasil" é explicitamente excluído.
 const CANDIDATO_PATTERNS: RegExp[] = [
-  /\b(quero|tenho interesse em|gostaria de|queria)\s+trabalhar\b/i,
   /\b(mandar|enviar|deixar|encaminhar)\s+(o\s+|meu\s+)?curr[íi]culo\b/i,
   /\bcurr[íi]culo\b/i,
-  /\b(tem|t[êe]m|h[áa]|abriu|abriram|dispon[íi]ve[li]s?)\s+vagas?\b/i,
-  /\b(vaga|emprego)\b[^.]{0,20}\b(voc[êe]s|a[íi]|dispon)/i,
-  /\b(procurando|em busca de|atr[áa]s de)\s+(emprego|vaga|trabalho|coloca[çc][ãa]o)\b/i,
+  // Sem \b no fim: a borda de palavra do JS não entende acento, e "aí" seguido de espaço
+  // nunca fecharia um \b — era isso que fazia "trabalhar aí com vocês" passar batido.
+  /\b(quero|tenho interesse em|gostaria de|queria)\s+trabalhar\s+(a[íi]|com voc[êe]s|na imigrar|no escrit[óo]rio)/i,
+  /\b(tem|t[êe]m|h[áa]|abriu|abriram|dispon[íi]ve[li]s?)\s+vagas?\s+(a[íi]|na imigrar|no escrit[óo]rio|com voc[êe]s)/i,
+  /\b(vaga|emprego)\b[^.]{0,20}\b(a[íi] na imigrar|no escrit[óo]rio de voc[êe]s)/i,
   /\bme\s+candidatar\b/i,
 ];
 
@@ -61,30 +69,28 @@ export function classifyRouting(text: string): RoutingMatch | null {
     return {
       kind: "operacional",
       setor: "operacional",
-      reason: "Solicitação operacional sobre colaborador já alocado no cliente.",
+      reason: "Assunto sobre pessoa da equipe / atendimento em andamento.",
       handoffMsg:
-        "Entendi! Já registrei e passei pro nosso time operacional cuidar disso. 😊 Fico por aqui com você — se precisar de mais alguma coisa ou lembrar de algum detalhe, é só me falar.",
+        "Entendi. Já registrei e passei para o nosso time cuidar disso. Fico por aqui com você — se lembrar de algum detalhe ou precisar de mais alguma coisa, é só me falar.",
     };
   }
   if (matchAny(DP_PATTERNS, t)) {
     return {
       kind: "departamento_pessoal",
       setor: "departamento_pessoal",
-      reason: "Assunto de folha/pagamento/benefício de colaborador interno.",
+      reason: "Assunto de folha/pagamento/benefício de quem trabalha na Imigrar Brasil.",
       handoffMsg:
-        "Entendi! Isso é com o nosso Departamento Pessoal — já passei pra eles. 😊 Continuo aqui com você: se lembrar de algum detalhe ou quiser saber como está, é só me chamar.",
+        "Entendi. Isso é com o nosso administrativo — já passei para eles. Continuo aqui com você: se lembrar de algum detalhe ou quiser saber como está, é só me chamar.",
     };
   }
   if (matchAny(CANDIDATO_PATTERNS, t)) {
     return {
       kind: "candidato",
       setor: "rh",
-      reason: "Candidato a vaga.",
+      reason: "Candidato a vaga na Imigrar Brasil.",
       handoffMsg:
-        // A Shayene NÃO despacha candidato com o e-mail do RH: ela faz a triagem
-        // (nome, função, região, experiência) antes de pedir o currículo. Esta mensagem
-        // é só o fallback de último caso — o atendimento de verdade é conduzido por ela.
-        "Que bom o seu interesse em fazer parte do time 😊 Como é o seu nome completo?",
+        // Fallback de último caso — o atendimento de verdade é conduzido pela Ana.
+        "Que bom o seu interesse em fazer parte do time. Como é o seu nome, e em que área você atua?",
     };
   }
   return null;

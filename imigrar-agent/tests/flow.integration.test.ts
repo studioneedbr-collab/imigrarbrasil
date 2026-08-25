@@ -7,7 +7,7 @@ describe("fluxo comercial integrado (menu-estrito)", () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("flow-int:1");
     const r1 = await processMessage({ conversationId: conv.id, userText: "oi" });
-    expect(r1.reply.toLowerCase()).toMatch(/nome/);
+    expect(r1.reply.toLowerCase()).toMatch(/imigrar brasil/);
     await processMessage({ conversationId: conv.id, userText: "João Silva, CPF 111.444.777-35" });
     const r3 = await processMessage({ conversationId: conv.id, userText: "1" });
     expect(r3.reply.toLowerCase()).toMatch(/setor|comercial/);
@@ -17,11 +17,11 @@ describe("fluxo comercial integrado (menu-estrito)", () => {
     expect(r5.reply.toLowerCase()).toMatch(/empresa|colaboradores|serviço/);
   });
 
-  it("assunto trabalhista transfere com dossiê em qualquer ponto", async () => {
+  it("caso que exige advogado transfere com dossiê em qualquer ponto", async () => {
     const repo = getRepository();
     const conv = await repo.getOrCreateConversation("flow-int:2");
     await processMessage({ conversationId: conv.id, userText: "oi" });
-    const r = await processMessage({ conversationId: conv.id, userText: "tenho dúvida sobre demissão e férias" });
+    const r = await processMessage({ conversationId: conv.id, userText: "meu visto venceu, estou irregular" });
     expect(r.toolCalls?.some((t) => t.name === "transferir_para_humano")).toBe(true);
   });
 

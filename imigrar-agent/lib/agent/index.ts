@@ -7,7 +7,9 @@ import { classifyRouting } from "@/lib/agent/routing-net";
 import { avaliarImpasse } from "@/lib/agent/anti-loop";
 import { avaliarTransferencia } from "@/lib/agent/transfer-gate";
 import { proximoAtendimento } from "@/lib/agent/expediente";
-import { capturarDadosDoLead, dossieComercialFaltando } from "@/lib/agent/lead-capture";
+import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
+import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
+import { buildIdiomaBlock, detectarIdioma, registrarIdioma } from "@/lib/agent/idioma";
 import { detectarCobertura, dimensionar, descreverPosto } from "@/lib/agent/dimensionamento";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
@@ -39,27 +41,27 @@ const PRAZO_LABEL: Record<string, string> = {
 };
 
 /**
- * Tudo que já se sabe do contato, destacado no system prompt para a Shayene confirmar em
- * vez de reperguntar.
+ * Tudo que já se sabe do contato, destacado no system prompt para a Ana confirmar em vez
+ * de reperguntar.
  *
- * O bloco tem que listar TODO campo que ela pergunta ao longo da qualificação. Escala,
- * tipo de cliente, prazo e duração do contrato já eram gravados no lead e ficavam de fora
- * daqui: a resposta continuava no histórico, mas nada a destacava, e algumas mensagens
- * depois ela perguntava de novo. Ao acrescentar uma pergunta nova à qualificação,
- * acrescente o campo aqui também.
+ * Aqui isso pesa mais do que num atendimento comercial: quem chega assustado e tem que
+ * repetir de onde veio, como entrou e o que já tentou, pela terceira vez, desiste. Ao
+ * acrescentar uma pergunta nova à qualificação, acrescente o campo aqui também.
+ *
+ * Os campos são os da estrutura herdada, com a leitura deste domínio: `region` é onde a
+ * pessoa está agora, `servicesInterested` é o que ela procura (visto, regularização,
+ * refúgio...) e `clientType` guarda a nacionalidade quando ela é dita.
  */
 export function buildDadosConhecidosBlock(lead: Lead | null): string {
   if (!lead) return "";
   const known = [
     lead.contactName && `Nome: ${lead.contactName}`,
-    lead.companyName && `Empresa: ${lead.companyName}`,
-    lead.clientType && `Tipo de cliente: ${lead.clientType}`,
-    lead.servicesInterested?.length && `Serviço(s): ${lead.servicesInterested.join(", ")}`,
-    lead.employeesNeeded && `Nº de postos: ${lead.employeesNeeded}`,
-    lead.schedule && `Escala: ${lead.schedule}`,
-    lead.region && `Localização: ${lead.region}`,
+    lead.clientType && `Nacionalidade: ${lead.clientType}`,
+    lead.region && `Onde está agora: ${lead.region}`,
+    lead.servicesInterested?.length && `O que procura: ${lead.servicesInterested.join(", ")}`,
     lead.urgency && `Prazo: ${PRAZO_LABEL[lead.urgency] ?? lead.urgency}`,
-    lead.contractDuration && `Duração do contrato: ${lead.contractDuration}`,
+    lead.contractDuration && `Situação atual: ${lead.contractDuration}`,
+    lead.companyName && `Empresa/instituição: ${lead.companyName}`,
     lead.email && `E-mail: ${lead.email}`,
   ].filter(Boolean);
   if (!known.length) return "";
@@ -83,13 +85,13 @@ export function buildAgoraBlock(now: Date): string {
 
   return `\n\n════════ AGORA (horário de Brasília — use isto, não chute) ════════
 Hoje é ${diaSemana}, ${data}, e agora são ${relogio}.
-A saudação correta NESTE MOMENTO é "${saudacao}". Se for cumprimentar, use essa e nenhuma outra.
-NUNCA copie a saudação que o cliente usou: ele pode escrever "boa noite" de manhã, ou a mensagem dele pode ter chegado horas atrás. Quem manda é o relógio acima.
+A saudação correta NESTE MOMENTO é "${saudacao}" — traduzida para o idioma da conversa. Se for cumprimentar, use essa e nenhuma outra.
+NUNCA copie a saudação que a pessoa usou: ela pode escrever "boa noite" de manhã, ou a mensagem dela pode ter chegado horas atrás — e quem escreve de outro fuso erra isso o tempo todo. Quem manda é o relógio acima.
 Só cumprimente na PRIMEIRA mensagem da conversa. No meio de um atendimento que já está rolando, "boa tarde" de novo entrega robô — vá direto ao assunto.
-Estamos ${dentroDoExpediente ? "DENTRO" : "FORA"} do horário comercial (Seg a Sex, 08h às 18h).${
+Estamos ${dentroDoExpediente ? "DENTRO" : "FORA"} do horário de atendimento humano (Seg a Sex, 08h às 18h).${
     dentroDoExpediente
       ? ""
-      : `\nVocê continua atendendo normalmente e resolve o que é seu (cotação, preço, proposta em PDF) na hora, sábado, domingo ou de madrugada — isso não depende de ninguém.\nO que você NÃO faz é prometer retorno imediato de uma PESSOA: não há ninguém no escritório agora. Se precisar envolver alguém do time, diga que ele retorna ${quando} — com essas palavras, não "em instantes" nem "em até 30 minutos".`
+      : `\nVocê continua atendendo normalmente: acolher e informar o que é informação geral não depende de ninguém estar no escritório, e quem escreve de madrugada costuma estar com medo justamente por isso.\nO que você NÃO faz é prometer retorno imediato de uma PESSOA: não há ninguém no escritório agora. Ao encaminhar para o time jurídico, diga que eles retornam ${quando} — com essas palavras, não "em instantes" nem "em até 30 minutos".`
   }`;
 }
 
@@ -117,8 +119,11 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // LEAD ENVIOU MENSAGEM: reabre se estava inativa (retomando do histórico, nunca do zero),
   // reativa se estava aguardando, e marca a atividade. Envolto em try/catch para que uma
   // coluna/constraint ausente (migration 008 ainda não aplicada) nunca derrube a resposta.
+  // A conversa lida aqui é reaproveitada mais abaixo (idioma do contato) — sem isto seria
+  // uma segunda ida ao banco por turno, em serverless, só para ler uma coluna.
+  let convBefore: Awaited<ReturnType<typeof repo.getConversation>> = null;
   try {
-    const convBefore = await repo.getConversation(conversationId);
+    convBefore = await repo.getConversation(conversationId);
     if (convBefore) {
       if (convBefore.status === "inactive") {
         await repo.updateConversation(conversationId, {
@@ -152,7 +157,7 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     const prev = new Date(rawMsgs[rawMsgs.length - 2].createdAt).getTime();
     if (last - prev > 24 * 3600 * 1000) {
       systemPrompt +=
-        "\n\n════════ ATENÇÃO: o cliente está VOLTANDO após mais de 24h ════════\nCumprimente de novo de forma calorosa e natural (ex.: \"Oi de novo! Que bom te ver por aqui 😊\") e retome o atendimento do começo. Confirme os dados já conhecidos em vez de reperguntar.";
+        "\n\n════════ ATENÇÃO: esta pessoa está VOLTANDO após mais de 24h ════════\nCumprimente de novo, de forma curta e natural, NO IDIOMA DA CONVERSA, e retome de onde parou. Confirme o que já se sabe em vez de reperguntar — ela já contou a história dela uma vez.";
     }
   }
 
@@ -161,11 +166,15 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   const lastUserText = [...rawMsgs].reverse().find((m) => m.role === "user")?.content ?? "";
   const allUserText = rawMsgs.filter((m) => m.role === "user").map((m) => m.content).join("  ");
 
-  // COBERTURA: "posto 24h" não é duas pessoas. Em 17/08/2026 a Shayene cotou um posto de
-  // 24h como 2 porteiros, sem adicional noturno — metade da mão de obra. A regra está na
-  // base de conhecimento, mas conhecimento comprido o modelo às vezes atravessa; quando o
-  // cliente FALA de cobertura, a regra vai na cara dele, no turno em que importa.
-  const coberturaFalada = detectarCobertura(allUserText);
+  // COBERTURA DE POSTO — herança do motor de precificação, que continua no sistema.
+  //
+  // O bloco só entra quando a conversa é REALMENTE de dimensionamento de posto. Sem esse
+  // segundo filtro, "meu visto vence em 24h" acionava o detector e a Ana recebia, no meio
+  // de um atendimento de imigração, um bloco falando de porteiro na escala 12x36.
+  const falaDePosto = /\b(posto|portaria|porteir|vigia|zelador|asg|limpeza|faxin|recep[çc]ion|escala)\b/i.test(
+    allUserText,
+  );
+  const coberturaFalada = falaDePosto ? detectarCobertura(allUserText) : null;
   if (coberturaFalada) {
     const dim = dimensionar(coberturaFalada);
     systemPrompt +=
@@ -192,10 +201,21 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // Injeta o que já se sabe deste contato — a Shayene confirma em vez de reperguntar.
   systemPrompt += buildDadosConhecidosBlock(knownLead);
 
-  // FREIO: enquanto ela não tiver feito o mínimo de atendimento (saber com quem fala e
-  // ter trocado ao menos uma pergunta), a tool de transferência nem é oferecida — o
-  // modelo dispara na primeira frase quando a mensagem toca em contrato, férias ou
-  // reclamação. Emergência e pedido explícito por uma pessoa passam sempre.
+  // IDIOMA. A regra de responder na língua de quem escreveu já é a REGRA ABSOLUTA 1 do
+  // DeepSeek. O que ela não cobre é a MEMÓRIA: quem escreveu quatro mensagens em espanhol
+  // e mandou só "ok" agora continua sendo atendido em espanhol, e o material oficial que
+  // chega no prompt está todo em português. O idioma fica gravado no contato — é o mesmo
+  // dado que o follow-up automático e o atendente humano do painel usam.
+  const idiomaDetectado = detectarIdioma(lastUserText);
+  systemPrompt += buildIdiomaBlock(idiomaDetectado ?? convBefore?.idioma);
+  if (idiomaDetectado) await registrarIdioma(conversationId, idiomaDetectado);
+
+  // FREIO DE ENCAMINHAMENTO — bem mais frouxo do que num atendimento comercial.
+  //
+  // Aqui o que segura é só o reflexo de despachar quem mandou um "oi": a primeira mensagem
+  // sozinha não vira transbordo. Qualquer sinal do domínio (situação irregular, processo,
+  // refúgio, risco, honorários, aflição) libera na hora, mesmo sem saber o nome de quem
+  // fala — quem está com medo não se apresenta antes de pedir ajuda.
   const portao = avaliarTransferencia({
     userTurns,
     temNome: !!knownLead?.contactName,
@@ -204,56 +224,49 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   const blockTools = portao.liberado ? undefined : ["transferir_para_humano"];
   if (!portao.liberado) {
     systemPrompt +=
-      `\n\n════════ AGORA NÃO É HORA DE ENCAMINHAR ════════\nVocê ainda não pode passar esta conversa para outro setor (${portao.motivo}). Atenda: acolha, entenda quem é a pessoa e o que ela precisa, e colete o que faltar. Não diga que vai encaminhar, não prometa que "o setor entra em contato" — resolva o que dá para resolver agora e pergunte o que falta.`;
+      `\n\n════════ ANTES DE ENCAMINHAR, ATENDA ════════\nEsta conversa ainda não tem nada que exija um advogado (${portao.motivo}). Acolha, se apresente em uma linha e pergunte o que a pessoa precisa. Não diga que vai encaminhar e não prometa que "o time entra em contato" — ainda não há caso nenhum para encaminhar. Assim que aparecer caso concreto, prazo, irregularidade, refúgio ou pedido de valores, aí sim o encaminhamento é o certo.`;
   }
 
-  // CANDIDATO A VAGA: sem isto ela responde "manda o currículo para rh@shinerio.com" na
-  // segunda mensagem e encerra — sem o nome, sem a função, sem nada. O RH recebe um
-  // currículo sem contexto e a pessoa sai com a sensação de ter sido dispensada. Aqui a
-  // triagem que falta é dita na hora em que ela está decidindo o que responder.
+  // QUEM PROCURA EMPREGO NA PRÓPRIA IMIGRAR BRASIL. É raro, mas acontece — e a diferença
+  // entre isso e "quero trabalhar no Brasil" (que é atendimento de imigração, não vaga) é
+  // exatamente o que a rede de roteamento aprendeu a separar. Ver lib/agent/routing-net.ts.
   const pedeVaga = rawMsgs.some(
     (m) => m.role === "user" && classifyRouting(m.content)?.kind === "candidato",
   );
   if (pedeVaga) {
-    const falta = [
-      !knownLead?.contactName && "o nome completo",
-      !knownLead?.servicesInterested?.length && "para qual função quer se candidatar",
-      !knownLead?.region && "de qual cidade/região é",
-    ].filter(Boolean);
-    const jaMandouCurriculo = rawMsgs.some(
-      (m) => m.role === "user" && /📎 Arquivo recebido|curr[íi]culo|curriculum|\bcv\b/i.test(m.content),
-    );
-    if (falta.length) {
-      systemPrompt += `\n\n════════ ESTA PESSOA PROCURA VAGA — ATENDA, NÃO DESPACHE ════════\nAinda falta saber: ${falta.join(", ")}.\nDescubra isso CONVERSANDO, na ordem que a conversa pedir — não faça interrogatório nem peça tudo de uma vez. Comente algo útil sobre a função ou sobre a empresa entre uma coisa e outra, como uma pessoa do time faria. Registre com registrar_dados_lead (setor "rh", stage "novo") conforme for aparecendo, sem avisar que está anotando.\nNÃO mande a pessoa para o e-mail do RH ainda, e não encerre a conversa. O currículo você pede só depois de ter esses dados — e aí ela escolhe se manda aqui pelo WhatsApp ou por e-mail.`;
-    } else if (!jaMandouCurriculo) {
-      // Triagem completa e nenhum currículo ainda: o próximo passo é pedir o arquivo.
-      // Sem isto ela agradece, diz que registrou e a conversa morre sem currículo nenhum.
-      systemPrompt += `\n\n════════ TRIAGEM DO CANDIDATO COMPLETA — PEÇA O CURRÍCULO ════════\nVocê já tem nome, função e região desta pessoa. Agora PEÇA o currículo, deixando ela escolher o caminho: pode mandar aqui mesmo pelo WhatsApp, ou por e-mail em rh@shinerio.com. Diga que já deixou tudo registrado com o RH. Não prometa vaga, prazo de retorno nem resultado — isso é decisão do RH.`;
-    }
+    systemPrompt += `\n\n════════ ESTA PESSOA PROCURA VAGA NA IMIGRAR BRASIL ════════\nIsto NÃO é atendimento de imigração — é candidatura a emprego aqui na assessoria. Atenda com o mesmo cuidado: pergunte o nome e a área em que ela atua, registre com registrar_dados_lead (setor "rh", stage "novo") sem avisar que está anotando, e diga que passa para quem cuida disso. Não prometa vaga, prazo nem retorno, e NÃO peça currículo por conta própria.\nCUIDADO PARA NÃO CONFUNDIR: quem diz "quero trabalhar no Brasil", "posso trabalhar com esse visto?" ou "preciso de autorização para trabalhar" está falando de IMIGRAÇÃO. Isso é atendimento normal seu, nunca vaga de emprego.`;
   }
 
-  // ─── TRIAGEM COMERCIAL ANTES DA PROPOSTA ───
-  // Uma cotação não começa em "vou te enviar" — começa em saber quem é. Este bloco diz,
-  // no momento em que ela decide o que responder, exatamente o que ainda falta para o PDF
-  // poder sair, e deixa claro que quem manda a proposta é ela, não o comercial.
-  //
-  // Vem DEPOIS do bloco do candidato e só vale para lead comercial: mandar quem procura
-  // emprego informar CNPJ e e-mail da empresa seria pior do que não ter triagem nenhuma.
+  // ─── QUALIFICAÇÃO PARA O TIME JURÍDICO ───
+  // O advogado que pegar esta conversa precisa saber de onde a pessoa é, onde ela está,
+  // como entrou, o que quer e se há prazo. Este bloco diz, no turno em que a Ana está
+  // decidindo o que responder, o que ainda falta — e insiste em UMA pergunta por vez,
+  // porque a mesma lista perguntada de enfiada vira interrogatório com quem já chega com
+  // medo de estar sendo fiscalizado.
   const setorLead = knownLead?.setor ?? "comercial";
   const jaTemProposta = await repo.hasProposalForConversation(conversationId).catch(() => false);
-  const faltaNaTriagem = dossieComercialFaltando(knownLead);
-  // A rede de roteamento também é consultada aqui (e não só depois da resposta): um
-  // colaborador reclamando de escala não pode receber pedido de CNPJ.
+  const faltaNaTriagem = qualificacaoFaltando(knownLead);
+  // A rede de roteamento também é consultada aqui (e não só depois da resposta): quem
+  // procura vaga na assessoria não recebe pergunta sobre nacionalidade e prazo de visto.
   const routed = classifyRouting(lastUserText);
-  const ehCotacao = setorLead === "comercial" && !pedeVaga && !routed;
-  if (ehCotacao && !jaTemProposta && userTurns >= 1) {
-    const depois = faltaNaTriagem.complementares.length
-      ? ` Depois que o PDF sair, aí sim você pede o que falta para o cadastro: ${faltaNaTriagem.complementares.join(", ")}.`
-      : "";
+  const ehAtendimentoMigratorio = setorLead === "comercial" && !pedeVaga && !routed;
+  if (ehAtendimentoMigratorio && userTurns >= 1) {
     systemPrompt += faltaNaTriagem.completo
-      ? `\n\n════════ TRIAGEM COMPLETA — MANDE A PROPOSTA AGORA ════════\nVocê já tem tudo que a proposta precisa. Chame gerar_proposta_pdf NESTA RESPOSTA e diga que enviou o PDF. Não pergunte se ele quer receber, não peça CNPJ, não peça e-mail antes e não envolva o comercial.${depois}`
-      : `\n\n════════ TRIAGEM DESTE LEAD — O QUE AINDA SEGURA O PDF ════════\nPara a proposta em PDF sair, falta SÓ isto: ${faltaNaTriagem.faltam.join(", ")}.\nPergunte isso e nada além disso — quanto menos passos até o PDF, melhor. Uma coisa por vez, aproveitando o que ele já disse. Assim que a lista zerar, gere a proposta na mesma resposta, sem pedir mais nenhum dado.${depois}\nENQUANTO FALTAR DADO, VOCÊ NÃO ENCAMINHA PARA O COMERCIAL. Quem monta e envia a proposta é você. A tool transferir_para_humano vai recusar mesmo, e dizer ao cliente que "já chamei uma pessoa do comercial" sem ter chamado é o pior desfecho possível.`;
+      ? `\n\n════════ QUALIFICAÇÃO COMPLETA ════════\nVocê já sabe o que o time jurídico precisa para pegar este caso. Não pergunte mais nada de cadastro: ou você informa algo útil com o material oficial que tiver, ou encaminha (avisando e confirmando antes).`
+      : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\nIsto NÃO é a ordem das perguntas nem uma lista para despejar: é o que você precisa saber ao longo da conversa. Faça UMA pergunta por vez, na ordem que a conversa pedir, aproveitando o que a pessoa já contou sozinha, e comente algo útil entre uma coisa e outra. Se ela não quiser responder alguma, siga em frente sem insistir.\nNão segure o encaminhamento por causa desta lista: caso concreto, prazo correndo, situação irregular ou risco vão para o time jurídico mesmo com a lista pela metade.`;
   }
+
+  // ─── MATERIAL OFICIAL (RAG) ───
+  // O bloco entra POR ÚLTIMO, logo antes da chamada: é o que o modelo mais precisa ter
+  // fresco quando decide a resposta. A recuperação é determinística e roda a todo turno
+  // — não depende de o modelo lembrar de chamar `buscar_material_oficial`, pelo mesmo
+  // motivo que o dossiê do lead deixou de depender disso.
+  //
+  // Sem Supabase, sem provedor de embeddings ou sem trecho relevante, `blocoMaterialPara`
+  // devolve "" e nada muda: a Ana diz que não tem a informação e encaminha, que é o
+  // comportamento que o prompt já manda — e é o comportamento SEGURO.
+  const mensagensDoCliente = rawMsgs.filter((m) => m.role === "user").map((m) => m.content);
+  systemPrompt += await blocoMaterialPara(consultaDoTurno(mensagensDoCliente));
 
   const { reply: rawReply, toolCalls, source } = await runAgent({
     systemPrompt,

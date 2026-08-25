@@ -26,24 +26,23 @@ describe("bloco de dados já conhecidos", () => {
     expect(buildDadosConhecidosBlock(lead({}))).toBe("");
   });
 
-  it("traz todo campo que a Shayene pergunta na qualificação", () => {
+  it("traz todo campo que a Ana pergunta na qualificação", () => {
     const b = buildDadosConhecidosBlock(
       lead({
-        contactName: "Vivi", companyName: "Condomínio Solar", clientType: "condomínio",
-        servicesInterested: ["Auxiliar de Serviços Gerais"], employeesNeeded: 4,
-        schedule: "5x2_44h", region: "Botafogo", urgency: "immediate",
-        contractDuration: "12 meses", email: "vivi@solar.com.br",
+        contactName: "Yolanda", clientType: "venezuelana",
+        servicesInterested: ["regularização migratória"],
+        region: "São Paulo", urgency: "immediate",
+        contractDuration: "entrou pela fronteira em 2025, tem protocolo",
+        email: "yolanda@exemplo.com",
       }),
     );
-    expect(b).toContain("Nome: Vivi");
-    expect(b).toContain("Empresa: Condomínio Solar");
-    expect(b).toContain("Tipo de cliente: condomínio");
-    expect(b).toContain("Serviço(s): Auxiliar de Serviços Gerais");
-    expect(b).toContain("Nº de postos: 4");
-    expect(b).toContain("Escala: 5x2_44h");
-    expect(b).toContain("Localização: Botafogo");
-    expect(b).toContain("Duração do contrato: 12 meses");
-    expect(b).toContain("E-mail: vivi@solar.com.br");
+    expect(b).toContain("Nome: Yolanda");
+    expect(b).toContain("Nacionalidade: venezuelana");
+    expect(b).toContain("Onde está agora: São Paulo");
+    expect(b).toContain("O que procura: regularização migratória");
+    expect(b).toContain("Prazo: imediato");
+    expect(b).toContain("Situação atual: entrou pela fronteira em 2025, tem protocolo");
+    expect(b).toContain("E-mail: yolanda@exemplo.com");
     expect(b).toMatch(/NÃO pergunte de novo/);
   });
 
@@ -56,31 +55,33 @@ describe("bloco de dados já conhecidos", () => {
   it("campo não preenchido não vira linha vazia", () => {
     const b = buildDadosConhecidosBlock(lead({ contactName: "Vivi" }));
     expect(b).toContain("Nome: Vivi");
-    expect(b).not.toContain("Escala:");
+    expect(b).not.toContain("Nacionalidade:");
     expect(b).not.toContain("Prazo:");
   });
 });
 
-// De nada adianta o bloco listar a escala se a tool que grava o lead descarta o campo.
+// De nada adianta o bloco listar a situação da pessoa se a tool que grava o lead descarta
+// o campo. `contract_duration` guarda, neste domínio, a situação atual dela (como entrou,
+// que documento tem).
 describe("registrar_dados_lead grava o que o bloco lê", () => {
-  it("escala e duração chegam ao lead e voltam no bloco", async () => {
+  it("situação atual e prazo chegam ao lead e voltam no bloco", async () => {
     // O mesmo repositório que executeTool usa — instância própria não veria a escrita.
     const repo = await import("@/lib/data").then((m) => m.getRepository());
     const conv = await repo.getOrCreateConversation("sim:grava-escala");
     await executeTool("registrar_dados_lead", {
       conversation_id: conv.id,
       contact_name: "Vivi",
-      schedule: "12x36",
-      contract_duration: "indeterminado",
+      client_type: "angolana",
+      contract_duration: "entrou com visto de estudo, ainda válido",
       urgency: "short",
     });
     const salvo = await repo.getLeadByConversation(conv.id);
-    expect(salvo?.schedule).toBe("12x36");
-    expect(salvo?.contractDuration).toBe("indeterminado");
+    expect(salvo?.clientType).toBe("angolana");
+    expect(salvo?.contractDuration).toBe("entrou com visto de estudo, ainda válido");
 
     const b = buildDadosConhecidosBlock(salvo);
-    expect(b).toContain("Escala: 12x36");
-    expect(b).toContain("Duração do contrato: indeterminado");
+    expect(b).toContain("Nacionalidade: angolana");
+    expect(b).toContain("Situação atual: entrou com visto de estudo, ainda válido");
     expect(b).toContain("Prazo: curto prazo");
   });
 });

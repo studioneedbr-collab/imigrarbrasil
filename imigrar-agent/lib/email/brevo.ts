@@ -20,7 +20,7 @@ export async function getBrevoConfig(): Promise<BrevoResolved> {
   }
   const apiKey = stored.apiKey || env.brevoApiKey;
   const senderEmail = stored.senderEmail || env.brevoSenderEmail;
-  const senderName = stored.senderName || env.brevoSenderName || "Shine Rio";
+  const senderName = stored.senderName || env.brevoSenderName || "Imigrar Brasil";
   return { apiKey, senderEmail, senderName, configured: Boolean(apiKey && senderEmail) };
 }
 

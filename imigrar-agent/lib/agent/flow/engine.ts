@@ -11,7 +11,9 @@ import { detectarCobertura } from "@/lib/agent/dimensionamento";
 import type { AgentTurn, ToolCallTrace, AgentRunResult } from "@/lib/agent/runner";
 import type { FlowStateId, Conversation } from "@/lib/domain/types";
 
-const CONTATO = "Guido Doro / Pedro Lucas — (21) 3540-0693";
+// Quem recebe o encaminhamento. Sem telefone: o número direto do time jurídico não foi
+// definido pelo cliente, e inventar um contato é pior do que não dar nenhum.
+const CONTATO = "Time jurídico — Imigrar Brasil";
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -121,7 +123,7 @@ export async function runEngine({
       }),
     });
     return {
-      reply: `${resposta}\n\nContato direto: ${CONTATO}.`,
+      reply: `${resposta}\n\nJá deixei o seu caso com o nosso time jurídico. Continuo por aqui se precisar.`,
       toolCalls,
     };
   };
@@ -130,7 +132,7 @@ export async function runEngine({
   if (isConfidentialAsk(lastRaw, training.guardrails.termos)) {
     return {
       reply:
-        "Essas informações internas eu não posso compartilhar 😊. Mas posso te ajudar com nossos serviços, orçamento e condições. Como posso ajudar?",
+        "Essa informação quem passa é o nosso time jurídico, não consigo te adiantar por aqui. Mas posso te ajudar a entender o que a Imigrar Brasil faz e encaminhar você para eles. O que você precisa resolver?",
       toolCalls,
     };
   }
@@ -149,7 +151,7 @@ export async function runEngine({
   ) {
     return doTransfer(
       "consultor_comercial",
-      "Perfeito! Já te encaminho para um de nossos consultores comerciais.",
+      "Claro! Já peço para alguém do nosso time jurídico falar com você.",
     );
   }
 
@@ -278,7 +280,7 @@ export async function runEngine({
     }
     return {
       reply:
-        "A Shine Rio atua em terceirização de mão de obra com mais de 100 funções: limpeza/ASG, portaria, recepção, zeladoria, jardinagem, operador de piscina, manutenção, cozinha e mais. Sobre qual serviço você quer saber mais? Se preferir, posso já preparar um orçamento.",
+        "A Imigrar Brasil é uma assessoria jurídica em imigração para o Brasil: visto solicitado no exterior, regularização de quem já está aqui, naturalização, refúgio, residência pelo Mercosul e reunião familiar. Sobre qual desses você quer falar?",
       toolCalls,
     };
   }

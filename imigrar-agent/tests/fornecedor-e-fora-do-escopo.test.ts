@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
+import { DEFAULT_KNOWLEDGE, buildSystemPrompt, TRANSFER_RULES } from "@/lib/agent/knowledge";
 import { AGENT_TOOLS } from "@/lib/agent/tools";
 
-// Fornecedor, imprensa e reclamação de serviço prestado não são lead comercial, e antes
-// caíam todos no funil de venda: a Shayene perguntava se o fornecedor precisava de algum
-// serviço e qualificava jornalista como cliente. O prompt agora identifica os três, e as
-// tools precisam aceitar os setores de destino — sem isso a chamada morre na validação e
-// ela diz que encaminhou sem ter encaminhado nada.
+// Contatos fora do escopo. Na base comercial herdada, o que caía fora do funil era
+// fornecedor, imprensa e reclamação de serviço. Aqui é outra coisa: imigração para OUTRO
+// país e assunto de OUTRA área do direito — os dois pedidos que mais chegam por engano
+// numa assessoria de imigração, e que o agente não pode fingir que atende.
 
 const prompt = buildSystemPrompt(DEFAULT_KNOWLEDGE);
 
@@ -16,36 +15,39 @@ function setorEnum(toolName: string): readonly string[] {
   return props.setor?.enum ?? [];
 }
 
-describe("fornecedor e contatos fora do escopo comercial", () => {
-  it("o prompt identifica fornecedor e manda para suprimentos", () => {
-    expect(prompt).toMatch(/FORNECEDOR \/ PARCEIRO COMERCIAL/);
-    expect(prompt).toMatch(/distribuidora/i);
-    expect(prompt).toMatch(/suprimentos/);
+describe("contatos fora do escopo", () => {
+  it("o prompt delimita o escopo em imigração PARA O BRASIL", () => {
+    expect(prompt).toMatch(/FORA DESSE ESCOPO/);
+    expect(prompt).toMatch(/imigração para outros países/i);
+    expect(prompt).toMatch(/trabalhista, criminal/i);
   });
 
-  it("o prompt proíbe tratar fornecedor como cliente e repedir o WhatsApp", () => {
-    expect(prompt).toMatch(/NUNCA: tratar fornecedor como cliente potencial/);
-    expect(prompt).toMatch(/O WhatsApp você JÁ TEM/);
+  it("pedido de outro país cai na regra de fora do escopo, não no atendimento", () => {
+    for (const msg of [
+      "vocês fazem visto americano?",
+      "quero imigrar para Portugal",
+      "preciso de cidadania italiana",
+      "vocês fazem tradução juramentada?",
+    ]) {
+      const regra = TRANSFER_RULES.find((r) => r.regex.test(msg));
+      expect(regra?.categoria, msg).toBe("fora_do_escopo");
+    }
   });
 
-  it("o prompt cobre imprensa/institucional com destino diretoria", () => {
-    expect(prompt).toMatch(/IMPRENSA \/ INSTITUCIONAL/);
-    expect(prompt).toMatch(/jornalista/i);
-    expect(prompt).toMatch(/diretoria/);
-  });
-
-  it("o prompt trata reclamação de serviço prestado como urgente no operacional", () => {
-    expect(prompt).toMatch(/RECLAMAÇÃO DE SERVIÇO PRESTADO/);
-    expect(prompt).toMatch(/priority "urgent"/);
+  it("a resposta de fora do escopo não indica terceiros nem dá palpite", () => {
+    const regra = TRANSFER_RULES.find((r) => r.categoria === "fora_do_escopo")!;
+    expect(regra.resposta).toMatch(/imigração para o Brasil/i);
+    expect(regra.resposta.toLowerCase()).not.toMatch(/recomendo|indico o|procure o/);
   });
 
   it("dizer que encaminhou sem chamar a tool é proibido explicitamente", () => {
-    expect(prompt).toMatch(/registrar_dados_lead NÃO avisa ninguém/);
+    expect(prompt).toMatch(/registrar_dados_lead não avisa ninguém/i);
   });
 
-  it("as tools aceitam os setores suprimentos e diretoria", () => {
+  it("as tools continuam aceitando todos os setores da estrutura", () => {
     for (const tool of ["registrar_dados_lead", "transferir_para_humano"]) {
-      expect(setorEnum(tool)).toContain("suprimentos");
+      expect(setorEnum(tool)).toContain("comercial");
+      expect(setorEnum(tool)).toContain("rh");
       expect(setorEnum(tool)).toContain("diretoria");
     }
   });

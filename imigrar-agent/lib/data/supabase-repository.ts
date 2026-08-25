@@ -30,6 +30,7 @@ const mapConversation = (r: DbConversation): Conversation => ({
   reopenedAt: (r as unknown as Record<string, any>).reopened_at ?? null,
   optOutAt: (r as unknown as Record<string, any>).opt_out_at ?? null,
   noFollowupAt: (r as unknown as Record<string, any>).no_followup_at ?? null,
+  idioma: (r as unknown as Record<string, any>).idioma ?? null,
 });
 const mapCliente = (r: Record<string, any>): Cliente => ({
   id: r.id, nome: r.nome, cpf: r.cpf, empresa: r.empresa, email: r.email,
@@ -97,6 +98,7 @@ export class SupabaseRepository implements Repository {
     if (patch.reopenedAt !== undefined) dbPatch.reopened_at = patch.reopenedAt;
     if (patch.optOutAt !== undefined) dbPatch.opt_out_at = patch.optOutAt;
     if (patch.noFollowupAt !== undefined) dbPatch.no_followup_at = patch.noFollowupAt;
+    if (patch.idioma !== undefined) dbPatch.idioma = patch.idioma;
     const { data, error } = await this.db.from("conversations").update(dbPatch).eq("id", id).select("*").single();
     if (error) throw error;
     return mapConversation(data as DbConversation);

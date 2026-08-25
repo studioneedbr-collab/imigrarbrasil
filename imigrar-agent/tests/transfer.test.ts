@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { detectTransfer, buildDossie } from "@/lib/agent/transfer";
 
 describe("transferência", () => {
-  it("detecta assunto trabalhista", () => {
-    const r = detectTransfer("tenho uma dúvida sobre férias de um funcionário");
-    expect(r?.categoria).toBe("trabalhista");
+  it("detecta caso concreto que precisa de advogado", () => {
+    const r = detectTransfer("meu visto venceu e estou irregular");
+    expect(r?.categoria).toBe("situacao_irregular");
   });
-  it("não transfere assunto comercial normal", () => {
-    expect(detectTransfer("quero um orçamento de limpeza")).toBeUndefined();
+  it("não transfere dúvida geral sobre um caminho migratório", () => {
+    expect(detectTransfer("como funciona a residência pelo Mercosul?")).toBeUndefined();
   });
   it("buildDossie resume o que foi coletado", () => {
     const d = buildDossie({
