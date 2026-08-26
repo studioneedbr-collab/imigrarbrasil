@@ -9,33 +9,35 @@ type NavLink = { href: string; label: string; icon: IconName; adminOnly?: boolea
 type NavGroup = { section: string | null; links: NavLink[] };
 
 /**
- * O menu segue o trabalho da assessoria, não o da base que originou este código.
+ * O MENU SEGUE A FILA DE PRAZOS.
  *
- * Ficaram DE FORA, de propósito: Propostas, Preços, Orçamento e Funcionários — são
- * telas de precificação de mão de obra terceirizada, sem equivalente em imigração. As
- * rotas continuam no disco e o motor por trás delas mora em `lib/comercial/`, fora do
- * agente: a Ana não cota, não gera proposta e não cadastra funcionário. Apagar as telas
- * é uma decisão à parte; tirá-las do caminho de quem usa o painel já está feito.
+ * A tela inicial não é uma visão geral: é a fila de trabalho, e ela responde a uma
+ * pergunta — o que vence primeiro. Por isso "Fila" é o primeiro item e leva a /dashboard.
+ *
+ * Saíram daqui, com as telas: Propostas, Preços, Orçamento, Funcionários, Clientes,
+ * Leads (o Kanban do funil de vendas) e Relatórios de receita. Eram a operação da base
+ * comercial que originou este código — precificação de mão de obra terceirizada — e não
+ * têm equivalente em imigração. Relatórios virou Métricas, que mede outra coisa: tempo do
+ * time economizado, e não faturamento.
  */
 const navGroups: NavGroup[] = [
   {
     section: null,
-    links: [{ href: "/dashboard", label: "Visão geral", icon: "home" }],
+    links: [{ href: "/dashboard", label: "Fila", icon: "bolt" }],
   },
   {
     section: "Atendimento",
     links: [
       { href: "/dashboard/conversations", label: "Conversas", icon: "chat" },
-      { href: "/dashboard/leads", label: "Leads", icon: "users" },
-      { href: "/dashboard/clientes", label: "Clientes", icon: "book" },
+      // Auditoria do que o agente descartou. Fica no menu, e não escondida numa aba,
+      // porque um agente que filtra demais só é descoberto por quem revisa isto.
+      { href: "/dashboard/filtradas", label: "Filtradas", icon: "search" },
       { href: "/dashboard/documentos", label: "Documentos", icon: "doc" },
     ],
   },
   {
     section: "Agente",
     links: [
-      // Configuração e Briefing viraram abas de /dashboard/treinar — as rotas antigas
-      // continuam existindo, mas só como redirect.
       { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear" },
       { href: "/dashboard/integracoes", label: "Integrações", icon: "plug" },
       { href: "/simulate", label: "Simulador", icon: "external" },
@@ -44,10 +46,9 @@ const navGroups: NavGroup[] = [
   {
     section: "Gestão",
     links: [
-      { href: "/dashboard/relatorios", label: "Relatórios", icon: "activity" },
-      // GET /api/users é requireAdmin: para um usuário comum esta tela só sabia
-      // dizer "não foi possível carregar". Melhor não oferecer o caminho.
-      { href: "/dashboard/users", label: "Usuários", icon: "shield", adminOnly: true },
+      { href: "/dashboard/metricas", label: "Métricas", icon: "activity" },
+      { href: "/dashboard/acesso", label: "Acesso e retenção", icon: "shield", adminOnly: true },
+      { href: "/dashboard/users", label: "Usuários", icon: "users", adminOnly: true },
     ],
   },
 ];

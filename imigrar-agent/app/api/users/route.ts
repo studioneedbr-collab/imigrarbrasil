@@ -24,7 +24,7 @@ const createUserSchema = z.object({
   email: z.string().email().max(254),
   password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
   name: z.string().max(120).optional(),
-  role: z.enum(["admin", "user"]).default("user"),
+  role: z.enum(["admin", "advogado", "atendente"]).default("atendente"),
   setor: z.enum(["comercial", "operacional", "rh", "departamento_pessoal"]).optional(),
 });
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       passwordHash: hashPassword(input.password),
       name: input.name,
       role: input.role,
-      // Admin vê tudo; usuário comum fica restrito ao setor escolhido.
+      // Admin vê tudo; os demais podem ficar restritos a um setor.
       setor: input.role === "admin" ? null : input.setor ?? null,
     });
     return NextResponse.json({ ok: true });

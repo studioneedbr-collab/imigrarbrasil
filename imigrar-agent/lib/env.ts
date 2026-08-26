@@ -26,7 +26,6 @@ export const env = {
   // WhatsApp da equipe que recebe os leads quentes transferidos (só dígitos, ex.: 552135400693).
   teamWhatsapp: process.env.TEAM_WHATSAPP ?? "",
   // WhatsApp do dono/gestor que recebe um aviso a CADA proposta enviada (controle interno).
-  proposalNotifyWhatsapp: process.env.PROPOSAL_NOTIFY_WHATSAPP ?? "",
   // Brevo (envio de e-mail das propostas) — fallback do que for salvo no painel.
   brevoApiKey: process.env.BREVO_API_KEY ?? "",
   brevoSenderEmail: process.env.BREVO_SENDER_EMAIL ?? "",

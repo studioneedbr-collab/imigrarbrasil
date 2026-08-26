@@ -1,11 +1,11 @@
 import type { Repository } from "@/lib/data/repository";
 import type {
-  Conversation, Message, MessageMedia, DocumentItem, Lead, Proposal, Followup, ServiceCatalogItem,
-  ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario,
+  Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
+  FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
+  Classificacao, Reclassificacao, AccessLogEntry,
 } from "@/lib/domain/types";
-import { SEED_SERVICES } from "@/lib/comercial/catalog";
-import { calcularPreco } from "@/lib/comercial/pricing";
-import { DEFAULT_PRICING, type PricingParams } from "@/lib/comercial/pricing-params";
+import { eFiltrada } from "@/lib/domain/types";
+import { semCamposDePrazo } from "@/lib/data/prazo";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 let counter = 0;
@@ -17,25 +17,13 @@ export class MemoryRepository implements Repository {
   private byNumber = new Map<string, string>();
   private messages = new Map<string, Message[]>();
   private leads = new Map<string, Lead>(); // key = conversationId
-  private proposals: Proposal[] = [];
   private followups: Followup[] = [];
   private config = new Map<string, unknown>();
-  private services: ServiceCatalogItem[];
   private clientes = new Map<string, Cliente>();
   private tickets = new Map<string, TransferTicket>();
-  private functionPricing = new Map<string, PricingParams>();
   private users = new Map<string, User>(); // key = lowercased email
-  private funcionarios = new Map<string, Funcionario>();
-
-  constructor() {
-    this.services = SEED_SERVICES.map((s) => {
-      const price = calcularPreco({ serviceName: s.name, employeesCount: 1, schedule: s.schedule });
-      return { ...s, id: id("svc"), costPerEmployee: price.unitCost, salePrice: price.unitSalePrice };
-    });
-    for (const p of DEFAULT_PRICING) {
-      this.functionPricing.set(p.functionName.toLowerCase(), { ...p });
-    }
-  }
+  private reclassificacoes: Reclassificacao[] = [];
+  private acessos: AccessLogEntry[] = [];
 
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
@@ -185,10 +173,106 @@ export class MemoryRepository implements Repository {
       whatsappNumber: conv?.whatsappNumber ?? "", status: "new",
       createdAt: now(), updatedAt: now(),
       stage: "novo", score: 0,
+      temPrazoCorrendo: false, atendimentoStatus: "novo",
     };
-    const lead: Lead = { ...defaults, ...existing, ...patch, updatedAt: now() };
+    // Datas de prazo caem fora: este é o caminho do agente. Ver lib/data/prazo.ts.
+    const limpo = semCamposDePrazo(patch);
+    // A PRIMEIRA classificação da IA fica guardada à parte. É o denominador da taxa de
+    // reclassificação — sobrescrevê-la a cada turno apagaria a discordância humana.
+    const classificacaoIa =
+      existing?.classificacaoIa ?? (limpo.classificacao as Classificacao | undefined) ?? null;
+    const lead: Lead = { ...defaults, ...existing, ...limpo, classificacaoIa, updatedAt: now() };
     this.leads.set(conversationId, lead);
     return lead;
+  }
+  private salvar(lead: Lead): Lead {
+    this.leads.set(lead.conversationId, lead);
+    return lead;
+  }
+  private acharLead(id: string): Lead | null {
+    for (const l of Array.from(this.leads.values())) if (l.id === id) return l;
+    return null;
+  }
+  async getLead(id: string) { return this.acharLead(id); }
+  async updateLead(id: string, patch: Partial<Lead>) {
+    const atual = this.acharLead(id);
+    if (!atual) throw new Error("Lead não encontrado.");
+    // `classificacao` não passa por aqui: mudá-la é reclassificar, e reclassificar
+    // registra o par (de → para). Ver `reclassificarLead`.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- descartada de propósito
+    const { classificacao, ...resto } = semCamposDePrazo(patch);
+    return this.salvar({ ...atual, ...resto, updatedAt: now() });
+  }
+  async confirmarPrazo(
+    leadId: string,
+    dados: { tipo: Lead["prazoTipo"]; notificacao?: string | null; limite?: string | null },
+    autor: string,
+  ) {
+    const atual = this.acharLead(leadId);
+    if (!atual) throw new Error("Lead não encontrado.");
+    return this.salvar({
+      ...atual,
+      temPrazoCorrendo: true,
+      prazoTipo: dados.tipo ?? atual.prazoTipo ?? null,
+      prazoDataNotificacao: dados.notificacao ?? null,
+      prazoDataLimite: dados.limite ?? null,
+      prazoConfirmadoPor: autor,
+      prazoConfirmadoEm: now(),
+      updatedAt: now(),
+    });
+  }
+  async assumirLead(leadId: string, usuarioId: string | null, autor: string) {
+    const atual = this.acharLead(leadId);
+    if (!atual) throw new Error("Lead não encontrado.");
+    const salvo = this.salvar({
+      ...atual,
+      responsavelId: usuarioId,
+      // Só o PRIMEIRO a assumir marca o relógio: o tempo até o primeiro contato humano
+      // não pode ser reiniciado por uma troca de responsável no dia seguinte.
+      assumidoEm: atual.assumidoEm ?? now(),
+      atendimentoStatus: atual.atendimentoStatus === "novo" ? "em_atendimento" : atual.atendimentoStatus,
+      updatedAt: now(),
+    });
+    await this.registrarAcesso({ autor, acao: "assumiu_lead", alvoTipo: "lead", alvoId: leadId });
+    return salvo;
+  }
+  async reclassificarLead(leadId: string, para: Classificacao, autor: string, motivo?: string) {
+    const atual = this.acharLead(leadId);
+    if (!atual) throw new Error("Lead não encontrado.");
+    const de = atual.classificacao ?? null;
+    this.reclassificacoes.push({
+      id: id("reclass"), leadId, de, para, motivo: motivo ?? null, autor, criadoEm: now(),
+    });
+    // Resgate = sair do descarte por mão humana. É a métrica que denuncia um agente
+    // filtrando demais, então é marcada exatamente aqui, e não no clique do botão.
+    const resgate = eFiltrada(de) && !eFiltrada(para);
+    return this.salvar({
+      ...atual,
+      classificacao: para,
+      resgatadoEm: resgate ? now() : atual.resgatadoEm,
+      resgatadoPor: resgate ? autor : atual.resgatadoPor,
+      updatedAt: now(),
+    });
+  }
+  async listReclassificacoes() {
+    return [...this.reclassificacoes].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+  }
+  async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {
+    this.acessos.push({ ...entry, id: id("acesso"), criadoEm: now() });
+  }
+  async listAcessos(limit = 200) {
+    return [...this.acessos].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).slice(0, limit);
+  }
+  async purgarDescartados(dias: number) {
+    const corte = Date.now() - dias * 86_400_000;
+    let apagados = 0;
+    for (const [k, l] of Array.from(this.leads.entries())) {
+      if (eFiltrada(l.classificacao) && !l.resgatadoEm && Date.parse(l.updatedAt) <= corte) {
+        this.leads.delete(k);
+        apagados++;
+      }
+    }
+    return apagados;
   }
   async getLeadByConversation(conversationId: string) { return this.leads.get(conversationId) ?? null; }
   async listLeads() { return Array.from(this.leads.values()); }
@@ -196,24 +280,6 @@ export class MemoryRepository implements Repository {
     for (const [k, v] of Array.from(this.leads.entries())) {
       if (v.id === id) { this.leads.delete(k); break; }
     }
-  }
-
-  async createProposal(data: Omit<Proposal, "id" | "createdAt" | "status"> & { status?: ProposalStatus }) {
-    const proposal: Proposal = { ...data, id: id("prop"), status: data.status ?? "sent", createdAt: now() };
-    this.proposals.push(proposal);
-    return proposal;
-  }
-  async updateProposalStatus(pid: string, status: ProposalStatus) {
-    const p = this.proposals.find((x) => x.id === pid); if (p) p.status = status;
-  }
-  async updateProposalEmailStatus(pid: string, emailStatus: ProposalEmailStatus) {
-    const p = this.proposals.find((x) => x.id === pid); if (p) p.emailStatus = emailStatus;
-  }
-  async deleteProposal(id: string) { this.proposals = this.proposals.filter((p) => p.id !== id); }
-  async getProposal(id: string) { return this.proposals.find((p) => p.id === id) ?? null; }
-  async listProposals() { return this.proposals; }
-  async hasProposalForConversation(conversationId: string) {
-    return this.proposals.some((p) => p.conversationId === conversationId);
   }
 
   async scheduleFollowup(conversationId: string, message: string, scheduledAt: string) {
@@ -233,11 +299,6 @@ export class MemoryRepository implements Repository {
 
   async getConfig<T = unknown>(key: string) { return (this.config.get(key) as T) ?? null; }
   async setConfig(key: string, value: unknown) { this.config.set(key, value); }
-
-  async listServices() { return this.services; }
-  async getService(name: string) {
-    return this.services.find((s) => s.name.toLowerCase() === name.toLowerCase()) ?? null;
-  }
 
   async upsertCliente(patch: Partial<Cliente> & { id?: string }): Promise<Cliente> {
     const existing = patch.id
@@ -285,27 +346,14 @@ export class MemoryRepository implements Repository {
     return Array.from(this.tickets.values()).filter((t) => t.conversationId === conversationId);
   }
 
-  async listFunctionPricing() { return Array.from(this.functionPricing.values()); }
-  async getFunctionPricing(name: string) {
-    return this.functionPricing.get(name.toLowerCase()) ?? null;
-  }
-  async upsertFunctionPricing(params: PricingParams) {
-    const saved = { ...params };
-    this.functionPricing.set(params.functionName.toLowerCase(), saved);
-    return saved;
-  }
-  async deleteFunctionPricing(functionName: string) {
-    this.functionPricing.delete(functionName.toLowerCase());
-  }
-
   async getUserByEmail(email: string) {
     return this.users.get(email.toLowerCase()) ?? null;
   }
-  async createUser(data: { email: string; passwordHash: string; name?: string; role?: "admin" | "user"; setor?: string | null }): Promise<User> {
+  async createUser(data: { email: string; passwordHash: string; name?: string; role?: User["role"]; setor?: string | null }): Promise<User> {
     const user: User = {
       id: id("user"), email: data.email, passwordHash: data.passwordHash,
-      // Default 'user', não 'admin': quem precisa de admin pede explicitamente.
-      name: data.name, role: data.role ?? "user", setor: (data.setor as User["setor"]) ?? null, active: true, createdAt: now(),
+      // Default 'atendente' (o mais restrito), nunca 'admin': quem precisa de mais pede.
+      name: data.name, role: data.role ?? "atendente", setor: (data.setor as User["setor"]) ?? null, active: true, createdAt: now(),
     };
     this.users.set(data.email.toLowerCase(), user);
     return user;
@@ -322,15 +370,4 @@ export class MemoryRepository implements Repository {
     }
   }
 
-  async listFuncionarios() {
-    return Array.from(this.funcionarios.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }
-  async createFuncionario(data: { nome: string; cpf?: string; cargo?: string; setor?: string; telefone?: string; email?: string }): Promise<Funcionario> {
-    const funcionario: Funcionario = {
-      id: id("func"), nome: data.nome, cpf: data.cpf, cargo: data.cargo, setor: data.setor,
-      telefone: data.telefone, email: data.email, active: true, createdAt: now(),
-    };
-    this.funcionarios.set(funcionario.id, funcionario);
-    return funcionario;
-  }
 }

@@ -42,8 +42,10 @@ describe("allowlist de rotas públicas", () => {
     expect(isPublicPath("/api/auth/login/roubar")).toBe(false);
     expect(isPublicPath("/api/auth")).toBe(false);
     expect(isPublicPath("/api/webhook/whatsapp/extra")).toBe(false);
-    // Exceção intencional: o PDF da proposta é um link público compartilhável (UUID).
-    expect(isPublicPath("/api/proposal/8ca426c5-0000-0000-0000-000000000000")).toBe(true);
+    // Não há mais exceção por prefixo. O PDF de proposta comercial era servida por
+    // link "não adivinhável" — e UUID não é controle de acesso para situação migratória.
+    expect(isPublicPath("/api/proposal/8ca426c5-0000-0000-0000-000000000000")).toBe(false);
+    expect(isPublicPath("/api/leads/8ca426c5-0000-0000-0000-000000000000")).toBe(false);
   });
 
   it("normaliza barra final e caixa", () => {
@@ -149,10 +151,18 @@ describe("sessão JWT", () => {
     expect(await verifySession("")).toBeNull();
   });
 
-  it("trata qualquer papel desconhecido como 'user', nunca como admin", async () => {
+  it("trata qualquer papel desconhecido como 'atendente', nunca como admin", async () => {
+    // 'atendente' é o mais restrito dos três papéis: sem exportação, sem administração.
     const token = await createSession({
       sub: "u1", email: "a@b.com", role: "superadmin" as unknown as "admin",
     });
-    expect((await verifySession(token))?.role).toBe("user");
+    expect((await verifySession(token))?.role).toBe("atendente");
+  });
+
+  it("o papel legado 'user' não vira advogado nem admin ao ser relido", async () => {
+    const token = await createSession({
+      sub: "u1", email: "a@b.com", role: "user" as unknown as "admin",
+    });
+    expect((await verifySession(token))?.role).toBe("atendente");
   });
 });

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BRL,
   fmtTime,
   Card,
   PageHeader,
@@ -34,29 +33,16 @@ type DetailResponse = {
   transferTickets?: TransferTicket[];
 };
 
-const CNPJ_RE = /\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/; // CNPJ
-const CPF_RE = /\d{3}\.?\d{3}\.?\d{3}-?\d{2}/; // CPF
-function hasDoc(lead: Lead): boolean {
-  const hay = `${lead.notes ?? ""} ${lead.companyName ?? ""} ${lead.contactName ?? ""}`;
-  return CNPJ_RE.test(hay) || CPF_RE.test(hay);
-}
-
 function buildSummary(lead: Lead): string {
-  const who = lead.companyName || lead.contactName || "cliente";
+  // Enquanto o agente não escrever o resumo dele, monta um a partir do que se sabe.
+  if (lead.resumo) return lead.resumo.split("\n").join(" ");
+  const who = lead.contactName || lead.nacionalidade || "contato";
   const parts: string[] = [`Lead ${who}`];
   const services =
     lead.servicesInterested && lead.servicesInterested.length > 0
       ? lead.servicesInterested.join(", ")
       : null;
-  if (services) {
-    parts.push(
-      `interessado em ${services}${
-        typeof lead.employeesNeeded === "number" ? ` (${lead.employeesNeeded} postos)` : ""
-      }`,
-    );
-  } else if (typeof lead.employeesNeeded === "number") {
-    parts.push(`com necessidade de ${lead.employeesNeeded} postos`);
-  }
+  if (services) parts.push(`procurando ${services}`);
   if (lead.region) parts.push(`região ${lead.region}`);
   if (lead.urgency) parts.push(`urgência ${urgencyLabel[lead.urgency as Urgency].toLowerCase()}`);
   return `${parts.join(", ")}.`;
@@ -320,16 +306,16 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const transferTicket = transferTickets[0] ?? null;
   const title = conversation.contactName ?? conversation.whatsappNumber;
 
+  // O que o time jurídico precisa ter na mão quando pegar esta conversa. A lista da base
+  // comercial media outra coisa (serviço, nº de postos, CNPJ) e marcava 100% de
+  // qualificação para quem não tinha contado nem de onde é.
   const checklist = lead
     ? [
-        {
-          label: "Serviço",
-          done: !!(lead.servicesInterested && lead.servicesInterested.length > 0),
-        },
-        { label: "Nº de postos", done: typeof lead.employeesNeeded === "number" },
-        { label: "Nome", done: !!lead.contactName },
-        { label: "Empresa", done: !!lead.companyName },
-        { label: "CNPJ/CPF", done: hasDoc(lead) },
+        { label: "Nacionalidade", done: !!(lead.nacionalidade ?? lead.clientType) },
+        { label: "Onde está", done: !!(lead.localizacao ?? lead.region) },
+        { label: "Objetivo", done: !!(lead.objetivo ?? lead.servicesInterested?.length) },
+        { label: "Situação", done: !!(lead.situacaoDocumental ?? lead.contractDuration) },
+        { label: "Prazo", done: !!lead.temPrazoCorrendo || !!lead.prazoDataLimite },
       ]
     : [];
   const doneCount = checklist.filter((c) => c.done).length;
@@ -663,19 +649,6 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                         : "—"
                     }
                   />
-                  <Field
-                    label="Quantidade"
-                    value={
-                      typeof transferTicket.dossie.quantidade === "number" ? (
-                        <span className="font-mono tabular-nums">
-                          {transferTicket.dossie.quantidade}
-                        </span>
-                      ) : (
-                        "—"
-                      )
-                    }
-                  />
-                  <Field label="Escala" value={transferTicket.dossie.escala ?? "—"} />
                   <Field label="Necessidade" value={transferTicket.dossie.necessidade ?? "—"} />
                 </div>
                 {transferTicket.dossie.historicoResumo ? (
@@ -775,7 +748,6 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
 
                 <div className="mt-2 divide-y divide-ib-line">
                   <Field label="Contato" value={lead.contactName ?? "—"} />
-                  <Field label="Empresa" value={lead.companyName ?? "—"} />
                   <Field
                     label="Serviços"
                     value={
@@ -784,29 +756,35 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                         : "—"
                     }
                   />
+                  <Field label="Idioma" value={nomeDoIdioma(lead.idioma) ?? "—"} />
                   <Field
-                    label="Nº postos"
+                    label="Nacionalidade"
+                    value={lead.nacionalidade ?? lead.clientType ?? "—"}
+                  />
+                  <Field
+                    label="Onde está"
                     value={
-                      typeof lead.employeesNeeded === "number" ? (
-                        <span className="font-mono tabular-nums">{lead.employeesNeeded}</span>
-                      ) : (
-                        "—"
-                      )
+                      lead.localizacao === "exterior"
+                        ? `Exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}`
+                        : lead.localizacao === "brasil"
+                          ? "Brasil"
+                          : lead.region ?? "—"
                     }
                   />
-                  <Field label="Região" value={lead.region ?? "—"} />
+                  <Field label="Objetivo" value={lead.objetivo ?? "—"} />
+                  <Field label="Modalidade provável" value={lead.modalidadeProvavel ?? "—"} />
                   <Field
                     label="Urgência"
                     value={lead.urgency ? urgencyLabel[lead.urgency as Urgency] : "—"}
                   />
                   <Field
-                    label="Valor estimado"
+                    label="Prazo"
                     value={
-                      typeof lead.estimatedValue === "number" ? (
-                        <span className="font-mono tabular-nums">{BRL(lead.estimatedValue)}</span>
-                      ) : (
-                        "—"
-                      )
+                      lead.prazoDataLimite
+                        ? `limite ${lead.prazoDataLimite}`
+                        : lead.temPrazoCorrendo
+                          ? "a confirmar"
+                          : "sem prazo sinalizado"
                     }
                   />
                   <div className="flex items-center justify-between gap-4 py-2.5">
@@ -817,12 +795,14 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                   </div>
                 </div>
 
+                {/* A ficha completa, editável, e a confirmação de prazo ficam no
+                    detalhe do lead — aqui é a conversa ao vivo. */}
                 <Link
-                  href="/dashboard/proposals"
+                  href={`/dashboard/leads/${lead.id}`}
                   className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-ib-mar hover:underline"
                 >
                   <Icon name="doc" className="h-4 w-4" />
-                  Ver propostas
+                  Abrir ficha do lead
                 </Link>
               </div>
             ) : (

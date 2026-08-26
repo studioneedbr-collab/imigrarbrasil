@@ -6,7 +6,8 @@ import { detectTransfer } from "@/lib/agent/transfer";
 import { avaliarEncaminhamentoComercial } from "@/lib/agent/transfer-gate";
 import { qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { buscarChunks, filtrarRelevantes, citacaoDe } from "@/lib/agent/rag";
-import type { Urgency, LeadStage, LeadSetor } from "@/lib/domain/types";
+import { localizacaoDeRegion } from "@/lib/agent/classificacao";
+import type { Urgency, LeadStage, LeadSetor, Lead, Classificacao } from "@/lib/domain/types";
 
 // AS TOOLS DA ANA. Todas servem a um atendimento de imigração: anotar o que a pessoa
 // contou, procurar no material oficial, levar o caso ao time jurídico, agendar retomada e
@@ -38,6 +39,33 @@ export const AGENT_TOOLS = [
         urgency: { type: "string", enum: ["immediate", "short", "medium", "long"] },
         stage: { type: "string", enum: ["novo", "qualificado", "transferido", "ganho", "perdido", "desqualificado"], description: "Estágio no funil. 'novo' quando a conversa começa, 'qualificado' quando você já sabe nacionalidade, onde a pessoa está e o que ela quer, 'transferido' quando o caso foi para o time jurídico. NUNCA use 'desqualificado' para alguém pedindo ajuda com imigração — só para engano, spam ou propaganda." },
         setor: { type: "string", enum: ["comercial", "operacional", "rh", "departamento_pessoal", "suprimentos", "diretoria"], description: "Destino do contato. Use SEMPRE 'comercial' — é o funil do time jurídico, onde ficam os atendimentos de imigração. 'rh' só para quem procura vaga de emprego na assessoria; 'diretoria' para imprensa e instituições." },
+
+        // ── O que a FILA lê ──────────────────────────────────────────────────
+        // A tela inicial do painel é uma fila de prazos, não uma lista por data. Estes
+        // campos são o que decide em que bloco desta fila a pessoa aparece — e, no caso
+        // de `classificacao`, se ela aparece.
+        localizacao: { type: "string", enum: ["brasil", "exterior"], description: "Onde a pessoa está AGORA. É a distinção que muda o atendimento inteiro." },
+        pais_exterior: { type: "string", description: "Em que país ela está, quando localizacao = exterior." },
+        entrada_controle_migratorio: { type: "boolean", description: "Ela entrou no Brasil passando pelo controle migratório (com carimbo/registro)? true, false, ou omita se não souber. NÃO pergunte isso de forma policial — só registre se ela contar." },
+        documentos_possui: { type: "string", description: "Que documentos ela tem hoje, nas palavras dela (passaporte, protocolo, CRNM, CPF, certidão…)." },
+        documentos_faltantes: { type: "string", description: "O que ela disse que NÃO tem ou perdeu." },
+        vinculo_familiar_brasil: { type: "string", description: "Vínculo familiar no Brasil: cônjuge, filho brasileiro, pais, união estável. Só o que ela contar." },
+        situacao_documental: { type: "string", description: "A situação dela hoje, na frase dela: como entrou, o que está vencido, se há processo em andamento." },
+        objetivo: { type: "string", description: "O que ela quer conseguir, em uma frase curta ('ficar no Brasil com a filha', 'trazer o marido', 'não ser deportada')." },
+        modalidade_provavel: { type: "string", description: "O caminho migratório que provavelmente atende esse objetivo (reunião familiar, residência Mercosul, refúgio, naturalização, visto de trabalho…). É uma HIPÓTESE para o advogado conferir, não uma orientação para dar à pessoa." },
+        resumo: { type: "string", description: "DUAS LINHAS para quem abrir a fila de manhã e precisar decidir o que pegar sem abrir dez conversas. Fatos, não impressões." },
+
+        // PRAZO: você SINALIZA, você NÃO DATA. Nenhuma data entra por esta tool.
+        tem_prazo_correndo: { type: "boolean", description: "true quando a pessoa menciona multa migratória, indeferimento, notificação para sair do país, intimação ou qualquer prazo correndo. É um ALERTA, não uma data: NUNCA calcule, deduza ou registre data de notificação ou data limite — quem confirma isso com ela é uma pessoa do time, por telefone. Na dúvida, marque true: um alerta a mais custa uma ligação, um a menos custa o prazo." },
+        prazo_tipo: { type: "string", enum: ["multa", "indeferimento", "notificacao_saida", "outro"], description: "Que prazo é esse, quando der para saber pelo que ela disse." },
+
+        classificacao: {
+          type: "string",
+          enum: ["QUENTE_PRAZO", "QUENTE_JUDICIAL", "MORNO_ADMINISTRATIVO", "EXTERIOR_VISTO", "DPU", "CURIOSO", "FORA_ESCOPO"],
+          description:
+            "Em que fila esta conversa entra. QUENTE_PRAZO: prazo processual correndo. QUENTE_JUDICIAL: o caso exige ação judicial (processo, decisão a recorrer, pessoa detida). MORNO_ADMINISTRATIVO: caso viável, sem urgência. EXTERIOR_VISTO: pessoa fora do Brasil. DPU: perfil de gratuidade, para a Defensoria Pública da União. CURIOSO: perguntou por curiosidade, sem caso concreto. FORA_ESCOPO: outro país de destino ou outra área do direito. " +
+            "AS TRÊS ÚLTIMAS TIRAM A CONVERSA DA FRENTE DO TIME: use DPU, CURIOSO e FORA_ESCOPO só quando tiver certeza. Na dúvida, deixe em branco ou use MORNO_ADMINISTRATIVO — alguém revisa a fila, ninguém revisa quem foi descartado por engano.",
+        },
       },
       required: ["conversation_id"],
     },
@@ -134,6 +162,11 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
   switch (name) {
     case "registrar_dados_lead": {
       const i = leadSchema.parse(input) as Record<string, unknown>;
+      // O modelo pode mandar `localizacao` direto, ou só a `region` em texto ("Exterior
+      // — Venezuela"). As duas viram o mesmo par estruturado, num lugar só.
+      const daRegion = localizacaoDeRegion(i.region as string | undefined);
+      const localizacao = (i.localizacao as Lead["localizacao"]) ?? daRegion.localizacao;
+      const paisExterior = (i.pais_exterior as string | undefined) ?? daRegion.paisExterior;
       const lead = await repo.upsertLead(i.conversation_id as string, {
         contactName: i.contact_name as string | undefined,
         companyName: i.company_name as string | undefined,
@@ -145,6 +178,27 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
         urgency: i.urgency as Urgency | undefined,
         stage: i.stage as LeadStage | undefined,
         setor: i.setor as LeadSetor | undefined,
+
+        // A nacionalidade tem coluna própria agora; `client_type` continua recebendo o
+        // mesmo valor porque a triagem determinística e as telas antigas ainda o leem.
+        nacionalidade: (i.client_type as string | undefined) ?? undefined,
+        localizacao: localizacao ?? undefined,
+        paisExterior: paisExterior ?? undefined,
+        entradaControleMigratorio: i.entrada_controle_migratorio as boolean | undefined,
+        documentosPossui: i.documentos_possui as string | undefined,
+        documentosFaltantes: i.documentos_faltantes as string | undefined,
+        vinculoFamiliarBrasil: i.vinculo_familiar_brasil as string | undefined,
+        situacaoDocumental:
+          (i.situacao_documental as string | undefined) ?? (i.contract_duration as string | undefined),
+        objetivo: i.objetivo as string | undefined,
+        modalidadeProvavel: i.modalidade_provavel as string | undefined,
+        resumo: i.resumo as string | undefined,
+        temPrazoCorrendo: i.tem_prazo_correndo as boolean | undefined,
+        prazoTipo: i.prazo_tipo as Lead["prazoTipo"] | undefined,
+        classificacao: i.classificacao as Classificacao | undefined,
+        // Datas de prazo NÃO estão nesta lista e não estão no schema da tool. Se um dia
+        // aparecerem no input (modelo alucinando um campo), `upsertLead` as descarta —
+        // ver lib/data/prazo.ts. A data vem de gente, não do modelo.
       });
       return { ok: true, lead_id: lead.id };
     }

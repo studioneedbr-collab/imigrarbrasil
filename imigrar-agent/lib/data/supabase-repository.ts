@@ -1,19 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Proposal, Followup, ServiceCatalogItem, ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario } from "@/lib/domain/types";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry } from "@/lib/domain/types";
+import { eFiltrada } from "@/lib/domain/types";
+import { semCamposDePrazo } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
 import { createServerClient } from "@/lib/supabase/client";
-import type { PricingParams } from "@/lib/comercial/pricing-params";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
-
-const mapFunctionPricing = (r: Record<string, any>): PricingParams => ({
-  functionName: r.function_name, baseSalary: Number(r.base_salary),
-  schedule: r.schedule,
-  beneficios: r.beneficios != null ? Number(r.beneficios) : undefined,
-  uniformeMes: Number(r.uniforme_mes),
-  equipamentosFunc: Number(r.equipamentos_func), materialFunc: Number(r.material_func),
-  priceConfirmed: Boolean(r.price_confirmed),
-});
 
 const mapConversation = (r: DbConversation): Conversation => ({
   id: r.id, whatsappNumber: r.whatsapp_number, contactName: r.contact_name,
@@ -43,10 +35,6 @@ const mapTransferTicket = (r: Record<string, any>): TransferTicket => ({
 const mapUser = (r: Record<string, any>): User => ({
   id: r.id, email: r.email, passwordHash: r.password_hash, name: r.name ?? undefined,
   role: r.role, setor: r.setor ?? null, active: r.active, createdAt: r.created_at,
-});
-const mapFuncionario = (r: Record<string, any>): Funcionario => ({
-  id: r.id, nome: r.nome, cpf: r.cpf ?? undefined, cargo: r.cargo ?? undefined, setor: r.setor ?? undefined,
-  telefone: r.telefone ?? undefined, email: r.email ?? undefined, active: r.active, createdAt: r.created_at,
 });
 const mapMessage = (r: DbMessage): Message => ({
   id: r.id, conversationId: r.conversation_id, role: r.role as Message["role"],
@@ -276,20 +264,43 @@ export class SupabaseRepository implements Repository {
       createdAt: m.created_at,
     }));
   }
-  async upsertLead(conversationId: string, patch: Partial<Lead>) {
-    const { data: existing } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
+  /** Colunas do lead a partir do patch. Datas de prazo nunca aparecem aqui. */
+  private leadRow(patch: Partial<Lead>): Record<string, any> {
     const row: Record<string, any> = {
-      conversation_id: conversationId, updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       contact_name: patch.contactName, company_name: patch.companyName, email: patch.email,
       client_type: patch.clientType, services_interested: patch.servicesInterested,
-      employees_needed: patch.employeesNeeded, region: patch.region, contract_duration: patch.contractDuration,
-      estimated_value: patch.estimatedValue, urgency: patch.urgency, notes: patch.notes,
+      region: patch.region, contract_duration: patch.contractDuration,
+      urgency: patch.urgency, notes: patch.notes,
       // As colunas existem no schema, mas não eram mapeadas: mover um card no
       // Kanban respondia 200 e o stage voltava para 'novo' no próximo reload.
       stage: patch.stage, status: patch.status, score: patch.score, cliente_id: patch.clienteId,
-      schedule: patch.schedule, setor: patch.setor,
+      setor: patch.setor,
+      // Imigração — o que a IA lê da conversa. As datas de prazo NÃO estão aqui.
+      idioma: patch.idioma, nacionalidade: patch.nacionalidade, localizacao: patch.localizacao,
+      pais_exterior: patch.paisExterior,
+      entrada_controle_migratorio: patch.entradaControleMigratorio,
+      documentos_possui: patch.documentosPossui, documentos_faltantes: patch.documentosFaltantes,
+      vinculo_familiar_brasil: patch.vinculoFamiliarBrasil,
+      situacao_documental: patch.situacaoDocumental, objetivo: patch.objetivo,
+      modalidade_provavel: patch.modalidadeProvavel, resumo: patch.resumo,
+      tem_prazo_correndo: patch.temPrazoCorrendo, prazo_tipo: patch.prazoTipo,
+      classificacao: patch.classificacao,
+      atendimento_status: patch.atendimentoStatus, motivo_perda: patch.motivoPerda,
+      responsavel_id: patch.responsavelId, assumido_em: patch.assumidoEm,
     };
     Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
+    return row;
+  }
+
+  async upsertLead(conversationId: string, patch: Partial<Lead>) {
+    const { data: existing } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
+    // Caminho do agente: as datas de prazo caem fora antes de virar coluna.
+    const row = this.leadRow(semCamposDePrazo(patch));
+    row.conversation_id = conversationId;
+    // A PRIMEIRA classificação da IA fica guardada à parte, e só na primeira vez: é o
+    // denominador da taxa de reclassificação.
+    if (row.classificacao && !(existing as any)?.classificacao_ia) row.classificacao_ia = row.classificacao;
     if (existing) {
       const { data, error } = await this.db.from("leads").update(row).eq("id", (existing as { id: string }).id).select("*").single();
       if (error) throw error; return this.mapLead(data);
@@ -299,17 +310,140 @@ export class SupabaseRepository implements Repository {
       .insert({ ...row, whatsapp_number: conv?.whatsappNumber ?? "", status: "new" }).select("*").single();
     if (error) throw error; return this.mapLead(data);
   }
+
+  async getLead(id: string) {
+    const { data } = await this.db.from("leads").select("*").eq("id", id).maybeSingle();
+    return data ? this.mapLead(data) : null;
+  }
+
+  async updateLead(id: string, patch: Partial<Lead>) {
+    // `classificacao` não passa por aqui: mudá-la é reclassificar, e reclassificar
+    // registra o par (de → para) que calibra o agente.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- descartada de propósito
+    const { classificacao, ...resto } = semCamposDePrazo(patch);
+    const { data, error } = await this.db.from("leads")
+      .update(this.leadRow(resto)).eq("id", id).select("*").single();
+    if (error) throw error; return this.mapLead(data);
+  }
+
+  async confirmarPrazo(
+    id: string,
+    dados: { tipo: Lead["prazoTipo"]; notificacao?: string | null; limite?: string | null },
+    autor: string,
+  ) {
+    // O único write de data de prazo do sistema — e ele carrega o nome de quem
+    // confirmou. O CHECK `leads_prazo_confirmado_ck` (migration 019) garante o mesmo
+    // no banco: data sem autor não existe.
+    const { data, error } = await this.db.from("leads").update({
+      tem_prazo_correndo: true,
+      prazo_tipo: dados.tipo ?? null,
+      prazo_data_notificacao: dados.notificacao ?? null,
+      prazo_data_limite: dados.limite ?? null,
+      prazo_confirmado_por: autor,
+      prazo_confirmado_em: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).select("*").single();
+    if (error) throw error; return this.mapLead(data);
+  }
+
+  async assumirLead(id: string, usuarioId: string | null, autor: string) {
+    const atual = await this.getLead(id);
+    if (!atual) throw new Error("Lead não encontrado.");
+    const { data, error } = await this.db.from("leads").update({
+      responsavel_id: usuarioId,
+      // Só o primeiro a assumir marca o relógio: uma troca de responsável amanhã não
+      // pode reiniciar o "tempo até o primeiro contato humano".
+      assumido_em: atual.assumidoEm ?? new Date().toISOString(),
+      atendimento_status: atual.atendimentoStatus === "novo" ? "em_atendimento" : atual.atendimentoStatus,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).select("*").single();
+    if (error) throw error;
+    await this.registrarAcesso({ autor, acao: "assumiu_lead", alvoTipo: "lead", alvoId: id });
+    return this.mapLead(data);
+  }
+
+  async reclassificarLead(id: string, para: Classificacao, autor: string, motivo?: string) {
+    const atual = await this.getLead(id);
+    if (!atual) throw new Error("Lead não encontrado.");
+    const de = atual.classificacao ?? null;
+    await this.db.from("lead_reclassificacoes").insert({
+      lead_id: id, de, para, motivo: motivo ?? null, autor,
+    });
+    // Resgate = sair do descarte por mão humana. Marcado aqui, e não no clique do
+    // botão, para que qualquer caminho de reclassificação alimente a taxa de resgate.
+    const resgate = eFiltrada(de) && !eFiltrada(para);
+    const patch: Record<string, any> = { classificacao: para, updated_at: new Date().toISOString() };
+    if (resgate) { patch.resgatado_em = new Date().toISOString(); patch.resgatado_por = autor; }
+    const { data, error } = await this.db.from("leads").update(patch).eq("id", id).select("*").single();
+    if (error) throw error; return this.mapLead(data);
+  }
+
+  async listReclassificacoes() {
+    const { data } = await this.db.from("lead_reclassificacoes").select("*").order("criado_em", { ascending: false });
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
+      id: r.id, leadId: r.lead_id, de: r.de, para: r.para, motivo: r.motivo,
+      autor: r.autor, criadoEm: r.criado_em,
+    })) as Reclassificacao[];
+  }
+
+  async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {
+    // Falha de log não pode derrubar o atendimento: se a tabela ainda não existe (banco
+    // sem a migration 019), o painel continua funcionando e o erro aparece no console.
+    const { error } = await this.db.from("access_log").insert({
+      autor: entry.autor, papel: entry.papel ?? null, acao: entry.acao,
+      alvo_tipo: entry.alvoTipo ?? null, alvo_id: entry.alvoId ?? null,
+      detalhe: entry.detalhe ?? null, ip: entry.ip ?? null,
+    });
+    if (error) console.error("[access_log]", error.message);
+  }
+
+  async listAcessos(limit = 200) {
+    const { data } = await this.db.from("access_log").select("*").order("criado_em", { ascending: false }).limit(limit);
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
+      id: r.id, autor: r.autor, papel: r.papel, acao: r.acao, alvoTipo: r.alvo_tipo,
+      alvoId: r.alvo_id, detalhe: r.detalhe, ip: r.ip, criadoEm: r.criado_em,
+    })) as AccessLogEntry[];
+  }
+
+  async purgarDescartados(dias: number) {
+    const corte = new Date(Date.now() - dias * 86_400_000).toISOString();
+    const { data, error } = await this.db.from("leads").delete()
+      .in("classificacao", ["DPU", "CURIOSO", "FORA_ESCOPO"])
+      .is("resgatado_em", null)
+      .lte("updated_at", corte)
+      .select("id");
+    if (error) throw error;
+    return ((data as unknown[] | null) ?? []).length;
+  }
   private mapLead(r: Record<string, any>): Lead {
     return {
       id: r.id, conversationId: r.conversation_id, contactName: r.contact_name, companyName: r.company_name,
       whatsappNumber: r.whatsapp_number, email: r.email, clientType: r.client_type,
-      servicesInterested: r.services_interested, employeesNeeded: r.employees_needed, region: r.region,
-      contractDuration: r.contract_duration, estimatedValue: r.estimated_value, status: r.status,
+      servicesInterested: r.services_interested, region: r.region,
+      contractDuration: r.contract_duration, status: r.status,
       urgency: r.urgency, notes: r.notes, createdAt: r.created_at, updatedAt: r.updated_at,
       // Antes era `stage: "novo", score: 0` fixo — o valor do banco era ignorado
       // na leitura, então mesmo gravando corretamente o Kanban não refletiria.
-      clienteId: r.cliente_id ?? undefined, schedule: r.schedule ?? undefined,
+      clienteId: r.cliente_id ?? undefined,
       stage: r.stage ?? "novo", score: r.score ?? 0, setor: r.setor ?? null,
+      idioma: r.idioma ?? null, nacionalidade: r.nacionalidade ?? null,
+      localizacao: r.localizacao ?? null, paisExterior: r.pais_exterior ?? null,
+      entradaControleMigratorio: r.entrada_controle_migratorio ?? null,
+      documentosPossui: r.documentos_possui ?? null,
+      documentosFaltantes: r.documentos_faltantes ?? null,
+      vinculoFamiliarBrasil: r.vinculo_familiar_brasil ?? null,
+      situacaoDocumental: r.situacao_documental ?? null,
+      objetivo: r.objetivo ?? null, modalidadeProvavel: r.modalidade_provavel ?? null,
+      resumo: r.resumo ?? null,
+      temPrazoCorrendo: r.tem_prazo_correndo ?? false, prazoTipo: r.prazo_tipo ?? null,
+      prazoDataNotificacao: r.prazo_data_notificacao ?? null,
+      prazoDataLimite: r.prazo_data_limite ?? null,
+      prazoConfirmadoPor: r.prazo_confirmado_por ?? null,
+      prazoConfirmadoEm: r.prazo_confirmado_em ?? null,
+      classificacao: r.classificacao ?? null, classificacaoIa: r.classificacao_ia ?? null,
+      atendimentoStatus: r.atendimento_status ?? "novo", motivoPerda: r.motivo_perda ?? null,
+      responsavelId: r.responsavel_id ?? null, assumidoEm: r.assumido_em ?? null,
+      resgatadoEm: r.resgatado_em ?? null, resgatadoPor: r.resgatado_por ?? null,
     };
   }
   async getLeadByConversation(conversationId: string) {
@@ -323,55 +457,6 @@ export class SupabaseRepository implements Repository {
   async deleteLead(id: string) {
     const { error } = await this.db.from("leads").delete().eq("id", id);
     if (error) throw error;
-  }
-  async createProposal(d: Omit<Proposal, "id" | "createdAt" | "status"> & { status?: ProposalStatus }) {
-    const { data, error } = await this.db.from("proposals").insert({
-      lead_id: d.leadId ?? null, conversation_id: d.conversationId ?? null, pdf_url: d.pdfUrl ?? null,
-      services: d.services, total_value: d.totalValue, cost_breakdown: d.costBreakdown ?? null, status: d.status ?? "sent",
-    }).select("*").single();
-    if (error) throw error;
-    return { id: data.id, leadId: data.lead_id, conversationId: data.conversation_id, pdfUrl: data.pdf_url,
-      services: data.services, totalValue: data.total_value, costBreakdown: data.cost_breakdown,
-      status: data.status, emailStatus: data.email_status ?? "nao_enviado", createdAt: data.created_at } as Proposal;
-  }
-  async updateProposalStatus(id: string, status: ProposalStatus) {
-    await this.db.from("proposals").update({ status }).eq("id", id);
-  }
-  async updateProposalEmailStatus(id: string, emailStatus: ProposalEmailStatus) {
-    await this.db.from("proposals").update({ email_status: emailStatus }).eq("id", id);
-  }
-  async getProposal(id: string): Promise<Proposal | null> {
-    // Busca direta pelo id. Antes a rota /api/proposal/[id] carregava a tabela
-    // inteira e filtrava em JS — com os PDFs em base64, servir um arquivo
-    // significava transferir todos eles do Postgres.
-    const { data } = await this.db.from("proposals").select("*").eq("id", id).maybeSingle();
-    if (!data) return null;
-    const r = data as Record<string, any>;
-    return { id: r.id, leadId: r.lead_id, conversationId: r.conversation_id, pdfUrl: r.pdf_url,
-      services: r.services, totalValue: r.total_value, costBreakdown: r.cost_breakdown,
-      status: r.status, emailStatus: r.email_status ?? "nao_enviado", createdAt: r.created_at } as Proposal;
-  }
-  async listProposals() {
-    // pdf_url fica FORA do select: é um data-URL base64 de 50-200KB por linha, e
-    // a listagem do painel não usa o conteúdo do PDF — só o link para /api/proposal/[id].
-    const { data } = await this.db.from("proposals")
-      .select("id, lead_id, conversation_id, services, total_value, cost_breakdown, status, email_status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({ id: r.id, leadId: r.lead_id, conversationId: r.conversation_id,
-      pdfUrl: undefined, services: r.services, totalValue: r.total_value, costBreakdown: r.cost_breakdown,
-      status: r.status, emailStatus: r.email_status ?? "nao_enviado", createdAt: r.created_at })) as Proposal[];
-  }
-  async deleteProposal(id: string) {
-    const { error } = await this.db.from("proposals").delete().eq("id", id);
-    if (error) throw error;
-  }
-  async hasProposalForConversation(conversationId: string): Promise<boolean> {
-    // Só o id, e no máximo uma linha: isto roda em toda tentativa de encaminhar para o
-    // comercial, e listProposals() traria 500 linhas para responder um sim/não.
-    const { data } = await this.db.from("proposals")
-      .select("id").eq("conversation_id", conversationId).limit(1);
-    return ((data as unknown[] | null) ?? []).length > 0;
   }
   async scheduleFollowup(conversationId: string, message: string, scheduledAt: string) {
     const { data, error } = await this.db.from("followup_queue")
@@ -398,20 +483,6 @@ export class SupabaseRepository implements Repository {
   async setConfig(key: string, value: unknown) {
     await this.db.from("agent_config").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
   }
-  async listServices() {
-    const { data } = await this.db.from("services_catalog").select("*").eq("active", true);
-    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({ id: r.id, name: r.name, category: r.category,
-      baseSalary: r.base_salary, costPerEmployee: r.cost_per_employee, salePrice: r.sale_price,
-      marginPercent: r.margin_percent, schedule: r.schedule, description: r.description, active: r.active })) as ServiceCatalogItem[];
-  }
-  async getService(name: string) {
-    const { data } = await this.db.from("services_catalog").select("*").ilike("name", name).maybeSingle();
-    if (!data) return null;
-    const r = data as Record<string, any>;
-    return { id: r.id, name: r.name, category: r.category, baseSalary: r.base_salary, costPerEmployee: r.cost_per_employee,
-      salePrice: r.sale_price, marginPercent: r.margin_percent, schedule: r.schedule, description: r.description, active: r.active } as ServiceCatalogItem;
-  }
-
   async upsertCliente(patch: Partial<Cliente> & { id?: string }): Promise<Cliente> {
     let existing: Record<string, any> | null = null;
     if (patch.id) {
@@ -485,34 +556,6 @@ export class SupabaseRepository implements Repository {
     return ((data as Record<string, any>[] | null) ?? []).map(mapTransferTicket);
   }
 
-  async listFunctionPricing() {
-    const { data } = await this.db.from("function_pricing").select("*").eq("active", true).order("function_name", { ascending: true });
-    return ((data as Record<string, any>[] | null) ?? []).map(mapFunctionPricing);
-  }
-  async getFunctionPricing(name: string) {
-    const { data } = await this.db.from("function_pricing").select("*").ilike("function_name", name).maybeSingle();
-    return data ? mapFunctionPricing(data) : null;
-  }
-  async deleteFunctionPricing(functionName: string) {
-    const { error } = await this.db.from("function_pricing").delete().eq("function_name", functionName);
-    if (error) throw error;
-  }
-  async upsertFunctionPricing(params: PricingParams) {
-    const row: Record<string, unknown> = {
-      function_name: params.functionName, base_salary: params.baseSalary, schedule: params.schedule,
-      uniforme_mes: params.uniformeMes, equipamentos_func: params.equipamentosFunc,
-      material_func: params.materialFunc, price_confirmed: params.priceConfirmed,
-      active: true, updated_at: new Date().toISOString(),
-    };
-    // Só grava a coluna beneficios quando informada — assim quem ainda não rodou o ALTER
-    // (add column beneficios) continua salvando funções normalmente.
-    if (typeof params.beneficios === "number") row.beneficios = params.beneficios;
-    const { data, error } = await this.db.from("function_pricing")
-      .upsert(row, { onConflict: "function_name" }).select("*").single();
-    if (error) throw error;
-    return mapFunctionPricing(data);
-  }
-
   async getUserByEmail(email: string) {
     // eq() e não ilike(): em ilike, '%' e '_' do input são curingas, então um
     // e-mail como "a%@x.com" casaria com contas de terceiros. E-mails são
@@ -520,7 +563,7 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.db.from("users").select("*").eq("email", email.toLowerCase().trim()).maybeSingle();
     return data ? mapUser(data) : null;
   }
-  async createUser(data: { email: string; passwordHash: string; name?: string; role?: "admin" | "user"; setor?: string | null }) {
+  async createUser(data: { email: string; passwordHash: string; name?: string; role?: User["role"]; setor?: string | null }) {
     const row: Record<string, any> = {
       email: data.email.toLowerCase().trim(), password_hash: data.passwordHash,
       // Default 'user', não 'admin': quem precisa de admin pede explicitamente.
@@ -552,18 +595,5 @@ export class SupabaseRepository implements Repository {
       id: r.id, email: r.email, name: r.name ?? undefined, role: r.role,
       setor: r.setor ?? null, active: r.active, createdAt: r.created_at,
     }));
-  }
-
-  async listFuncionarios() {
-    const { data } = await this.db.from("funcionarios").select("*").order("created_at", { ascending: false });
-    return ((data as Record<string, any>[] | null) ?? []).map(mapFuncionario);
-  }
-  async createFuncionario(data: { nome: string; cpf?: string; cargo?: string; setor?: string; telefone?: string; email?: string }): Promise<Funcionario> {
-    const { data: row, error } = await this.db.from("funcionarios").insert({
-      nome: data.nome, cpf: data.cpf ?? null, cargo: data.cargo ?? null, setor: data.setor ?? null,
-      telefone: data.telefone ?? null, email: data.email ?? null,
-    }).select("*").single();
-    if (error) throw error;
-    return mapFuncionario(row);
   }
 }

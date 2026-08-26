@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizarPapel } from "@/lib/auth/papeis";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const token = await createSession({ sub: user.id, email: user.email, role: user.role });
+    // Papel legado ('user') vira o mais restrito ao entrar no cookie. Ver lib/auth/papeis.ts.
+    const token = await createSession({ sub: user.id, email: user.email, role: normalizarPapel(user.role) });
     cookies().set(SESSION_COOKIE, token, sessionCookieOptions());
 
     return NextResponse.json({ ok: true });

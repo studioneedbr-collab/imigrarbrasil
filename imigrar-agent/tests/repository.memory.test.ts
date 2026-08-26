@@ -22,16 +22,22 @@ describe("MemoryRepository", () => {
 
   it("faz upsert de lead", async () => {
     const c = await repo.getOrCreateConversation("sim:3");
-    await repo.upsertLead(c.id, { contactName: "Maria", employeesNeeded: 5 });
+    await repo.upsertLead(c.id, { contactName: "Maria", nacionalidade: "Peru" });
     const lead = await repo.upsertLead(c.id, { region: "Botafogo" });
     expect(lead.contactName).toBe("Maria");
-    expect(lead.employeesNeeded).toBe(5);
+    expect(lead.nacionalidade).toBe("Peru");
     expect(lead.region).toBe("Botafogo");
   });
 
-  it("semeia o catálogo de serviços", async () => {
-    const services = await repo.listServices();
-    expect(services.length).toBeGreaterThanOrEqual(6);
-    expect(await repo.getService("Auxiliar de Serviços Gerais")).not.toBeNull();
+  it("guarda os campos de imigração e o sinal de prazo", async () => {
+    const c = await repo.getOrCreateConversation("5521777777777");
+    const lead = await repo.upsertLead(c.id, {
+      nacionalidade: "Haiti", localizacao: "brasil", temPrazoCorrendo: true,
+      classificacao: "QUENTE_PRAZO",
+    });
+    expect(lead.nacionalidade).toBe("Haiti");
+    expect(lead.temPrazoCorrendo).toBe(true);
+    // A primeira classificação da IA fica guardada à parte, para a taxa de reclassificação.
+    expect(lead.classificacaoIa).toBe("QUENTE_PRAZO");
   });
 });

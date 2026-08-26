@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { normalizarPapel, type Papel } from "@/lib/auth/papeis";
 
 // O nome do cookie era "shine_session", da base que originou este código. Trocar invalida
 // as sessões abertas — quem estiver logado faz login de novo, uma vez.
@@ -46,7 +47,9 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
-export type UserRole = "admin" | "user";
+// O papel e suas regras moram em lib/auth/papeis.ts. O alias fica porque o nome
+// `UserRole` já está espalhado pelo código; o conjunto de valores é o de lá.
+export type UserRole = Papel;
 
 export interface SessionPayload {
   sub: string;
@@ -111,7 +114,8 @@ export async function verifySession(token: string): Promise<VerifiedSession | nu
     return {
       sub: String(payload.sub),
       email: payload.email,
-      role: payload.role === "admin" ? "admin" : "user",
+      // Papel desconhecido (token antigo, conta legada) vira o mais restrito.
+      role: normalizarPapel(payload.role),
       exp: payload.exp,
     };
   } catch {

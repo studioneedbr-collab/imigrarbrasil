@@ -25,10 +25,11 @@ describe("transferência", () => {
   });
 
   // Quantidade de postos e escala de trabalho vinham da base de terceirização e não
-  // significam nada num caso de imigração — o dossiê não os preenche mais.
-  it("não carrega mais quantidade de postos nem escala", () => {
+  // significam nada num caso de imigração — saíram do dossiê e do tipo.
+  it("carrega só o que serve a um caso de imigração", () => {
     const d = buildDossie({ lead: { contactName: "Jean" }, necessidade: "reunião familiar" });
-    expect(d.quantidade).toBeUndefined();
-    expect(d.escala).toBeUndefined();
+    expect(Object.keys(d)).not.toContain("quantidade");
+    expect(Object.keys(d)).not.toContain("escala");
+    expect(d.necessidade).toBe("reunião familiar");
   });
 });

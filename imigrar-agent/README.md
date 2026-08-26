@@ -6,6 +6,7 @@ geral** com base no material oficial e **encaminha ao time jurídico** quando o 
 análise — nessa ordem, e nunca fora dela.
 
 - **Stack:** Next.js 14 (App Router, TS, Tailwind) · Supabase (Postgres) · Vitest
+- **Painel:** uma **fila de prazos** — ver [O painel](#o-painel-uma-fila-de-prazos-não-um-funil)
 - **LLM:** DeepSeek (`deepseek-chat`, OpenAI-compatible) · **WhatsApp:** Z-API · **E-mail:** Brevo
 
 Identidade visual, paleta e a faixa MRZ: [IDENTIDADE.md](IDENTIDADE.md). Como colocar no
@@ -55,18 +56,77 @@ Isto não é consultoria jurídica, e a fronteira está no código, não só no 
   idioma é gravado no contato (`conversations.idioma`) para o follow-up automático e para
   o atendente humano do painel.
 
-## O que veio da base comercial e onde está
+## O painel: uma fila de prazos, não um funil
+
+A tela inicial responde a uma pergunta — **o que vence primeiro?** — e é a diferença mais
+importante entre este painel e o funil de vendas que originou o código.
+
+Boa parte dos casos de maior valor chega com **prazo processual correndo**: multa
+migratória, indeferimento de refúgio, notificação de saída do país. Esses prazos são
+curtos e fatais. Ordenar por "lead mais recente", como fazia a base comercial, é o desenho
+que faz alguém perder um prazo.
+
+**Três blocos, nesta ordem** (`lib/fila/ordenacao.ts`, com teste):
+
+1. **Prazo a confirmar** — a IA sinalizou prazo, ninguém confirmou a data ainda.
+   Prioridade máxima e **sem contador**. Some quando esvazia.
+2. **Prazos correndo** — data confirmada, ordenados por data limite crescente. Três
+   faixas: crítico (≤3 dias), atenção (4–7), acompanhamento (8+). Vencido continua
+   visível até alguém fechar.
+3. **Fila normal** — judicial primeiro, depois administrativo e exterior, e **do mais
+   antigo para o mais recente**: lead parado é lead esfriando.
+
+`CURIOSO`, `DPU` e `FORA_ESCOPO` **não aparecem na fila** — vão para
+**/dashboard/filtradas**, que existe para auditoria por amostragem e para resgatar quem o
+agente descartou por engano.
+
+### A regra que sustenta tudo: a IA sinaliza, o humano confirma
+
+A Ana marca `tem_prazo_correndo`. Ela **nunca** calcula ou grava data de notificação ou
+data limite — quem recebeu o papel raramente sabe a data de cabeça, confunde com o dia em
+que abriu a carta e manda foto ilegível. Um contador regressivo em cima de data inferida
+pelo modelo é exatamente como se perde um prazo.
+
+A garantia não é um comentário no prompt, são quatro camadas:
+
+- a tool `registrar_dados_lead` não tem campo de data;
+- `upsertLead` e `updateLead` descartam datas de prazo venham de onde vierem
+  (`lib/data/prazo.ts`);
+- só `confirmarPrazo` grava, e **exige o autor**;
+- o CHECK `leads_prazo_confirmado_ck` (**migration 019**) recusa, no banco, data sem quem
+  confirmou.
+
+### Métricas: tempo do time, não receita
+
+Não há gráfico de faturamento, ticket médio ou previsão. O que **/dashboard/metricas**
+mede (`lib/metricas/`):
+
+- conversas atendidas no período, **por idioma**;
+- quantas foram **filtradas** — o número que justifica o projeto;
+- leads qualificados entregues, por classificação;
+- **taxa de resgate** — o número que *protege* o projeto: um agente que filtra demais
+  parece ótimo (pouca conversa chegando) e está destruindo o negócio em silêncio;
+- taxa de reclassificação — quanto o humano discorda da IA;
+- tempo até o primeiro contato humano, **separado para os casos com prazo**;
+- **prazos perdidos** — precisa ser zero, e fica visível.
+
+### Acesso
+
+`advogado` (tudo), `atendente` (fila e detalhe, **sem exportação**) e `admin` (mais
+usuários, retenção e log de acesso) — `lib/auth/papeis.ts`. Nenhuma rota responde sem
+sessão. Abrir um lead e exportar viram linha em `access_log`, com autor, papel e IP; a
+exportação exige escopo explícito (não existe "baixar a base"). A retenção dos descartados
+é configurável em **/dashboard/acesso**, e quem foi resgatado nunca é apagado por ela.
+
+## O que saiu da base comercial
 
 Este código nasceu da duplicação de um agente comercial de terceirização de mão de obra.
-O que sobrou dela **não está mais dentro do agente**:
-
-- `lib/comercial/` — motor de precificação, CCT, catálogo de funções e dimensionamento de
-  posto. Serve às telas do painel (Propostas, Preços, Orçamento, Funcionários), que saíram
-  do menu mas continuam no disco. **A Ana não chama nada disso.**
-- `lib/pdf/`, `lib/planilha/`, `lib/email/proposal-email.ts` — proposta em PDF, planilha de
-  composição e o e-mail que a acompanha. **Ainda saem com a marca e o texto institucional
-  da empresa de origem**; nada do agente os aciona, mas a tela de Orçamento sim. Se essas
-  telas forem ficar, esse texto precisa ser reescrito antes de alguém enviar um deles.
+Essa operação **foi removida**, não escondida: telas de Propostas, Preços, Orçamento,
+Funcionários, Clientes e o Kanban de Leads; as rotas de API correspondentes; e
+`lib/comercial/`, `lib/pdf/`, `lib/planilha/` e o e-mail de proposta — junto com o texto
+institucional da empresa de origem que vinha dentro deles. Os campos de produto do lead
+(nº de postos, valor estimado, escala) saíram do domínio. As tabelas antigas continuam no
+banco; o app não as lê mais.
 
 ---
 
@@ -80,8 +140,10 @@ O que sobrou dela **não está mais dentro do agente**:
 - Cron (`/api/cron/*`) fail-closed em produção + comparação timing-safe.
 - Scoping por setor no servidor (usuário restrito não lê contatos de outros setores).
 - SQL 100% parametrizado (supabase-js), headers/CSP/HSTS em `next.config.mjs`.
-- **LGPD:** a situação migratória de alguém é dado sensível. O resumo do atendimento
-  nunca vai para o log — só motivo, prioridade e setor.
+- **LGPD:** a situação migratória de alguém é dado sensível — em alguns casos, informação
+  que exposta causa dano real à pessoa. O resumo do atendimento nunca vai para o log de
+  aplicação (só motivo, prioridade e setor); leitura de detalhe e exportação ficam
+  registradas em `access_log`; e há política de retenção para as conversas descartadas.
 
 ## Antiban do WhatsApp
 

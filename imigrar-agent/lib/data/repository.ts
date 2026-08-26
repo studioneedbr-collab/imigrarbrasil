@@ -1,8 +1,8 @@
 import type {
-  Conversation, Message, MessageMedia, DocumentItem, Lead, Proposal, Followup, ServiceCatalogItem,
-  ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario,
+  Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
+  FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
+  Classificacao, Reclassificacao, AccessLogEntry,
 } from "@/lib/domain/types";
-import type { PricingParams } from "@/lib/comercial/pricing-params";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 export interface Repository {
@@ -59,23 +59,59 @@ export interface Repository {
    */
   listRecentUserMessages(limit: number): Promise<ActivityMessage[]>;
 
+  /**
+   * O caminho do AGENTE. Preenche o dossiê a partir da conversa e NUNCA toca nas datas
+   * de prazo: `prazoDataNotificacao` e `prazoDataLimite` são ignorados aqui, de
+   * propósito, mesmo que venham no patch. Data de prazo só entra por `confirmarPrazo`.
+   */
   upsertLead(conversationId: string, patch: Partial<Lead>): Promise<Lead>;
+  getLead(id: string): Promise<Lead | null>;
   getLeadByConversation(conversationId: string): Promise<Lead | null>;
   listLeads(): Promise<Lead[]>;
   deleteLead(id: string): Promise<void>;
 
-  createProposal(data: Omit<Proposal, "id" | "createdAt" | "status"> & { status?: ProposalStatus }): Promise<Proposal>;
-  updateProposalStatus(id: string, status: ProposalStatus): Promise<void>;
-  updateProposalEmailStatus(id: string, emailStatus: ProposalEmailStatus): Promise<void>;
-  /** Busca uma proposta pelo id, com o PDF. listProposals() omite o PDF de propósito. */
-  getProposal(id: string): Promise<Proposal | null>;
-  listProposals(): Promise<Proposal[]>;
-  deleteProposal(id: string): Promise<void>;
   /**
-   * Esta conversa já recebeu proposta? Herdado da base comercial e usado só pelo painel
-   * (telas de Propostas/Orçamento) — o agente não gera mais proposta nenhuma.
+   * O caminho do HUMANO: a ficha corrigida à mão na tela de detalhe. Também recusa as
+   * datas de prazo — quem as grava é `confirmarPrazo`, que exige saber quem confirmou.
    */
-  hasProposalForConversation(conversationId: string): Promise<boolean>;
+  updateLead(id: string, patch: Partial<Lead>): Promise<Lead>;
+
+  /**
+   * CONFIRMAÇÃO DE PRAZO — o único caminho por onde uma data de prazo entra no sistema,
+   * e ele exige o nome de quem confirmou. A IA sinaliza (`temPrazoCorrendo`); a data
+   * vem de uma pessoa que ligou e perguntou. Um contador regressivo em cima de uma data
+   * inferida pelo modelo é o erro que faz alguém perder prazo.
+   */
+  confirmarPrazo(
+    id: string,
+    dados: { tipo: Lead["prazoTipo"]; notificacao?: string | null; limite?: string | null },
+    autor: string,
+  ): Promise<Lead>;
+
+  /** Um humano assume o atendimento. Marca o relógio do "tempo até primeiro contato". */
+  assumirLead(id: string, usuarioId: string | null, autor: string): Promise<Lead>;
+
+  /**
+   * O humano discorda da IA. Grava a nova classificação E o par (de → para): esse par é
+   * o dado que calibra o agente, e some se só o valor final for guardado.
+   */
+  reclassificarLead(
+    id: string,
+    para: Classificacao,
+    autor: string,
+    motivo?: string,
+  ): Promise<Lead>;
+  listReclassificacoes(): Promise<Reclassificacao[]>;
+
+  /** Log de acesso e de exportação (LGPD): quem, o quê, quando. */
+  registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">): Promise<void>;
+  listAcessos(limit?: number): Promise<AccessLogEntry[]>;
+
+  /**
+   * Retenção: apaga leads descartados (CURIOSO/DPU/FORA_ESCOPO) parados há mais de
+   * `dias`. Devolve quantos saíram. Nunca toca em quem foi resgatado ou está na fila.
+   */
+  purgarDescartados(dias: number): Promise<number>;
 
   scheduleFollowup(conversationId: string, message: string, scheduledAt: string): Promise<Followup>;
   listPendingFollowups(): Promise<Followup[]>;
@@ -84,9 +120,6 @@ export interface Repository {
 
   getConfig<T = unknown>(key: string): Promise<T | null>;
   setConfig(key: string, value: unknown): Promise<void>;
-
-  listServices(): Promise<ServiceCatalogItem[]>;
-  getService(name: string): Promise<ServiceCatalogItem | null>;
 
   upsertCliente(patch: Partial<Cliente> & { id?: string }): Promise<Cliente>;
   getCliente(id: string): Promise<Cliente | null>;
@@ -100,16 +133,8 @@ export interface Repository {
   /** Filtra no banco (usa idx_transfer_conv) em vez de trazer todos e filtrar em JS. */
   listTransferTicketsByConversation(conversationId: string): Promise<TransferTicket[]>;
 
-  listFunctionPricing(): Promise<PricingParams[]>;
-  getFunctionPricing(name: string): Promise<PricingParams | null>;
-  upsertFunctionPricing(params: PricingParams): Promise<PricingParams>;
-  deleteFunctionPricing(functionName: string): Promise<void>;
-
   getUserByEmail(email: string): Promise<User | null>;
-  createUser(data: { email: string; passwordHash: string; name?: string; role?: "admin" | "user"; setor?: string | null }): Promise<User>;
+  createUser(data: { email: string; passwordHash: string; name?: string; role?: User["role"]; setor?: string | null }): Promise<User>;
   listUsers(): Promise<Array<Omit<User, "passwordHash">>>;
   updateUserPassword(id: string, passwordHash: string): Promise<void>;
-
-  listFuncionarios(): Promise<Funcionario[]>;
-  createFuncionario(data: { nome: string; cpf?: string; cargo?: string; setor?: string; telefone?: string; email?: string }): Promise<Funcionario>;
 }

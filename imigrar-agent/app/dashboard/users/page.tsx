@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  PAPEIS,
+  PAPEL_DESCRICAO,
+  PAPEL_LABEL,
+  normalizarPapel,
+  type Papel,
+} from "@/lib/auth/papeis";
+import {
   Card,
   EmptyState,
   Icon,
@@ -26,7 +33,7 @@ interface UserRow {
   id: string;
   email: string;
   name?: string;
-  role: "admin" | "user";
+  role: Papel | "user";
   setor?: Setor | null;
   active: boolean;
   createdAt: string;
@@ -46,7 +53,7 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "user">("user");
+  const [role, setRole] = useState<Papel>("atendente");
   const [setor, setSetor] = useState<Setor>("comercial");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +104,7 @@ export default function UsersPage() {
           password,
           name: name || undefined,
           role,
-          setor: role === "user" ? setor : undefined,
+          setor: role === "admin" ? undefined : setor,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -210,11 +217,8 @@ export default function UsersPage() {
                           : "bg-ib-papel text-ib-slate"
                       }`}
                     >
-                      {u.role === "admin"
-                        ? "Admin"
-                        : u.setor
-                          ? SETOR_LABEL[u.setor]
-                          : "Usuário"}
+                      {PAPEL_LABEL[normalizarPapel(u.role)]}
+                      {u.role !== "admin" && u.setor ? ` · ${SETOR_LABEL[u.setor]}` : ""}
                     </span>
                     {u.name ? (
                       <span className="font-mono text-[11px] tabular-nums text-ib-slate">
@@ -309,14 +313,22 @@ export default function UsersPage() {
               <select
                 id="user-role"
                 value={role}
-                onChange={(e) => setRole(e.target.value as "admin" | "user")}
+                onChange={(e) => setRole(e.target.value as Papel)}
                 className={inputCls}
               >
-                <option value="user">Usuário (acesso restrito a um setor)</option>
-                <option value="admin">Admin (vê tudo)</option>
+                {PAPEIS.map((p) => (
+                  <option key={p} value={p}>
+                    {PAPEL_LABEL[p]}
+                  </option>
+                ))}
               </select>
+              {/* O que cada papel pode é decisão de segurança, não preferência de
+                  interface: quem cria a conta precisa ler isto antes de escolher. */}
+              <p className="mt-1 text-[11px] leading-relaxed text-ib-slate">
+                {PAPEL_DESCRICAO[role]}
+              </p>
             </Field>
-            {role === "user" ? (
+            {role !== "admin" ? (
               <Field label="Setor" htmlFor="user-setor">
                 <select
                   id="user-setor"

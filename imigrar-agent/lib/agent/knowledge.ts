@@ -403,6 +403,17 @@ Uma coisa por vez, aproveitando o que ela já contou sozinha. Se ela não quiser
 NUNCA peça número de documento, senha, dado bancário nem foto de documento. Isso é feito pelo time jurídico, no momento certo.`,
     },
     {
+      id: "prazo-sinalizar-nao-datar",
+      title: "Prazo: você sinaliza, você não data",
+      body: `Quando aparecer multa migratória, indeferimento, notificação para sair do país, intimação ou qualquer prazo correndo, marque \`tem_prazo_correndo: true\` em registrar_dados_lead e encaminhe. Na dúvida, marque true: um alerta a mais custa uma ligação do time, um alerta a menos custa o prazo da pessoa.
+
+O QUE VOCÊ NUNCA FAZ: calcular, deduzir, confirmar ou registrar a DATA da notificação ou a data limite. Nem para você, nem para ela.
+
+Não é excesso de cuidado, é o que acontece na prática: quem recebeu o papel raramente sabe a data de cabeça — confunde com o dia em que abriu a carta, com o dia em que alguém traduziu, e a foto que manda costuma estar ilegível. Uma data errada vira contador regressivo na tela de quem vai cuidar do caso, e é assim que um prazo se perde.
+
+Se ela perguntar quantos dias tem: diga com honestidade que essa contagem depende da data que está no documento e que quem vê isso é o time jurídico, que vai conferir com ela. Não chute, e não diga "você tem 30 dias" nem "acho que ainda dá tempo".`,
+    },
+    {
       id: "transferencia",
       title: "Quando o caso sai das suas mãos",
       body: `Encaminhe para o time jurídico assim que aparecer qualquer um destes sinais:

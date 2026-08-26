@@ -6,10 +6,7 @@ export type ConversationStatus =
   | "active" | "waiting" | "negotiating" | "transferred" | "finished" | "inactive";
 export type LeadStatus = "new" | "contacted" | "proposal_sent" | "negotiating" | "won" | "lost";
 export type Urgency = "immediate" | "short" | "medium" | "long";
-export type ProposalStatus = "draft" | "sent" | "viewed" | "accepted" | "rejected";
-export type ProposalEmailStatus = "nao_enviado" | "rascunho_aberto" | "enviado";
 export type FollowupStatus = "pending" | "sent" | "cancelled";
-export type ServiceSchedule = "5x2_44h" | "6x1_44h" | "12x36";
 export type FlowStateId = "S0"|"S1"|"S2"|"S3"|"S4"|"S5"|"S6"|"S7"|"S8"|"S9"|"S10";
 export type LeadStage = "novo"|"qualificado"|"orcado"|"transferido"|"ganho"|"perdido"|"desqualificado";
 // Setor de destino do contato (define em qual pipeline/CRM ele cai). "comercial" é o
@@ -93,7 +90,13 @@ export interface DocumentItem {
   createdAt: string;
 }
 
-export interface Lead {
+/**
+ * O contato, do jeito que o time jurídico precisa lê-lo.
+ *
+ * Os campos de imigração — e a regra de quem pode gravar cada um — moram em
+ * `LeadImigracao`, no fim deste arquivo.
+ */
+export interface Lead extends LeadImigracao {
   id: string;
   conversationId: string;
   contactName?: string | null;
@@ -102,63 +105,17 @@ export interface Lead {
   email?: string | null;
   clientType?: string | null;
   servicesInterested?: string[] | null;
-  employeesNeeded?: number | null;
   region?: string | null;
   contractDuration?: string | null;
-  estimatedValue?: number | null;
   status: LeadStatus;
   urgency?: Urgency | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
   clienteId?: string;
-  schedule?: string;
   stage: LeadStage;
   score: number;
   setor?: LeadSetor | null;
-}
-
-export interface ProposalServiceLine {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  schedule?: string;
-  /**
-   * O que a linha assumiu ao ser precificada. Guardado junto porque a planilha de
-   * composição (GET /api/proposal/[id]/planilha) é gerada sob demanda a partir daqui —
-   * sem isto, a planilha sairia com o preço do Rio e sem os adicionais, diferente do PDF
-   * que o cliente recebeu. A coluna é jsonb, então não precisa migration.
-   */
-  region?: string;
-  semUniforme?: boolean;
-  comMaterial?: boolean;
-  /**
-   * Cobertura do posto. Com ela, `quantity` são POSTOS e não pessoas: um posto 24h na
-   * 12x36 são quatro funcionários, dois com adicional noturno. Gravada junto para a
-   * planilha de composição sair com as mesmas abas de turno que geraram o preço do PDF.
-   */
-  cobertura?: "24h" | "12h_diurno" | "12h_noturno";
-  adicionais?: {
-    insalubridade?: "minimo" | "medio" | "maximo";
-    periculosidade?: boolean;
-    noturno?: boolean;
-    horasNoturnasMes?: number;
-    intrajornadaIndenizada?: boolean;
-    lideraEquipeDe?: number;
-  };
-}
-
-export interface Proposal {
-  id: string;
-  leadId?: string | null;
-  conversationId?: string | null;
-  pdfUrl?: string | null;
-  services: ProposalServiceLine[];
-  totalValue: number;
-  costBreakdown?: Record<string, number> | null;
-  status: ProposalStatus;
-  emailStatus?: ProposalEmailStatus | null;
-  createdAt: string;
 }
 
 export interface Followup {
@@ -169,21 +126,6 @@ export interface Followup {
   status: FollowupStatus;
   attempt: number;
   createdAt: string;
-}
-
-export interface ServiceCatalogItem {
-  id: string;
-  name: string;
-  category: string;
-  baseSalary: number;
-  costPerEmployee: number;
-  salePrice: number;
-  marginPercent: number;
-  schedule: ServiceSchedule;
-  description?: string | null;
-  active: boolean;
-  // true = preço de venda validado (dados reais). false = estimativa → "sob consulta".
-  priceConfirmed?: boolean;
 }
 
 export interface Cliente {
@@ -199,7 +141,7 @@ export interface Cliente {
 
 export interface TransferDossie {
   nome?: string; empresa?: string; cpf?: string; cidade?: string;
-  servicos?: string[]; quantidade?: number; escala?: string;
+  servicos?: string[];
   necessidade?: string; historicoResumo?: string;
 }
 
@@ -218,20 +160,135 @@ export interface User {
   email: string;
   passwordHash: string;
   name?: string;
-  role: "admin" | "user";
+  // Ver lib/auth/papeis.ts. 'user' continua no tipo porque contas antigas o têm gravado
+  // no banco; em memória e na sessão ele é lido como 'atendente'.
+  role: "admin" | "advogado" | "atendente" | "user";
   setor?: LeadSetor | null; // null/admin = vê tudo; senão restringe ao setor
   active: boolean;
   createdAt: string;
 }
 
-export interface Funcionario {
+// ─────────────────────────────────────────────────────────────────────────────
+// A FILA DE PRAZOS
+//
+// O que segue é o modelo deste atendimento, e não o do funil de vendas que originou o
+// código. A tela inicial existe para responder uma pergunta: o que vence primeiro?
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Onde a pessoa está AGORA. É a distinção que muda o atendimento inteiro. */
+export type Localizacao = "brasil" | "exterior";
+
+/** Que prazo está correndo. Preenchido junto com a data, por um humano. */
+export type PrazoTipo = "multa" | "indeferimento" | "notificacao_saida" | "outro";
+
+/**
+ * QUENTE_PRAZO           prazo processual correndo
+ * QUENTE_JUDICIAL        caso exige ação judicial
+ * MORNO_ADMINISTRATIVO   caso viável, sem urgência
+ * EXTERIOR_VISTO         pessoa fora do Brasil
+ * DPU                    perfil de gratuidade, encaminhado à Defensoria
+ * CURIOSO                sem caso concreto
+ * FORA_ESCOPO            outro país ou outra área
+ */
+export type Classificacao =
+  | "QUENTE_PRAZO"
+  | "QUENTE_JUDICIAL"
+  | "MORNO_ADMINISTRATIVO"
+  | "EXTERIOR_VISTO"
+  | "DPU"
+  | "CURIOSO"
+  | "FORA_ESCOPO";
+
+export const CLASSIFICACOES: Classificacao[] = [
+  "QUENTE_PRAZO",
+  "QUENTE_JUDICIAL",
+  "MORNO_ADMINISTRATIVO",
+  "EXTERIOR_VISTO",
+  "DPU",
+  "CURIOSO",
+  "FORA_ESCOPO",
+];
+
+/**
+ * As três classificações que NÃO aparecem na fila. Vão para a aba de conversas
+ * filtradas, que existe para auditoria por amostragem — e de onde um humano pode
+ * resgatar quem o agente descartou por engano.
+ */
+export const CLASSIFICACOES_FILTRADAS: Classificacao[] = ["DPU", "CURIOSO", "FORA_ESCOPO"];
+
+export function eFiltrada(c: Classificacao | null | undefined): boolean {
+  return !!c && (CLASSIFICACOES_FILTRADAS as string[]).includes(c);
+}
+
+/** Onde o atendimento está. Não é estágio de funil: não há avanço, há desfecho. */
+export type AtendimentoStatus =
+  | "novo"
+  | "em_atendimento"
+  | "agendado"
+  | "fechado"
+  | "perdido";
+
+/**
+ * O que o agente preenche na conversa e o que o humano confirma depois.
+ *
+ * A separação mais importante deste arquivo: `temPrazoCorrendo` é da IA;
+ * `prazoDataNotificacao` e `prazoDataLimite` são SEMPRE de um humano — por isso vêm
+ * acompanhadas de `prazoConfirmadoPor`. Enquanto `prazoDataLimite` for null o lead fica
+ * no bloco "prazo a confirmar", com prioridade máxima e sem contador regressivo.
+ */
+export interface LeadImigracao {
+  idioma?: string | null;
+  nacionalidade?: string | null;
+  localizacao?: Localizacao | null;
+  paisExterior?: string | null;
+  entradaControleMigratorio?: boolean | null;
+  documentosPossui?: string | null;
+  documentosFaltantes?: string | null;
+  vinculoFamiliarBrasil?: string | null;
+  situacaoDocumental?: string | null;
+  objetivo?: string | null;
+  modalidadeProvavel?: string | null;
+  resumo?: string | null;
+
+  temPrazoCorrendo?: boolean;
+  prazoTipo?: PrazoTipo | null;
+  prazoDataNotificacao?: string | null;
+  prazoDataLimite?: string | null;
+  prazoConfirmadoPor?: string | null;
+  prazoConfirmadoEm?: string | null;
+
+  classificacao?: Classificacao | null;
+  /** A classificação que a IA deu antes de qualquer mão humana. Denominador da taxa de reclassificação. */
+  classificacaoIa?: Classificacao | null;
+
+  atendimentoStatus?: AtendimentoStatus;
+  motivoPerda?: string | null;
+  responsavelId?: string | null;
+  assumidoEm?: string | null;
+  resgatadoEm?: string | null;
+  resgatadoPor?: string | null;
+}
+
+/** Um humano discordou da IA. É o dado que calibra o agente. */
+export interface Reclassificacao {
   id: string;
-  nome: string;
-  cpf?: string;
-  cargo?: string;
-  setor?: string;
-  telefone?: string;
-  email?: string;
-  active: boolean;
-  createdAt: string;
+  leadId: string;
+  de?: Classificacao | null;
+  para: Classificacao;
+  motivo?: string | null;
+  autor: string;
+  criadoEm: string;
+}
+
+/** Quem abriu o quê, e quando. LGPD: dado sensível não se lê sem deixar rastro. */
+export interface AccessLogEntry {
+  id: string;
+  autor: string;
+  papel?: string | null;
+  acao: string;
+  alvoTipo?: string | null;
+  alvoId?: string | null;
+  detalhe?: string | null;
+  ip?: string | null;
+  criadoEm: string;
 }

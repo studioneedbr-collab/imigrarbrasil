@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   Card,
   PageHeader,
@@ -12,7 +11,6 @@ import {
   SkeletonCard,
   type IconName,
 } from "@/components/dashboard/ui";
-import { computeCostBreakdown } from "@/lib/comercial/pricing";
 import {
   LENGTH_LABEL,
   TONE_LABEL,
@@ -78,8 +76,6 @@ const inputCls =
   "w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink placeholder:text-ib-slate focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20";
 const areaCls =
   "w-full rounded-xl border border-ib-line bg-white p-3 text-sm leading-relaxed text-ib-ink placeholder:text-ib-slate focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20";
-
-const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // id estável para itens novos, sem depender de índice (que muda quando se remove um item
 // do meio da lista e faria o React reaproveitar o textarea errado).
@@ -1383,9 +1379,6 @@ function TabTecnico({
         </div>
       </Card>
 
-      {/* Seção 2 — composição de custos (readonly) */}
-      <ComposicaoCustos />
-
       {/* Seção 3 — escalas */}
       <Card className="p-5 sm:p-6">
         <BlockHeading
@@ -1456,118 +1449,6 @@ function TabTecnico({
         </button>
       </Card>
     </div>
-  );
-}
-
-/**
- * Composição de custos do ASG — informativa. É a MESMA função que o motor usa para
- * precificar (computeCostBreakdown), então o que aparece aqui é o que o agente cota.
- * Editar é em /dashboard/precos: duplicar os campos aqui criaria duas fontes da verdade.
- */
-function ComposicaoCustos() {
-  const [params, setParams] = useState<{ baseSalary: number; schedule: string } | null>(null);
-  const [erro, setErro] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/pricing-params", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("http"))))
-      .then((d: { items?: Array<{ functionName: string; baseSalary: number; schedule: string }> }) => {
-        if (!alive) return;
-        const asg = (d.items ?? []).find((i) =>
-          /auxiliar de servi[çc]os gerais|^asg$/i.test(i.functionName),
-        );
-        setParams(asg ? { baseSalary: asg.baseSalary, schedule: asg.schedule } : null);
-      })
-      .catch(() => alive && setErro(true));
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const bd = useMemo(() => {
-    if (!params?.baseSalary) return null;
-    return computeCostBreakdown({
-      functionName: "Auxiliar de Serviços Gerais",
-      baseSalary: params.baseSalary,
-      schedule: params.schedule,
-      uniformeMes: 46.97,
-      equipamentosFunc: 0,
-      materialFunc: 0,
-      priceConfirmed: true,
-    });
-  }, [params]);
-
-  const linhas: [string, number][] = bd
-    ? [
-        ["Módulo 1 — Remuneração (piso + adicionais da CCT)", bd.remuneracao],
-        ["Módulo 2 — 13º, férias e 1/3", bd.decimoTerceiroFerias],
-        ["Módulo 2 — Encargos (INSS, FGTS, RAT, Sistema S)", bd.encargos],
-        ["Módulo 2 — Benefícios (VT, alimentação, cesta)", bd.beneficios],
-        ["Módulo 3 — Provisão de rescisão", bd.provisaoRescisao],
-        ["Módulo 4 — Reposição de ausências e intrajornada", bd.reposicaoAusencias + bd.intrajornada],
-        ["Módulo 5 — Uniforme, equipamentos e material", bd.uniforme + bd.equipamentos + bd.material],
-      ]
-    : [];
-
-  return (
-    <Card className="p-5 sm:p-6">
-      <BlockHeading
-        eyebrow="Seção 2"
-        title="Composição de custos do ASG"
-        description="Os módulos da planilha IN 05/2017 com os valores que o motor usa hoje. Somente leitura — a edição fica em Preços."
-        right={
-          <Link href="/dashboard/precos" className={btnGhost}>
-            <Icon name="bolt" className="h-4 w-4" />
-            Ir para Preços
-          </Link>
-        }
-      />
-      <div className="pt-5">
-        {erro ? (
-          <p className="text-sm text-ib-danger">Não foi possível carregar os parâmetros de preço.</p>
-        ) : !params ? (
-          <p className="text-sm text-ib-slate">
-            Nenhum parâmetro de preço cadastrado para o ASG.{" "}
-            <Link href="/dashboard/precos" className="font-medium text-ib-mar underline">
-              Cadastrar em Preços
-            </Link>
-            .
-          </p>
-        ) : !bd ? (
-          <Skeleton className="h-40 w-full rounded-xl" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <tbody>
-                {linhas.map(([label, v]) => (
-                  <tr key={label} className="border-b border-ib-line/70">
-                    <td className="py-2.5 pr-4 text-ib-slate">{label}</td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-ib-ink">
-                      {brl(v)}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="border-b border-ib-line">
-                  <td className="py-2.5 pr-4 font-semibold text-ib-ink">Custo do posto</td>
-                  <td className="py-2.5 text-right font-mono font-semibold tabular-nums text-ib-ink">
-                    {brl(bd.custoPuro)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 pr-4 font-semibold text-ib-ink">
-                    Módulo 6 — BDI e preço de venda
-                  </td>
-                  <td className="py-2.5 text-right font-mono font-semibold tabular-nums text-ib-mar">
-                    {brl(bd.precoVenda)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </Card>
   );
 }
 

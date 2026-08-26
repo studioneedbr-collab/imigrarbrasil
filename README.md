@@ -7,21 +7,36 @@ oficiais). A lógica comercial herdada já saiu de dentro do agente — ver
 [o que sobrou da base comercial](#o-que-sobrou-da-base-comercial).
 
 ```
-imigrar-agent/   aplicação Next.js 14 (painel, webhook, orquestração, transbordo)
-  IDENTIDADE.md    paleta, tipografia e a faixa MRZ — leia antes de mexer em tela
-  public/marca/    logotipos do cliente e o símbolo recortado
-ingestao/        pipeline que transforma as cartilhas em PDF na base vetorial
-prompt/          system prompt do agente
-*.pdf            as 7 cartilhas e a legislação, material do cliente
+imigrar-agent/      aplicação Next.js 14 (painel, webhook, orquestração, transbordo)
+  IDENTIDADE.md       paleta, tipografia e a faixa MRZ — leia antes de mexer em tela
+  public/marca/       os logotipos já recortados e otimizados para a aplicação
+ingestao/           pipeline que transforma o material oficial na base vetorial
+material-oficial/   as 7 cartilhas e a legislação — a fonte de tudo que o agente afirma
+marca/              os arquivos originais de marca, como o cliente entregou
+docs/               documentos de referência (o system prompt da v1)
 ```
+
+O nome dos PDFs em `material-oficial/` é o mesmo `id` que eles têm em
+`ingestao/fontes.json`: `regularizacao-migratoria.pdf` é a fonte `regularizacao`. Trocar
+um arquivo é trocar o de mesmo nome — sem espaço, sem caixa alta, sem ter que citar entre
+aspas em cada comando.
 
 ## Rodar localmente
 
 ```bash
-cd imigrar-agent
-npm install
+npm run setup        # instala as dependências em imigrar-agent/
 npm run dev          # http://localhost:3000
 ```
+
+Os scripts da raiz (`dev`, `build`, `test`, `typecheck`) só encaminham para
+`imigrar-agent/` — dá na mesma rodá-los de lá. Existem porque `npm run dev` na raiz é o
+reflexo de quem clona o repositório, e antes isso respondia só `ENOENT: package.json`.
+
+**Configuração local:** copie `imigrar-agent/.env.example` para
+`imigrar-agent/.env.local`. Sem nada preenchido o painel sobe assim mesmo, em memória —
+o que some no reinício. Para ver os dados de verdade, a única variável indispensável é a
+`SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API Keys; é a `service_role`,
+não a publishable).
 
 Sobe **sem credencial nenhuma**. O `.env.local` está com as integrações vazias de
 propósito e o app degrada sozinho: sem Supabase usa repositório em memória, sem

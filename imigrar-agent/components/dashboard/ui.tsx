@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type {
   ConversationStatus,
   LeadStatus,
-  ProposalStatus,
   Urgency,
 } from "@/lib/domain/types";
 
@@ -46,14 +45,6 @@ export const leadStatusLabel: Record<LeadStatus, string> = {
   lost: "Perdido",
 };
 
-export const proposalStatusLabel: Record<ProposalStatus, string> = {
-  draft: "Rascunho",
-  sent: "Enviada",
-  viewed: "Visualizada",
-  accepted: "Aceita",
-  rejected: "Rejeitada",
-};
-
 export const urgencyLabel: Record<Urgency, string> = {
   immediate: "Imediata",
   short: "Curta",
@@ -77,14 +68,6 @@ export const LEAD_STATUSES: LeadStatus[] = [
   "won",
   "lost",
 ];
-export const PROPOSAL_STATUSES: ProposalStatus[] = [
-  "draft",
-  "sent",
-  "viewed",
-  "accepted",
-  "rejected",
-];
-
 /* ------------------------------------------------------------------ */
 /* Status color mapping                                                */
 /* ------------------------------------------------------------------ */
@@ -131,43 +114,33 @@ export const leadTone: Record<LeadStatus, Tone> = {
   lost: "red",
 };
 
-export const proposalTone: Record<ProposalStatus, Tone> = {
-  draft: "slate",
-  sent: "blue",
-  viewed: "azure",
-  accepted: "green",
-  rejected: "red",
-};
-
 export function toneForStatus(
-  kind: "conversation" | "lead" | "proposal",
+  kind: "conversation" | "lead",
   status: string,
 ): Tone {
   if (kind === "conversation")
     return conversationTone[status as ConversationStatus] ?? "slate";
-  if (kind === "lead") return leadTone[status as LeadStatus] ?? "slate";
-  return proposalTone[status as ProposalStatus] ?? "slate";
+  return leadTone[status as LeadStatus] ?? "slate";
 }
 
 export function barColorForStatus(
-  kind: "conversation" | "lead" | "proposal",
+  kind: "conversation" | "lead",
   status: string,
 ): string {
   return toneBar[toneForStatus(kind, status)];
 }
 
 export function dotColorForStatus(
-  kind: "conversation" | "lead" | "proposal",
+  kind: "conversation" | "lead",
   status: string,
 ): string {
   return toneDot[toneForStatus(kind, status)];
 }
 
-function labelForStatus(kind: "conversation" | "lead" | "proposal", status: string): string {
+function labelForStatus(kind: "conversation" | "lead", status: string): string {
   if (kind === "conversation")
     return conversationStatusLabel[status as ConversationStatus] ?? status;
-  if (kind === "lead") return leadStatusLabel[status as LeadStatus] ?? status;
-  return proposalStatusLabel[status as ProposalStatus] ?? status;
+  return leadStatusLabel[status as LeadStatus] ?? status;
 }
 
 /* ------------------------------------------------------------------ */
@@ -248,7 +221,7 @@ export function StatusBadge({
   kind,
   status,
 }: {
-  kind: "conversation" | "lead" | "proposal";
+  kind: "conversation" | "lead";
   status: string;
 }) {
   const tone = toneForStatus(kind, status);

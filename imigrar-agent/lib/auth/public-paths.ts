@@ -8,6 +8,12 @@
 //  /api/webhook/whatsapp — autenticado no próprio handler (token na URL ?token= ou Client-Token)
 //  /api/health       — diagnóstico sem segredos (modo do repositório + flags de integração)
 //  /api/cron/*        — autenticados por CRON_SECRET (Bearer/query) no próprio handler
+//
+// SAIU DAQUI: `/api/proposal/<uuid>`, que servia o PDF da proposta comercial por link
+// compartilhável. Além de a tela de propostas não existir mais, "UUID não adivinhável"
+// não é controle de acesso aceitável para o que este sistema guarda — situação
+// migratória de gente em situação irregular. Nenhuma rota deste painel responde sem
+// sessão.
 const PUBLIC_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/logout",
@@ -24,10 +30,6 @@ const PUBLIC_PATHS = new Set([
  */
 export function isPublicPath(pathname: string): boolean {
   const normalized = pathname.toLowerCase().replace(/\/+$/, "") || "/";
-  // PDF da proposta: link compartilhável (enviado ao cliente no WhatsApp e aberto no
-  // celular). O id é um UUID não adivinhável. Sem isto, a Z-API não baixa o PDF para
-  // enviar como documento e o link abre a tela de login no celular.
-  if (normalized.startsWith("/api/proposal/")) return true;
   return PUBLIC_PATHS.has(normalized);
 }
 

@@ -21,11 +21,15 @@ sem perceber.
    - `service_role` secret → `SUPABASE_SERVICE_ROLE_KEY`
      (é a chave que ignora RLS. Nunca vai para o navegador — só para variável de servidor.)
 3. **SQL Editor** → rodar os arquivos de `supabase/migrations/` **em ordem numérica**,
-   do `001` ao `018`. Um por vez, conferindo que cada um termina sem erro.
+   do `001` ao `019`. Um por vez, conferindo que cada um termina sem erro.
    - `SETUP_COMPLETO.sql` é um consolidado antigo, da base que originou este código. Ignore: use as
      migrations numeradas.
    - A `017_rag_chunks.sql` cria a extensão `vector` e a função `buscar_chunks`. Se a
      extensão falhar, habilite `vector` em **Database → Extensions** e rode de novo.
+   - A `019_fila_de_prazos.sql` é a que faz o painel virar fila de prazos: cria os campos
+     de imigração, o log de acesso, a reclassificação e o CHECK que impede data de prazo
+     sem o nome de quem confirmou. **Sem ela o painel abre, mas a fila vem vazia** — e
+     confirmar prazo devolve erro de coluna inexistente.
 
 **Conferir:** `select count(*) from conversations;` responde `0` sem erro.
 
