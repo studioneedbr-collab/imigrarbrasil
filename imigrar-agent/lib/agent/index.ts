@@ -10,9 +10,6 @@ import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
-import { lerCaso } from "@/lib/agent/triagem";
-import { classificar, montarFicha, aplicarFicha } from "@/lib/agent/ficha";
-import { detectTransfer } from "@/lib/agent/transfer";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -369,26 +366,18 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   }
   const conv = await repo.getConversation(conversationId);
 
-  // A FICHA DA TRIAGEM. O advogado que pega o caso precisa dele já lido — como a pessoa
-  // entrou, que documento tem, se há prazo correndo — e da CLASSIFICAÇÃO, que é o que diz
-  // quem precisa ser atendido hoje. Vai para `notes`, que o painel mostra como "Notas",
-  // dentro de um bloco delimitado que preserva o que uma pessoa do time escreveu à mão.
-  try {
-    const caso = lerCaso(allUserText);
-    const classificacao = classificar(caso, {
-      foraDoEscopo: detectTransfer(allUserText)?.categoria === "fora_do_escopo",
-      risco: transferred && toolCalls.some((t) => (t.input as { priority?: string })?.priority === "urgent"),
-    });
-    const ficha = montarFicha(caso, classificacao, {
-      idioma: idiomaDetectado ?? convBefore?.idioma,
-      resumo: lastUserText.slice(0, 160),
-    });
-    const atual = await repo.getLeadByConversation(conversationId);
-    const notes = aplicarFicha(atual?.notes, ficha);
-    if (notes !== atual?.notes) await repo.upsertLead(conversationId, { notes });
-  } catch (err) {
-    console.error("[agent] falha ao montar a ficha da triagem:", err instanceof Error ? err.message : err);
-  }
+  // A FICHA DA TRIAGEM MORA NO LEAD, não em `notes`.
+  //
+  // Havia aqui um segundo classificador, que montava a ficha como texto e a escrevia em
+  // `notes`. Ele era a solução de quem não tinha coluna para guardar o caso; agora existe
+  // o modelo estruturado (migration 019) e ele é preenchido por `capturarDadosDoLead`,
+  // logo no começo deste mesmo turno.
+  //
+  // Manter os dois era pior do que escolher: duas classificações da mesma conversa,
+  // calculadas por regras diferentes, aparecendo lado a lado no painel — e a antiga
+  // devolvia CURIOSO, DPU e FORA_ESCOPO por regex, que é justamente o que
+  // lib/agent/classificacao.ts proíbe. Filtrar alguém por expressão regular descarta em
+  // silêncio quem precisava de ajuda, e o prejuízo não aparece em métrica nenhuma.
 
   // Lead score + funil: computa o score e persiste na CONVERSA (antes ficava sempre 0
   // na lista de Conversas) e move o contato no Kanban para 'qualificado' quando o score

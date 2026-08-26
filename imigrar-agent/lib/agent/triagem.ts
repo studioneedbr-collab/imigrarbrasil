@@ -236,6 +236,20 @@ export function mensagemSemConteudo(texto: string): boolean {
   return false;
 }
 
+/**
+ * NÚMERO DE DOCUMENTO NÃO É GRAVADO.
+ *
+ * Vários campos do contato guardam a FRASE da pessoa — como ela entrou, o que ela tem
+ * hoje, o trecho que levantou o sinal de prazo. Essa frase às vezes traz o CPF que ela
+ * mandou por conta própria, sem ninguém pedir.
+ *
+ * A regra do atendimento é não transcrever esse número, e ela não pode valer só dentro da
+ * conversa: daqui o número iria para a ficha, para o resumo da fila e para a exportação.
+ */
+export function semNumeroDeDocumento(texto: string): string {
+  return (texto ?? "").replace(/\d[\d.\-/\s]{5,}\d/g, "[número omitido]");
+}
+
 function titleCase(s: string): string {
   return s
     .replace(/\s+/g, " ")

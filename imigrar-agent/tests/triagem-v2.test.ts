@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { processMessage } from "@/lib/agent";
 import { getRepository } from "@/lib/data";
-import { lerCaso, modalidadeProvavel } from "@/lib/agent/triagem";
-import { classificar, montarFicha, aplicarFicha, semNumeroDeDocumento } from "@/lib/agent/ficha";
+import { lerCaso, modalidadeProvavel, semNumeroDeDocumento } from "@/lib/agent/triagem";
+import { classificarAutomatico } from "@/lib/agent/classificacao";
+import type { Classificacao } from "@/lib/domain/types";
 
 // A BATERIA OBRIGATÓRIA DA v2.
 //
@@ -134,9 +135,15 @@ describe("Defensoria Pública — quem não tem como pagar", () => {
     expect(respostas[2]).not.toMatch(/de qual pa[íi]s|passaporte v[áa]lido|documento brasileiro/i);
   });
 
-  it("classifica como DPU na ficha", () => {
-    const caso = lerCaso("sou peruano, estou em Sao Paulo, nao tenho como pagar advogado");
-    expect(classificar(caso)).toBe("DPU");
+  // Quem classifica alguém como DPU é o MODELO, pela tool — nunca uma regex. Filtrar por
+  // expressão regular descarta em silêncio quem precisava de ajuda, e é por isso que
+  // `classificarAutomatico` não devolve DPU, CURIOSO nem FORA_ESCOPO.
+  it("a heurística não descarta ninguém sozinha", () => {
+    const texto = "sou peruano, estou em Sao Paulo, nao tenho como pagar advogado";
+    const auto = classificarAutomatico({ localizacao: "brasil", servicesInterested: ["Regularização migratória"] } as never, texto);
+    expect(auto).not.toBe("DPU");
+    expect(auto).not.toBe("CURIOSO");
+    expect(auto).not.toBe("FORA_ESCOPO");
   });
 });
 
@@ -246,59 +253,63 @@ describe("as 8 informações e a ficha do lead", () => {
     expect(modalidadeProvavel("Japão")).toMatch(/definir/);
   });
 
-  it("a ficha chega ao painel com a classificação na frente", async () => {
+  // A ficha do caso mora no LEAD, em campos próprios (migration 019) — não num bloco de
+  // texto dentro de `notes`. Havia dois classificadores rodando por turno, e é este que
+  // fica: ele alimenta a fila, as métricas e a reclassificação com trilha de auditoria.
+  it("o caso chega ao painel nos campos da fila", async () => {
     const { lead } = await conversa([
       "oi",
       "sou venezuelana, estou em Boa Vista e recebi uma multa da policia federal",
     ]);
-    expect(lead?.notes).toMatch(/FICHA DA TRIAGEM/);
-    expect(lead?.notes).toMatch(/Classificação: QUENTE_PRAZO/);
-    expect(lead?.notes).toMatch(/Nacionalidade: Venezuela/);
+    expect(lead?.nacionalidade).toBe("Venezuela");
+    expect(lead?.localizacao).toBe("brasil");
+    expect(lead?.classificacao).toBe("QUENTE_PRAZO");
+    expect(lead?.temPrazoCorrendo).toBe(true);
+    expect(lead?.prazoTipo).toBe("multa");
   });
 
-  // Em triagem, "não tem" e "não perguntei" levam a condutas diferentes.
-  it("a ficha distingue 'NÃO TEM' de 'não perguntado'", () => {
-    const semNada = montarFicha(lerCaso("oi"), "CURIOSO");
-    expect(semNada).toMatch(/Passaporte: não perguntado/);
-    const semPassaporte = montarFicha(lerCaso("nao tenho passaporte"), "QUENTE_JUDICIAL");
-    expect(semPassaporte).toMatch(/Passaporte: NÃO TEM/);
+  // A IA sinaliza que há prazo; a DATA vem de uma pessoa que ligou e perguntou. Um
+  // contador regressivo em cima de data inferida é como se perde um prazo.
+  it("sinaliza o prazo e nunca grava data", async () => {
+    const { lead } = await conversa(["oi", "recebi uma notificacao de saida do pais"]);
+    expect(lead?.temPrazoCorrendo).toBe(true);
+    expect(lead?.prazoDataNotificacao ?? null).toBeNull();
+    expect(lead?.prazoDataLimite ?? null).toBeNull();
   });
 
-  it("a ficha nunca carrega número de documento", () => {
+  // Os campos guardam a FRASE da pessoa, e a frase às vezes traz o CPF que ela mandou
+  // sem ninguém pedir. Daqui ele iria para o resumo da fila e para a exportação.
+  it("nunca grava número de documento no contato", async () => {
     expect(semNumeroDeDocumento("meu cpf é 111.444.777-35")).not.toMatch(/111|444/);
-    const ficha = montarFicha(lerCaso("oi"), "CURIOSO", { resumo: "meu cpf e 111.444.777-35" });
-    expect(ficha).not.toMatch(/111\.?444/);
-  });
-
-  // O campo Notas é editável no painel. Se a ficha sobrescrevesse, a anotação que o
-  // advogado deixou depois de falar com a pessoa sumiria no turno seguinte.
-  it("a ficha não apaga o que uma pessoa do time escreveu", () => {
-    const ficha = montarFicha(lerCaso("sou haitiano"), "MORNO_ADMINISTRATIVO");
-    const comNota = aplicarFicha("Liguei dia 12, não atendeu.", ficha);
-    expect(comNota).toMatch(/Liguei dia 12/);
-    const depois = aplicarFicha(comNota, montarFicha(lerCaso("sou haitiano e tenho CPF"), "MORNO_ADMINISTRATIVO"));
-    expect(depois).toMatch(/Liguei dia 12/);
-    expect(depois.match(/FICHA DA TRIAGEM/g)).toHaveLength(1);
+    const { lead } = await conversa(["oi", "meu cpf e 111.444.777-35 e meu visto venceu"]);
+    expect(JSON.stringify(lead ?? {})).not.toMatch(/111\.?444/);
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe("classificação", () => {
-  const casos: Array<[string, string, ReturnType<typeof classificar>]> = [
+describe("classificação automática", () => {
+  const casos: Array<[string, string, Classificacao]> = [
     ["prazo correndo", "recebi uma notificacao de saida do pais", "QUENTE_PRAZO"],
-    ["documento faltando", "sou angolano e meu passaporte venceu", "QUENTE_JUDICIAL"],
-    ["entrada sem controle", "entrei sem passar pelo controle", "QUENTE_JUDICIAL"],
-    ["no exterior", "sou nigeriano e ainda estou no exterior", "EXTERIOR_VISTO"],
-    ["sem condições", "nao tenho como pagar advogado", "DPU"],
-    ["sem caso", "oi, tudo bem?", "CURIOSO"],
+    ["multa", "fui multado pela policia federal", "QUENTE_PRAZO"],
+    ["ação judicial", "meu caso está na justiça federal", "QUENTE_JUDICIAL"],
   ];
   for (const [nome, texto, esperado] of casos) {
     it(`${nome} → ${esperado}`, () => {
-      expect(classificar(lerCaso(texto))).toBe(esperado);
+      expect(classificarAutomatico(null, texto)).toBe(esperado);
     });
   }
 
-  it("fora do escopo vence tudo", () => {
-    expect(classificar(lerCaso("meu passaporte venceu"), { foraDoEscopo: true })).toBe("FORA_ESCOPO");
+  it("sem caso nenhum devolve null — o lead continua na fila, à vista", () => {
+    expect(classificarAutomatico(null, "oi, tudo bem?")).toBeNull();
+  });
+
+  // Uma regex que esfria um lead o tira da frente do time sem que ninguém decida isso.
+  it("nunca esfria quem já foi filtrado por decisão explícita", () => {
+    for (const filtrada of ["DPU", "CURIOSO", "FORA_ESCOPO"] as const) {
+      expect(
+        classificarAutomatico({ classificacao: filtrada } as never, "recebi uma multa"),
+        filtrada,
+      ).toBeNull();
+    }
   });
 });

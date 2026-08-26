@@ -10,7 +10,7 @@
 // Nunca sobrescreve o que já está gravado (o que veio da tool ou da mão de um atendente
 // vale mais que a heurística): só preenche buraco.
 
-import { extractSlots } from "@/lib/agent/triagem";
+import { extractSlots, semNumeroDeDocumento } from "@/lib/agent/triagem";
 import {
   classificarAutomatico,
   detectarSinalDePrazo,
@@ -68,7 +68,14 @@ export function capturarDadosDoLead(
   if (slots.urgency && !lead?.urgency) patch.urgency = slots.urgency;
   // Como entrou / o que tem hoje. Ocupa `contractDuration`, que é o campo livre do lead
   // herdado da estrutura — o painel já o exibe como "Situação atual".
-  if (slots.situacao && !lead?.contractDuration) patch.contractDuration = slots.situacao;
+  //
+  // SEM NÚMERO DE DOCUMENTO. Estes campos guardam a FRASE da pessoa, e a frase às vezes
+  // traz o CPF que ela mandou por conta própria. A regra de não transcrever esse número
+  // não pode valer só na conversa: daqui ele iria para a ficha, para o resumo da fila e
+  // para a exportação. Ver `semNumeroDeDocumento`.
+  if (slots.situacao && !lead?.contractDuration) {
+    patch.contractDuration = semNumeroDeDocumento(slots.situacao);
+  }
 
   // Caminhos migratórios: acumula em vez de trocar. Quem pergunta sobre reunião familiar
   // e depois sobre naturalização está procurando as DUAS coisas, e sobrescrever com a
@@ -85,7 +92,9 @@ export function capturarDadosDoLead(
   // sinal de prazo e classificação — o que decide em que bloco da fila ela aparece.
 
   if (slots.nacionalidade && !lead?.nacionalidade) patch.nacionalidade = slots.nacionalidade;
-  if (slots.situacao && !lead?.situacaoDocumental) patch.situacaoDocumental = slots.situacao;
+  if (slots.situacao && !lead?.situacaoDocumental) {
+    patch.situacaoDocumental = semNumeroDeDocumento(slots.situacao);
+  }
   if (slots.caminhos?.length && !lead?.modalidadeProvavel) {
     patch.modalidadeProvavel = slots.caminhos[0];
   }
@@ -113,7 +122,7 @@ export function capturarDadosDoLead(
     // discar — e é justamente o caso em que a leitura por regex de situação costuma
     // falhar, porque metade dessas mensagens não chega em português.
     if (sinal.trecho && !lead?.situacaoDocumental && !patch.situacaoDocumental) {
-      patch.situacaoDocumental = sinal.trecho;
+      patch.situacaoDocumental = semNumeroDeDocumento(sinal.trecho);
     }
   }
 
