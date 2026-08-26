@@ -9,7 +9,10 @@ import { avaliarTransferencia } from "@/lib/agent/transfer-gate";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
-import { buildIdiomaBlock, detectarIdioma, registrarIdioma } from "@/lib/agent/idioma";
+import { buildIdiomaBlock, idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
+import { lerCaso } from "@/lib/agent/triagem";
+import { classificar, montarFicha, aplicarFicha } from "@/lib/agent/ficha";
+import { detectTransfer } from "@/lib/agent/transfer";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -191,7 +194,10 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // e mandou só "ok" agora continua sendo atendido em espanhol, e o material oficial que
   // chega no prompt está todo em português. O idioma fica gravado no contato — é o mesmo
   // dado que o follow-up automático e o atendente humano do painel usam.
-  const idiomaDetectado = detectarIdioma(lastUserText);
+  // A conversa inteira, e não só a última mensagem: no WhatsApp quase toda mensagem é
+  // curta demais para o detector decidir sozinha, e uma conversa inteira em espanhol
+  // acabava atendida em português. Ver `idiomaDaConversa`.
+  const idiomaDetectado = idiomaDaConversa(lastUserText, allUserText, convBefore?.idioma);
   systemPrompt += buildIdiomaBlock(idiomaDetectado ?? convBefore?.idioma);
   if (idiomaDetectado) await registrarIdioma(conversationId, idiomaDetectado);
 
@@ -362,6 +368,27 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     console.error("[agent] status (resposta) falhou:", err instanceof Error ? err.message : err);
   }
   const conv = await repo.getConversation(conversationId);
+
+  // A FICHA DA TRIAGEM. O advogado que pega o caso precisa dele já lido — como a pessoa
+  // entrou, que documento tem, se há prazo correndo — e da CLASSIFICAÇÃO, que é o que diz
+  // quem precisa ser atendido hoje. Vai para `notes`, que o painel mostra como "Notas",
+  // dentro de um bloco delimitado que preserva o que uma pessoa do time escreveu à mão.
+  try {
+    const caso = lerCaso(allUserText);
+    const classificacao = classificar(caso, {
+      foraDoEscopo: detectTransfer(allUserText)?.categoria === "fora_do_escopo",
+      risco: transferred && toolCalls.some((t) => (t.input as { priority?: string })?.priority === "urgent"),
+    });
+    const ficha = montarFicha(caso, classificacao, {
+      idioma: idiomaDetectado ?? convBefore?.idioma,
+      resumo: lastUserText.slice(0, 160),
+    });
+    const atual = await repo.getLeadByConversation(conversationId);
+    const notes = aplicarFicha(atual?.notes, ficha);
+    if (notes !== atual?.notes) await repo.upsertLead(conversationId, { notes });
+  } catch (err) {
+    console.error("[agent] falha ao montar a ficha da triagem:", err instanceof Error ? err.message : err);
+  }
 
   // Lead score + funil: computa o score e persiste na CONVERSA (antes ficava sempre 0
   // na lista de Conversas) e move o contato no Kanban para 'qualificado' quando o score

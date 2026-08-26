@@ -62,6 +62,13 @@ const MARCADORES: { idioma: IdiomaSuportado; peso: number; re: RegExp }[] = [
   // ── espanhol
   { idioma: "es", peso: 3, re: /[ñ¿¡]/ },
   { idioma: "es", peso: 3, re: /\bci[óo]n\b|ci[óo]n\b/i },
+  // Infinitivo com pronome colado — "naturalizarme", "quedarme", "regularizarme". Em
+  // português seria "naturalizar-me", com hífen, então o \w+ não casa. É um dos poucos
+  // marcadores fortíssimos que aparecem justamente nas frases deste atendimento.
+  { idioma: "es", peso: 3, re: /\b\w{3,}(?:arme|erme|irme|arte|arse)\b/i },
+  // "buenas", "buenos" — a saudação mais comum no WhatsApp, e inexistente em português.
+  { idioma: "es", peso: 2, re: /\b(buenas|buenos)\b/i },
+  { idioma: "es", peso: 2, re: /\b(hago|hacer|ayudarme|quisiera|necesitaba|d[óo]nde|alg[úu]n)\b/i },
   { idioma: "es", peso: 3, re: /\b(gracias|usted|ustedes|necesito|quiero|muy|años|anos de|español|espanol)\b/i },
   { idioma: "es", peso: 2, re: /\b(estoy|soy|dónde|donde está|cómo|qué|también|entonces|aquí|pero|hola|puedo|tengo que)\b/i },
   { idioma: "es", peso: 1, re: /\b(el|los|las|una|con|para|mi|su|hay|ser)\b/i },
@@ -135,6 +142,25 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
  */
 export function idiomaEfetivo(textoAtual: string, gravado?: string | null): string | undefined {
   return detectarIdioma(textoAtual) ?? gravado ?? undefined;
+}
+
+/**
+ * O idioma da CONVERSA, e não o da última mensagem.
+ *
+ * O detector é conservador de propósito e desiste de mensagem curta — o que no WhatsApp é
+ * quase toda mensagem. "Soy venezolana" e "como hago para naturalizarme?" pontuavam abaixo
+ * do mínimo cada uma sozinha, e uma conversa inteira em espanhol era atendida em
+ * português. Somadas, as mesmas frases decidem com folga.
+ *
+ * A mensagem de AGORA continua tendo a palavra: quem pediu para trocar de idioma trocou, e
+ * o acumulado não pode puxar a conversa de volta para a língua anterior.
+ */
+export function idiomaDaConversa(
+  ultimaMensagem: string,
+  conversaInteira: string,
+  gravado?: string | null,
+): string | undefined {
+  return detectarIdioma(ultimaMensagem) ?? detectarIdioma(conversaInteira) ?? gravado ?? undefined;
 }
 
 /**
