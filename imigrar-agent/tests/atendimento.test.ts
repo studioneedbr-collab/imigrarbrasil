@@ -87,11 +87,26 @@ describe("o que a Ana PODE responder", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("o que a Ana NÃO pode responder", () => {
   // A pergunta mais comum de todas, e a que mais tenta o agente a inventar.
-  it("lista de documentos: diz que não tem, em vez de perguntar outra coisa", async () => {
+  it("lista de documentos: não entrega, e devolve a pergunta", async () => {
     const { respostas } = await conversa(["oi", "quais documentos preciso para reuniao familiar?"]);
-    expect(respostas[1].toLowerCase()).toMatch(/time jur[íi]dico/);
+    expect(respostas[1].toLowerCase()).toMatch(/advogado|time jur[íi]dico/);
     // E não inventa lista nenhuma.
-    expect(respostas[1].toLowerCase()).not.toMatch(/certid[ãa]o|passaporte v[áa]lido|comprovante de/);
+    expect(respostas[1].toLowerCase()).not.toMatch(/certid[ãa]o|comprovante de|foto 3x4|formul[áa]rio/);
+    // Postura v2: responde curto e volta para a situação específica dela.
+    expect(respostas[1]).toMatch(/\?/);
+  });
+
+  // "Só me diz quais documentos" é a insistência mais comum. A postura não se dobra — e o
+  // tom não endurece: a segunda resposta diz o PORQUÊ e volta para a pergunta.
+  it("mantém a postura quando a pessoa insiste", async () => {
+    const { respostas } = await conversa([
+      "oi",
+      "quais documentos preciso para reuniao familiar?",
+      "so me diz quais documentos, por favor",
+    ]);
+    expect(respostas[2]).not.toBe(respostas[1]);
+    expect(respostas[2].toLowerCase()).not.toMatch(/certid[ãa]o|comprovante de|foto 3x4|formul[áa]rio/);
+    expect(respostas[2].toLowerCase()).not.toMatch(/n[ãa]o posso te ajudar|infelizmente n[ãa]o/);
   });
 
   it("nunca informa honorários", async () => {

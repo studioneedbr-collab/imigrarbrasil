@@ -25,10 +25,9 @@ import { getTrainingConfig } from "@/lib/agent/system-prompt";
 import { CASO_JURIDICO, EMERGENCIA, PEDIU_HUMANO } from "@/lib/agent/transfer-gate";
 import { ehFechamentoCordial } from "@/lib/agent/anti-loop";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
-import { idiomaEfetivo } from "@/lib/agent/idioma";
-import { mensagemSemConteudo } from "@/lib/agent/triagem";
+import { idiomaDaConversa } from "@/lib/agent/idioma";
+import { mensagemSemConteudo, lerCaso, type CasoTriagem } from "@/lib/agent/triagem";
 import { semAcento } from "@/lib/agent/training";
-import type { Lead } from "@/lib/domain/types";
 import type { AgentTurn, ToolCallTrace, AgentRunResult } from "@/lib/agent/runner";
 
 /**
@@ -128,50 +127,133 @@ const PERGUNTA_O_QUE_FAZEMOS =
  * o loop: se a resposta anterior já continha esta pergunta, passa para a próxima.
  */
 type Passo = {
-  campo: (lead: Lead | null) => boolean;
+  /** Esta informação ainda falta? */
+  falta: (c: CasoTriagem) => boolean;
   pergunta: Record<Fala, string>;
   /** Trecho estável da pergunta, para reconhecê-la no histórico em qualquer idioma. */
   marca: RegExp;
 };
 
+/**
+ * AS 8 INFORMAÇÕES, na ordem de prioridade do prompt v2.
+ *
+ * A v1 perguntava quatro coisas e servia para INFORMAR. Estas oito servem para TRIAR: são
+ * elas que dizem ao advogado qual é a via e quem precisa ser atendido hoje. As três do
+ * meio — como entrou, que documento de origem tem, que vínculo tem no Brasil — são as que
+ * mais mudam o desfecho, e eram exatamente as que ninguém perguntava.
+ */
 const PASSOS: Passo[] = [
   {
-    campo: (l) => !l?.region,
+    falta: (c) => !c.nacionalidade,
     pergunta: {
-      pt: "Para eu te ajudar direito: você já está no Brasil ou ainda está fora?",
-      es: "Para ayudarte bien: ¿ya estás en Brasil o todavía estás afuera?",
-      en: "So I can help you properly: are you already in Brazil, or still abroad?",
-    },
-    marca: /j[áa] est[áa] no brasil ou ainda|ya est[áa]s en brasil|already in brazil/i,
-  },
-  {
-    campo: (l) => !l?.servicesInterested?.length,
-    pergunta: {
-      pt: "E o que você precisa resolver? Pode me contar do seu jeito, sem pressa.",
-      es: "¿Y qué necesitas resolver? Cuéntame a tu manera, sin prisa.",
-      en: "And what do you need to sort out? Tell me in your own words, no rush.",
-    },
-    marca: /o que voc[êe] precisa resolver\? pode me contar|qu[ée] necesitas resolver\? cu[ée]ntame|what do you need to sort out/i,
-  },
-  {
-    campo: (l) => !l?.clientType,
-    pergunta: {
-      pt: "De qual país você é? Isso ajuda o time a ver quais caminhos existem para você.",
-      es: "¿De qué país eres? Eso ayuda al equipo a ver qué caminos existen para ti.",
-      en: "Which country are you from? That helps the team see which routes are open to you.",
+      pt: "Para eu te ajudar direito: de qual país você é?",
+      es: "Para ayudarte bien: ¿de qué país eres?",
+      en: "So I can help you properly: which country are you from?",
     },
     marca: /de qual pa[íi]s voc[êe] [ée]|de qu[ée] pa[íi]s eres|which country are you from/i,
   },
   {
-    campo: (l) => !l?.urgency,
+    falta: (c) => !c.ondeEsta,
     pergunta: {
-      pt: "Você tem algum prazo correndo? Uma data de viagem, um documento vencendo, algo assim.",
-      es: "¿Tienes algún plazo corriendo? Una fecha de viaje, un documento por vencer, algo así.",
-      en: "Is there any deadline running? A travel date, a document about to expire, anything like that.",
+      // UMA pergunta por mensagem vale para o ponto de interrogação também: "está no
+      // Brasil? E se estiver fora, em qual país?" são duas, e é assim que a conversa
+      // começa a parecer formulário.
+      pt: "Você já está no Brasil ou ainda está fora — e, se estiver fora, em qual país?",
+      es: "¿Ya estás en Brasil o todavía estás afuera — y, si estás afuera, en qué país?",
+      en: "Are you already in Brazil or still abroad — and if abroad, in which country?",
     },
-    marca: /algum prazo correndo|alg[úu]n plazo corriendo|any deadline running/i,
+    marca: /j[áa] est[áa] no brasil ou ainda|ya est[áa]s en brasil|already in brazil/i,
+  },
+  {
+    // Só faz sentido para quem já está aqui — e é a pergunta que mais muda o caso.
+    falta: (c) => !!c.ondeEsta?.startsWith("Brasil") && !c.entrada,
+    pergunta: {
+      pt: "Quando você entrou no Brasil, passou pelo controle migratório — aeroporto ou posto de fronteira — ou entrou por outro caminho?",
+      es: "Cuando entraste a Brasil, ¿pasaste por el control migratorio — aeropuerto o puesto de frontera — o entraste por otro camino?",
+      en: "When you entered Brazil, did you go through immigration control — an airport or border post — or did you come in another way?",
+    },
+    marca: /passou pelo controle migrat[óo]rio|pasaste por el control migratorio|through immigration control/i,
+  },
+  {
+    falta: (c) => c.passaporte === undefined,
+    pergunta: {
+      pt: "Você tem passaporte válido, certidão de nascimento e antecedentes criminais do seu país?",
+      es: "¿Tienes pasaporte vigente, partida de nacimiento y antecedentes penales de tu país?",
+      en: "Do you have a valid passport, a birth certificate and a criminal record check from your country?",
+    },
+    marca: /passaporte v[áa]lido|pasaporte vigente|valid passport/i,
+  },
+  {
+    falta: (c) => !c.vinculoFamiliar,
+    pergunta: {
+      pt: "Você tem algum familiar brasileiro, ou que já tenha residência no Brasil?",
+      es: "¿Tienes algún familiar brasileño, o que ya tenga residencia en Brasil?",
+      en: "Do you have any family member who is Brazilian, or who already has residence in Brazil?",
+    },
+    marca: /familiar brasileir|familiar brasile[ñn]o|family member who is brazilian/i,
+  },
+  {
+    falta: (c) => c.documentosBrasileiros.length === 0,
+    pergunta: {
+      pt: "Você já tem algum documento brasileiro? CRNM, protocolo, DPRNM ou CPF, por exemplo.",
+      es: "¿Ya tienes algún documento brasileño? CRNM, protocolo, DPRNM o CPF, por ejemplo.",
+      en: "Do you already have any Brazilian document? CRNM, a protocol number, DPRNM or CPF, for example.",
+    },
+    marca: /algum documento brasileiro|alg[úu]n documento brasile|any brazilian document/i,
+  },
+  {
+    falta: (c) => !c.decisaoNegativa,
+    pergunta: {
+      pt: "Você chegou a receber alguma multa, notificação de saída ou decisão negativa?",
+      es: "¿Llegaste a recibir alguna multa, notificación de salida o decisión negativa?",
+      en: "Have you received any fine, notice to leave, or a negative decision?",
+    },
+    marca: /alguma multa, notifica[çc][ãa]o de sa[íi]da|alguna multa, notificaci[óo]n de salida|any fine, notice to leave/i,
+  },
+  {
+    falta: (c) => !c.objetivo?.length || !c.prazo,
+    pergunta: {
+      pt: "E o que você quer conseguir, e em quanto tempo precisa disso?",
+      es: "¿Y qué quieres conseguir, y en cuánto tiempo lo necesitas?",
+      en: "And what are you trying to achieve, and by when do you need it?",
+    },
+    marca: /o que voc[êe] quer conseguir|qu[ée] quieres conseguir|what are you trying to achieve/i,
   },
 ];
+
+/**
+ * QUEM NÃO TEM COMO PAGAR RECEBE O ENDEREÇO CERTO.
+ *
+ * Não se insiste, não se tenta contornar, não se faz a pessoa se sentir mal. A Defensoria
+ * Pública da União atende exatamente estes casos, de graça, e mandar a pessoa para lá é
+ * atendê-la — não é dispensá-la.
+ */
+const DPU: Record<Fala, string> = {
+  pt:
+    "Obrigada por dizer, e isso não é motivo nenhum para constrangimento. Existe atendimento jurídico gratuito na Defensoria Pública da União, que cuida exatamente de casos de imigração: https://www.dpu.def.br/contatos-dpu\n\n" +
+    "Dá para procurar por lá sem custo. Fico à disposição por aqui se precisar de qualquer outra coisa.",
+  es:
+    "Gracias por decirlo, y no es motivo alguno de vergüenza. Existe atención jurídica gratuita en la Defensoría Pública de la Unión, que atiende exactamente casos de inmigración: https://www.dpu.def.br/contatos-dpu\n\n" +
+    "Puedes buscarlos sin costo. Quedo a disposición por aquí para cualquier otra cosa.",
+  en:
+    "Thank you for telling me — there's nothing to feel awkward about. There is free legal assistance at the Defensoria Pública da União, which handles immigration cases: https://www.dpu.def.br/contatos-dpu\n\n" +
+    "You can go to them at no cost. I'm here if you need anything else.",
+};
+
+/**
+ * ENCERRAMENTO COM CURIOSO. Duas perguntas seguidas sem resposta útil e a conversa é de
+ * quem queria informação, não de quem tem caso. Insistir com essa pessoa é o que faz
+ * alguém bloquear o número — e o custo de encerrar cedo demais é ela voltar a escrever,
+ * que é barato.
+ */
+const ENCERRAR_CURIOSO: Record<Fala, string> = {
+  pt:
+    "Obrigada pelo contato! A Imigrar Brasil fica à disposição quando você tiver uma situação concreta para a gente analisar — é só chamar neste mesmo número.",
+  es:
+    "¡Gracias por el contacto! Imigrar Brasil queda a disposición cuando tengas una situación concreta para analizar — solo escribe a este mismo número.",
+  en:
+    "Thanks for reaching out! Imigrar Brasil is here whenever you have a specific situation for us to look at — just message this same number.",
+};
 
 /** Já se sabe tudo o que dá para saber sem ser interrogatório — a saída é oferecer o time. */
 const OFERECER_TIME: Record<Fala, string> = {
@@ -352,9 +434,9 @@ function explicacaoDe(texto: string, fala: Fala): string | undefined {
  * seguidos viravam três perguntas de cadastro enfileiradas: exatamente o interrogatório
  * que o prompt proíbe, com alguém que ainda não disse nada.
  *
- * São três degraus e o último OFERECE UMA PESSOA. Quem manda o quarto "oi" ou não sabe o
- * que escrever, ou está testando se tem alguém do outro lado — nos dois casos insistir no
- * convite é pior do que abrir a porta.
+ * São DOIS degraus, e depois deles a conversa encerra (ENCERRAR_CURIOSO). Contando a
+ * saudação, são quatro mensagens no total — o limite que a v2 fixou para quem não
+ * responde. Insistir além disso é o que faz alguém bloquear o número.
  */
 const RECONVITE: Record<Fala, string>[] = [
   {
@@ -366,11 +448,6 @@ const RECONVITE: Record<Fala, string>[] = [
     pt: "Fica à vontade para me escrever quando quiser. Se preferir falar direto com uma pessoa do time, é só me dizer.",
     es: "Escríbeme cuando quieras, sin problema. Si prefieres hablar directo con alguien del equipo, solo dímelo.",
     en: "Write whenever you're ready. If you'd rather speak to someone from the team directly, just say so.",
-  },
-  {
-    pt: "Sem pressa nenhuma. Quer que eu peça para alguém do time falar com você por aqui?",
-    es: "Sin ninguna prisa. ¿Quieres que le pida a alguien del equipo que hable contigo por aquí?",
-    en: "No rush at all. Would you like me to ask someone from the team to speak with you here?",
   },
 ];
 
@@ -385,15 +462,25 @@ const PEDE_PROCEDIMENTO =
   /\b(quais|que|qual)\s+(?:s[ãa]o\s+)?(?:os\s+|as\s+|o\s+|a\s+)?(documento|papel|papeis|pap[ée]is|requisito|exig[êe]ncia|taxa|formul[áa]rio|passo)|\b(lista de documentos|o que (?:eu )?preciso (?:levar|apresentar|ter)|preciso de quais|qu[ée] documentos|what documents|which documents|documentos necesito|requisitos)\b/i;
 
 const NAO_TENHO_ESSA: Record<Fala, string> = {
-  pt:
-    "Essa lista muda conforme o caso — o vínculo, como você entrou, o documento que você tem hoje — e eu não posso te passar uma versão pela metade, porque você ia se organizar em cima dela. " +
-    "Quem confirma isso é o time jurídico. Quer que eu peça para eles falarem com você?",
-  es:
-    "Esa lista cambia según el caso — el vínculo, cómo entraste, el documento que tienes hoy — y no puedo pasarte una versión a medias, porque te organizarías con base en ella. " +
-    "Quien lo confirma es el equipo jurídico. ¿Quieres que les pida que hablen contigo?",
-  en:
-    "That list changes with the case — the relationship, how you entered, the document you hold today — and I won't give you half of it, because you'd plan around it. " +
-    "The legal team is who confirms it. Would you like me to ask them to contact you?",
+  pt: "Essa lista muda conforme o caso — o vínculo, como você entrou, o documento que você tem hoje. Quem monta isso direito é o advogado.",
+  es: "Esa lista cambia según el caso — el vínculo, cómo entraste, el documento que tienes hoy. Quien lo arma bien es el abogado.",
+  en: "That list changes with the case — the relationship, how you entered, the document you hold today. It's the lawyer who puts it together properly.",
+};
+
+/**
+ * A INSISTÊNCIA. "Só me diz quais documentos", "me manda a lista".
+ *
+ * A postura não se dobra por insistência, mas o tom não endurece. A segunda resposta diz o
+ * PORQUÊ — passar metade da lista faria a pessoa se planejar em cima de informação errada
+ * — e volta para a pergunta que faltava.
+ */
+const INSISTE_NO_PROCEDIMENTO =
+  /\b(s[óo] me diz|so me diz|me diz s[óo]|me manda a lista|manda a lista|me passa a lista|por favor,? (?:me )?(?:diz|fala|manda)|s[óo] (?:uma )?ideia|pelo menos|ao menos|d[áa] para adiantar|s[óo]lo dime|dime nada m[áa]s|just tell me|at least tell)\b/i;
+
+const AINDA_ASSIM_NAO: Record<Fala, string> = {
+  pt: "Eu entendo, de verdade — e é justamente por isso que não passo pela metade: você ia se organizar em cima de uma informação que pode não valer para o seu caso, e aí o prejuízo é seu.",
+  es: "Te entiendo de verdad — y justo por eso no la paso a medias: te organizarías con base en una información que puede no valer para tu caso, y el perjuicio sería tuyo.",
+  en: "I do understand — and that's exactly why I won't give you half of it: you'd plan around something that may not apply to your case, and you'd be the one paying for it.",
 };
 
 function isConfidentialAsk(text: string, termos: string[]): boolean {
@@ -420,17 +507,21 @@ export async function runFallback({
     .filter((h) => h.role === "user")
     .map((h) => h.content)
     .join("  ");
+  const mensagensDaPessoa = history.filter((h) => h.role === "user").map((h) => h.content);
   const jaDisseAlgo = history.filter((h) => h.role === "assistant").map((h) => h.content);
   const primeiraMensagem = jaDisseAlgo.length === 0;
 
-  // O DOSSIÊ manda na resposta. Ele já foi preenchido neste turno pelo respondToConversation
-  // (lib/agent/triagem.ts), então "eu estou fora" na mensagem anterior já está gravado como
-  // região — e a pergunta sobre onde a pessoa está não se repete.
-  const [lead, conv] = await Promise.all([
-    repo.getLeadByConversation(conversationId).catch(() => null),
-    repo.getConversation(conversationId).catch(() => null),
-  ]);
-  const fala = falaDe(idiomaEfetivo(lastRaw, conv?.idioma));
+  // O CASO, lido da conversa inteira a cada turno. É ele que decide qual das 8 perguntas
+  // vem agora — e não uma posição guardada em lugar nenhum, que sairia de sincronia com o
+  // que a pessoa já contou.
+  const caso = lerCaso(allUserText);
+  const semNovidade = turnosSemNovidade(mensagensDaPessoa);
+
+  // O idioma já gravado no contato é a rede para quando a mensagem de agora for curta
+  // demais para identificar ("ok", "sim") — quem escreveu quatro mensagens em espanhol
+  // continua sendo atendido em espanhol.
+  const conv = await repo.getConversation(conversationId).catch(() => null);
+  const fala = falaDe(idiomaDaConversa(lastRaw, allUserText, conv?.idioma));
 
   // Objeções, guardrails e regras de encaminhamento vêm do painel (/dashboard/treinar).
   // Uma leitura por turno: o caminho sem LLM responde com o que a equipe editou, e não
@@ -466,10 +557,16 @@ export async function runFallback({
     // eles falarem com você?"), emendar a pergunta da triagem manda duas de uma vez, que
     // é exatamente o que faz a conversa parecer formulário.
     if (texto.trim().endsWith("?")) return { reply: texto, toolCalls };
-    return { reply: `${texto}\n\n${proximaPergunta(lead, fala, jaDisseAlgo)}`, toolCalls };
+    return { reply: `${texto}\n\n${proximaPergunta(caso, fala, jaDisseAlgo)}`, toolCalls };
   };
 
-  // ─── 1) GUARDRAIL: honorários e o que mais a equipe marcou como confidencial ───
+  // ─── 1) NÃO TEM COMO PAGAR ───
+  // Antes de qualquer triagem. Continuar perguntando a quem já disse que não pode pagar é
+  // levantar dados de alguém que a gente não vai atender — e ela precisa do endereço certo
+  // agora, não no fim do questionário.
+  if (caso.semCondicoes) return { reply: DPU[fala], toolCalls };
+
+  // ─── 2) GUARDRAIL: honorários e o que mais a equipe marcou como confidencial ───
   if (isConfidentialAsk(lastRaw, training.guardrails.termos)) {
     return encaminhar("honorarios_e_contratacao", CONFIDENCIAL[fala]);
   }
@@ -527,29 +624,51 @@ export async function runFallback({
     return { reply: O_QUE_FAZEMOS[fala], toolCalls };
   }
 
-  // ─── 12) "O que é refúgio?" — explica em uma linha e segue ───
+  // ─── 12) "O que é refúgio?" — UMA frase e devolve a pergunta ───
+  // É a postura da v2: responde curto e volta para a situação específica dela. Nunca a
+  // explicação sozinha, que transformaria o atendimento numa aula.
   if (explicacao) {
-    return { reply: `${explicacao}\n\n${proximaPergunta(lead, fala, jaDisseAlgo)}`, toolCalls };
+    return { reply: `${explicacao}\n\n${proximaPergunta(caso, fala, jaDisseAlgo)}`, toolCalls };
   }
 
-  // ─── 13) Pediu documento, requisito ou prazo — diga que não tem ───
-  // "Não tenho essa informação, mas o time jurídico tem" é uma resposta COMPLETA aqui.
-  // Inventar é o único erro grave que existe neste atendimento.
-  if (PEDE_PROCEDIMENTO.test(lastRaw)) {
-    return { reply: NAO_TENHO_ESSA[fala], toolCalls };
+  // ─── 13) Pediu documento, requisito ou prazo — não entrega, e devolve a pergunta ───
+  // "Não tenho essa informação" é resposta COMPLETA aqui. Entregar lista ou passo a passo é
+  // trabalho do advogado; inventar é o único erro grave que existe neste atendimento.
+  if (PEDE_PROCEDIMENTO.test(lastRaw) || INSISTE_NO_PROCEDIMENTO.test(lastRaw)) {
+    const jaRecusou = jaDisseAlgo.some((d) => d.includes(NAO_TENHO_ESSA[fala].slice(0, 30)));
+    const jaExplicou = jaDisseAlgo.some((d) => d.includes(AINDA_ASSIM_NAO[fala].slice(0, 30)));
+    // TERCEIRA INSISTÊNCIA: ela já ouviu a recusa e o porquê, e não respondeu nenhuma das
+    // perguntas no meio. É a regra da v2 — quem não responde duas perguntas seguidas quer
+    // informação, não atendimento. Repetir uma terceira vez só faz a rede anti-repetição
+    // disparar e a Ana pedir desculpa por um impasse que não é dela.
+    if (jaExplicou) return { reply: ENCERRAR_CURIOSO[fala], toolCalls };
+    // Se ela já ouviu a recusa uma vez e insistiu, a segunda diz o PORQUÊ — sem endurecer.
+    const texto = jaRecusou ? AINDA_ASSIM_NAO[fala] : NAO_TENHO_ESSA[fala];
+    return { reply: `${texto}\n\n${proximaPergunta(caso, fala, jaDisseAlgo)}`, toolCalls };
   }
 
-  // ─── 14) Mensagem sem conteúdo: reconvida, NÃO avança a qualificação ───
+  // ─── 14) Mensagem sem conteúdo: reconvida e, se persistir, ENCERRA ───
+  // "Se a pessoa não responder duas perguntas seguidas, ela provavelmente só quer
+  // informação. Encerre com cortesia." Dois reconvites e o encerramento: quatro mensagens
+  // no total, contando a saudação.
   if (mensagemSemConteudo(lastRaw)) {
     const jaReconvidou = RECONVITE.filter((r) =>
       jaDisseAlgo.some((d) => d.includes(r[fala].slice(0, 28))),
     ).length;
-    const escolhido = RECONVITE[Math.min(jaReconvidou, RECONVITE.length - 1)];
-    return { reply: escolhido[fala], toolCalls };
+    if (jaReconvidou >= RECONVITE.length) return { reply: ENCERRAR_CURIOSO[fala], toolCalls };
+    return { reply: RECONVITE[jaReconvidou][fala], toolCalls };
   }
 
-  // ─── 15) A próxima coisa que ainda não se sabe ───
-  return { reply: proximaPergunta(lead, fala, jaDisseAlgo), toolCalls };
+  // ─── 15) Duas respostas seguidas sem nada de caso — é curioso, não atendimento ───
+  // Vale para quem responde frases inteiras que não dizem nada do caso ("tá, entendi",
+  // "legal, e aí?"). Insistir com essa pessoa é o que faz alguém bloquear o número.
+  const jaEncerrou = jaDisseAlgo.some((d) => d.includes(ENCERRAR_CURIOSO[fala].slice(0, 30)));
+  if (semNovidade >= 2 && jaDisseAlgo.length >= 2 && !jaEncerrou) {
+    return { reply: ENCERRAR_CURIOSO[fala], toolCalls };
+  }
+
+  // ─── 16) A próxima coisa que ainda não se sabe ───
+  return { reply: proximaPergunta(caso, fala, jaDisseAlgo), toolCalls };
 }
 
 /**
@@ -557,14 +676,32 @@ export async function runFallback({
  * foi feita. É o que impede a repetição: se a pessoa respondeu algo que a heurística não
  * conseguiu ler, a pergunta não volta; a conversa segue para a seguinte.
  */
-function proximaPergunta(lead: Lead | null, fala: Fala, jaDisseAlgo: string[]): string {
+function proximaPergunta(caso: CasoTriagem, fala: Fala, jaDisseAlgo: string[]): string {
   const jaPerguntou = (p: Passo) => jaDisseAlgo.some((r) => p.marca.test(r));
-  const pendente = PASSOS.filter((p) => p.campo(lead));
-
-  const nova = pendente.find((p) => !jaPerguntou(p));
+  const nova = PASSOS.filter((p) => p.falta(caso)).find((p) => !jaPerguntou(p));
   if (nova) return nova.pergunta[fala];
 
   // Ou não falta nada, ou tudo o que falta já foi perguntado uma vez e não veio resposta
   // legível. Nos dois casos insistir é que seria o erro: quem decide daqui é uma pessoa.
   return OFERECER_TIME[fala];
+}
+
+/**
+ * Quantas mensagens seguidas da pessoa não acrescentaram NADA ao caso.
+ *
+ * É como o "não respondeu duas perguntas seguidas" do prompt vira número. A conta é feita
+ * relendo o caso a cada prefixo da conversa: se ler as N primeiras mensagens dá o mesmo
+ * caso que ler as N-1, aquela mensagem não trouxe nada. Não depende de guardar estado, e
+ * por isso não sai de sincronia quando a pessoa responde três coisas de uma vez.
+ */
+function turnosSemNovidade(mensagensDaPessoa: string[]): number {
+  const assinatura = (t: string) => JSON.stringify(lerCaso(t));
+  let contagem = 0;
+  for (let i = mensagensDaPessoa.length; i > 0; i--) {
+    const ate = mensagensDaPessoa.slice(0, i).join("  ");
+    const antes = mensagensDaPessoa.slice(0, i - 1).join("  ");
+    if (assinatura(ate) !== assinatura(antes)) break;
+    contagem++;
+  }
+  return contagem;
 }

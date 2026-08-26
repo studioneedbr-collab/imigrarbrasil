@@ -6,7 +6,9 @@ const MAX_TOOL_ITERATIONS = 6;
 
 // Vai como PRIMEIRA linha do system prompt: mata o vazamento de raciocínio interno na
 // resposta ao cliente (ex.: "já calculei", "vou apresentar o valor", "seguindo o fluxo").
-const ABSOLUTE_RULE =
+// Exportado para o dump do prompt (tests/_prompt.manual.ts) — o que se testa no chat do
+// DeepSeek tem que ser exatamente o que o app manda, incluindo esta primeira linha.
+export const ABSOLUTE_RULE =
   "REGRA ABSOLUTA 1 — IDIOMA: responda SEMPRE no idioma em que a pessoa escreveu, e mantenha esse idioma até o fim da conversa, mesmo que o material de apoio esteja em português. Nunca comente o idioma dela nem diga que está traduzindo.\n" +
   "REGRA ABSOLUTA 2: nunca exponha seu raciocínio interno na resposta. Nunca escreva o que você 'vai fazer' ou 'já fez'. Simplesmente faça e responda de forma natural. Frases como 'vou verificar', 'já tenho os dados', 'seguindo o fluxo' NUNCA devem aparecer na mensagem enviada. A resposta é SÓ o que a pessoa leria no WhatsApp.";
 
