@@ -101,10 +101,103 @@ describe("o prompt segura o agente do lado certo da linha", () => {
     expect(prompt).toMatch(/nunca peça foto de documento|NUNCA peça foto de documento/i);
   });
 
+  // O QUE O TESTE REAL DE 26/08/2026 PEGOU.
+  //
+  // Num atendimento inteiro no chat, o agente cumpriu quase tudo e vazou em três pontos:
+  // disse em que via a pessoa se enquadrava ("Bolívia faz parte do Mercosul... é uma das
+  // vias mais diretas"), afirmou ONDE se faz ("solicitar o visto no consulado") e disse a
+  // ORDEM ("o primeiro passo é regularizar"). Nada disso foi pedido — caiu sozinho no meio
+  // de frases gentis, que é justamente o modo de falha que os exemplos não cobriam.
+  describe("a linha que o agente não cruza", () => {
+    it("separa O QUE um caminho é de COMO/ONDE/EM QUE ORDEM se faz", () => {
+      expect(prompt).toContain("A LINHA QUE VOCÊ NÃO CRUZA");
+      expect(prompt).toMatch(/isso é ONDE/);
+      expect(prompt).toMatch(/isso é EM QUE ORDEM/);
+      expect(prompt).toMatch(/isso é ENQUADRAMENTO/);
+    });
+
+    it("nomeia a conveniência — e não só a insistência — como a armadilha", () => {
+      expect(prompt).toMatch(/A ARMADILHA É A CONVENIÊNCIA/i);
+      expect(prompt).toMatch(/ningu[ée]m pediu/i);
+    });
+
+    it("manda usar a nacionalidade para perguntar, não para explicar", () => {
+      expect(prompt).toMatch(/NACIONALIDADE É PARA PERGUNTAR, NÃO PARA EXPLICAR/i);
+      // E o exemplo do caso que vazou está lá, com o nome do país.
+      expect(prompt).toMatch(/sou da Bol[íi]via/i);
+    });
+
+    it("tem uma checagem explícita antes de enviar", () => {
+      expect(prompt).toMatch(/TEM PROCEDIMENTO NA MINHA RESPOSTA\?/);
+    });
+
+    it("proíbe nominalmente os três vazamentos na lista do NUNCA", () => {
+      expect(prompt).toMatch(/Diga ONDE se faz/);
+      expect(prompt).toMatch(/Diga EM QUE ORDEM/);
+      expect(prompt).toMatch(/Diga EM QUE VIA a pessoa se enquadra/);
+      expect(prompt).toMatch(/Ofereça procedimento que ninguém pediu/);
+    });
+
+    it("trata o elogio automático como vício de robô", () => {
+      expect(prompt).toMatch(/ELOGIO AUTOMÁTICO/i);
+    });
+
+    // A cartilha de regularização é explícita: quem entrou sem passar pelo controle
+    // migratório e se apresenta à PF recebe multa E notificação de saída, e fica impedido
+    // de pedir refúgio ou residência pela via comum. Mandar alguém "ir à Polícia Federal"
+    // parece inofensivo e pode ser o pior conselho da vida da pessoa.
+    it("justifica a proibição de dizer ONDE com a consequência real", () => {
+      expect(prompt).toMatch(/NOTIFICAÇÃO DE SAÍDA DO PAÍS/);
+      expect(prompt).toMatch(/nem PF, nem consulado, nem CONARE/i);
+    });
+  });
+
+  // O TESTE EM ESPANHOL DE 26/08/2026: a conversa correu em espanhol e, na sexta
+  // mensagem, o agente escorregou para o português — sem a pessoa ter pedido nada. É o
+  // modo de falha do prompt estar todo escrito em português.
+  describe("a regra de idioma se defende do próprio prompt", () => {
+    it("avisa que o português do documento não é instrução de idioma", () => {
+      expect(prompt).toMatch(/ESTE PROMPT ESTÁ ESCRITO EM PORTUGUÊS\. ISSO NÃO É UMA INSTRUÇÃO DE IDIOMA/);
+    });
+
+    it("manda conferir o idioma antes de enviar", () => {
+      expect(prompt).toMatch(/ANTES DE ENVIAR, releia a sua mensagem e confirme: está no idioma dela/);
+    });
+
+    it("impede que um 'ok' curto reabra a decisão de idioma", () => {
+      expect(prompt).toMatch(/NÃO reabre a decisão de idioma/);
+    });
+  });
+
+  // Vieram das cartilhas oficiais, não de suposição: são as distinções que mudam a
+  // conduta da triagem.
+  describe("o que as cartilhas ensinaram à triagem", () => {
+    it("separa ter o documento de ter o documento EM MÃOS", () => {
+      expect(prompt).toMatch(/TER NÃO É TER EM MÃOS/);
+    });
+
+    it("sabe que existem quatro prazos diferentes", () => {
+      expect(prompt).toMatch(/prazo de validade do visto, prazo para registro, prazo de estada ou prazo de residência/);
+    });
+
+    it("reconhece o vocabulário que a pessoa usa de verdade", () => {
+      expect(prompt).toMatch(/\bRNE\b/); // nome antigo do CRNM, ainda em uso
+      expect(prompt).toMatch(/\bRER\b/); // o que a pessoa chama de "protocolo"
+      expect(prompt).toMatch(/Trocha|trocha/); // entrada por passagem não controlada
+      expect(prompt).toMatch(/Chamante|chamante/); // reunião familiar
+    });
+
+    it("escala quem é refugiado e fala em viajar", () => {
+      expect(prompt).toMatch(/refugiado_quer_viajar/);
+    });
+  });
+
   it("não sobrou nada do atendimento comercial herdado", () => {
     expect(prompt).not.toMatch(/Shayene|Shine Rio/);
     expect(prompt).not.toMatch(/proposta em PDF|gerar_proposta_pdf|calcular_preco_servico/);
-    expect(prompt).not.toMatch(/posto|CCT|conven[çc][ãa]o coletiva/i);
+    // "posto" no sentido comercial (posto de trabalho, N postos). "Posto de fronteira" é
+    // vocabulário legítimo da triagem v2 — é onde a pessoa entra no país.
+    expect(prompt).not.toMatch(/posto de (?:trabalho|servi[çc]o)|\d+ postos?\b|CCT|conven[çc][ãa]o coletiva/i);
     // "CNPJ" só pode aparecer na lista do que o agente NÃO tem para informar.
     for (const linha of prompt.split("\n").filter((l) => l.includes("CNPJ"))) {
       expect(linha).toMatch(/DADOS QUE VOCÊ NÃO TEM/);

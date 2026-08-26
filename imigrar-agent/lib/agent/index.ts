@@ -9,7 +9,7 @@ import { avaliarTransferencia } from "@/lib/agent/transfer-gate";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
-import { buildIdiomaBlock, detectarIdioma, registrarIdioma } from "@/lib/agent/idioma";
+import { buildIdiomaBlock, idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -191,7 +191,10 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // e mandou só "ok" agora continua sendo atendido em espanhol, e o material oficial que
   // chega no prompt está todo em português. O idioma fica gravado no contato — é o mesmo
   // dado que o follow-up automático e o atendente humano do painel usam.
-  const idiomaDetectado = detectarIdioma(lastUserText);
+  // A conversa inteira, e não só a última mensagem: no WhatsApp quase toda mensagem é
+  // curta demais para o detector decidir sozinha, e uma conversa inteira em espanhol
+  // acabava atendida em português. Ver `idiomaDaConversa`.
+  const idiomaDetectado = idiomaDaConversa(lastUserText, allUserText, convBefore?.idioma);
   systemPrompt += buildIdiomaBlock(idiomaDetectado ?? convBefore?.idioma);
   if (idiomaDetectado) await registrarIdioma(conversationId, idiomaDetectado);
 
@@ -362,6 +365,19 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     console.error("[agent] status (resposta) falhou:", err instanceof Error ? err.message : err);
   }
   const conv = await repo.getConversation(conversationId);
+
+  // A FICHA DA TRIAGEM MORA NO LEAD, não em `notes`.
+  //
+  // Havia aqui um segundo classificador, que montava a ficha como texto e a escrevia em
+  // `notes`. Ele era a solução de quem não tinha coluna para guardar o caso; agora existe
+  // o modelo estruturado (migration 019) e ele é preenchido por `capturarDadosDoLead`,
+  // logo no começo deste mesmo turno.
+  //
+  // Manter os dois era pior do que escolher: duas classificações da mesma conversa,
+  // calculadas por regras diferentes, aparecendo lado a lado no painel — e a antiga
+  // devolvia CURIOSO, DPU e FORA_ESCOPO por regex, que é justamente o que
+  // lib/agent/classificacao.ts proíbe. Filtrar alguém por expressão regular descarta em
+  // silêncio quem precisava de ajuda, e o prejuízo não aparece em métrica nenhuma.
 
   // Lead score + funil: computa o score e persiste na CONVERSA (antes ficava sempre 0
   // na lista de Conversas) e move o contato no Kanban para 'qualificado' quando o score

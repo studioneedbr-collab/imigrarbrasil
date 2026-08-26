@@ -236,6 +236,20 @@ export function mensagemSemConteudo(texto: string): boolean {
   return false;
 }
 
+/**
+ * NÚMERO DE DOCUMENTO NÃO É GRAVADO.
+ *
+ * Vários campos do contato guardam a FRASE da pessoa — como ela entrou, o que ela tem
+ * hoje, o trecho que levantou o sinal de prazo. Essa frase às vezes traz o CPF que ela
+ * mandou por conta própria, sem ninguém pedir.
+ *
+ * A regra do atendimento é não transcrever esse número, e ela não pode valer só dentro da
+ * conversa: daqui o número iria para a ficha, para o resumo da fila e para a exportação.
+ */
+export function semNumeroDeDocumento(texto: string): string {
+  return (texto ?? "").replace(/\d[\d.\-/\s]{5,}\d/g, "[número omitido]");
+}
+
 function titleCase(s: string): string {
   return s
     .replace(/\s+/g, " ")
@@ -243,6 +257,179 @@ function titleCase(s: string): string {
     .split(" ")
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   O CASO, COMO O ADVOGADO PRECISA LER
+   ══════════════════════════════════════════════════════════════════════════
+
+   A v1 deste agente coletava quatro coisas: nacionalidade, onde a pessoa está,
+   o que ela quer e se há prazo. Era o suficiente para INFORMAR.
+
+   A v2 é triagem, não informação. O que o advogado precisa antes de pegar o caso é
+   outra coisa: COMO a pessoa entrou (e se passou pelo controle migratório), QUE
+   documentos ela tem do país de origem, se há VÍNCULO familiar no Brasil, se já
+   existe documento brasileiro, e se há alguma DECISÃO NEGATIVA com prazo correndo.
+   São essas cinco que decidem a via e a urgência — e nenhuma delas era lida.        */
+
+/** Passou pelo controle migratório na entrada? É o que separa uma via administrativa
+ *  simples de um caso que precisa de advogado desde o primeiro dia. */
+export type Entrada = "com_controle" | "sem_controle";
+
+export interface CasoTriagem {
+  nacionalidade?: string;
+  ondeEsta?: string;
+  entrada?: Entrada;
+  /** Como ela contou a entrada, com as palavras dela. */
+  entradaRelato?: string;
+  /** Documentos do país de origem que ela mencionou ter ou não ter. */
+  passaporte?: "valido" | "vencido" | "nao_tem";
+  certidaoNascimento?: boolean;
+  antecedentes?: boolean;
+  /** Vínculo familiar no Brasil, como ela contou. */
+  vinculoFamiliar?: string;
+  /** Documentos brasileiros que ela já tem (CRNM, protocolo, DPRNM, CPF). */
+  documentosBrasileiros: string[];
+  /** Multa, notificação de saída, indeferimento — o que faz o prazo correr. */
+  decisaoNegativa?: string;
+  objetivo?: string[];
+  prazo?: "immediate" | "short" | "medium" | "long";
+  /** Disse que não tem condições de pagar. */
+  semCondicoes?: boolean;
+  /** Criança ou adolescente no caso, sem os dois pais. */
+  menorEnvolvido?: boolean;
+  /** A Polícia Federal recusou documento ou negou isenção. */
+  recusaPf?: boolean;
+}
+
+// ── Entrada e controle migratório ───────────────────────────────────────────
+const ENTRADA_COM_CONTROLE =
+  /\b(entrei|cheguei|vim|passei)\b[^.]{0,40}\b(aeroporto|voo|avi[ãa]o|posto de fronteira|controle migrat[óo]rio|pol[íi]cia federal na entrada|carimb(?:o|ei|aram))\b|\b(tenho|tem|tinha) carimbo\b|\bcarimb(?:aram|ou) (?:o )?meu passaporte\b/i;
+const ENTRADA_SEM_CONTROLE =
+  /\b(entrei|cheguei|vim|passei|atravessei|cruzei)\b[^.]{0,45}\b(sem passar|sem carimbo|sem controle|sem registro|por (?:um )?(?:atalho|trilha|mata|rio)|escondid|clandestin|por baixo|irregularmente|a p[ée] pela fronteira)\b|\bn[ãa]o (?:passei|fui)\b[^.]{0,20}\b(controle|pol[íi]cia federal|imigra[çc][ãa]o)\b|\bn[ãa]o tenho carimbo\b|\bsem carimbo (?:de )?entrada\b/i;
+
+export function detectarEntrada(texto: string): Entrada | undefined {
+  // O "sem controle" vem primeiro: "entrei pela fronteira sem passar pelo controle"
+  // contém as duas coisas, e a que decide o caso é a ausência do registro.
+  if (ENTRADA_SEM_CONTROLE.test(texto)) return "sem_controle";
+  if (ENTRADA_COM_CONTROLE.test(texto)) return "com_controle";
+  return undefined;
+}
+
+// ── Documentos do país de origem ────────────────────────────────────────────
+const PASSAPORTE_VENCIDO =
+  /\b(passaporte|pasaporte|passport)\b[^.]{0,25}\b(venceu|vencid[oa]|expirou|expirad[oa]|expired|caduc)\b|\b(venceu|vencid[oa])\b[^.]{0,15}\bpassaporte\b/i;
+const PASSAPORTE_NAO_TEM =
+  /\b(n[ãa]o tenho|sem|perdi|roubaram|no tengo|don'?t have|lost)\b[^.]{0,20}\b(passaporte|pasaporte|passport)\b/i;
+const PASSAPORTE_TEM =
+  /\b(tenho|tengo|i have)\b[^.]{0,20}\b(passaporte|pasaporte|passport)\b[^.]{0,20}\b(v[áa]lido|valid|em dia)\b|\bmeu passaporte (?:est[áa] )?(?:v[áa]lido|em dia)\b/i;
+
+const CERTIDAO = /\b(certid[ãa]o de nascimento|acta de nacimiento|partida de nacimiento|birth certificate)\b/i;
+const ANTECEDENTES =
+  /\b(antecedentes criminais|antecedentes penales|certificado de antecedentes|criminal record|police clearance|folha corrida)\b/i;
+const NEGATIVA = /\b(n[ãa]o tenho|sem|n[ãa]o consigo|no tengo|don'?t have|nunca tirei|perdi)\b/i;
+
+// ── Vínculo familiar no Brasil ──────────────────────────────────────────────
+const VINCULO =
+  /\b(filh[oa]s?|esposa|esposo|marido|mulher|c[ôo]njuge|companheir[oa]|m[ãa]e|pai|irm[ãa]os?|neto|av[óo])\b[^.]{0,40}\b(brasileir[oa]s?|nascid[oa] (?:aqui|no brasil)|tem (?:crnm|resid[êe]ncia)|com resid[êe]ncia|mora (?:aqui|no brasil)|[ée] daqui)\b|\b(sou )?casad[oa] com (?:um[a]? )?brasileir/i;
+
+// ── Documentos brasileiros que já tem ───────────────────────────────────────
+const DOCS_BR: Array<[RegExp, string]> = [
+  [/\bcrnm\b/i, "CRNM"],
+  [/\bdprnm\b/i, "DPRNM"],
+  [/\bprotocolo\b/i, "Protocolo"],
+  [/\bcpf\b/i, "CPF"],
+  [/\brnm\b/i, "RNM"],
+  [/\bcarteira de trabalho|ctps\b/i, "CTPS"],
+];
+
+// ── Decisão negativa / prazo correndo ───────────────────────────────────────
+const DECISAO_NEGATIVA: Array<[RegExp, string]> = [
+  [/\bmulta\b[^.]{0,30}\b(migrat[óo]ri|pol[íi]cia federal|pf|estada|perman[êe]ncia)\b|\brecebi uma multa\b|\bfui multad/i, "Multa migratória notificada"],
+  [/\bnotifica[çc][ãa]o de sa[íi]da|notificad[oa] (?:a|para) (?:sair|deixar o pa[íi]s)|ordem de sa[íi]da\b/i, "Notificação de saída do país"],
+  [/\bindefer|negad[oa]|negaram|recusad[oa]|denied|rechazad/i, "Pedido indeferido"],
+  [/\bexig[êe]ncia\b|\bnotifica[çc][ãa]o\b|\bintima[çc][ãa]o\b/i, "Exigência/notificação recebida"],
+];
+
+// ── A Polícia Federal recusou algo ──────────────────────────────────────────
+const RECUSA_PF =
+  /\b(pol[íi]cia federal|pf|delegacia)\b[^.]{0,45}\b(recusou|n[ãa]o aceitou|negou|n[ãa]o quis|devolveu|mandou voltar)\b|\bnegaram (?:a )?isen[çc][ãa]o\b|\bn[ãa]o aceitaram (?:meus? )?documento/i;
+
+// ── Criança ou adolescente ──────────────────────────────────────────────────
+const MENOR =
+  /\b(meu |minha )?(filh[oa]|crian[çc]a|menor|adolescente|beb[êe]|neném|nen[êe])\b[^.]{0,45}\b(sozinh[oa]|desacompanhad[oa]|sem (?:o )?pai|sem (?:a )?m[ãa]e|s[óo] comigo|s[óo] eu)\b|\b(crian[çc]a|menor|adolescente) desacompanhad/i;
+
+// ── Sem condições de pagar ──────────────────────────────────────────────────
+const SEM_CONDICOES =
+  /\b(n[ãa]o tenho (?:dinheiro|condi[çc][õo]es|como pagar)|n[ãa]o posso pagar|sem dinheiro|sem condi[çc][õo]es|muito caro para mim|n[ãa]o tenho grana|estou desempregad[oa] e n[ãa]o|baixa renda|hipossuficien|no tengo dinero|no puedo pagar|i can'?t afford|no money)\b/i;
+
+/**
+ * A ORIENTAÇÃO TÉCNICA POR NACIONALIDADE. Serve para DIRECIONAR a pergunta, nunca para
+ * ser explicada à pessoa — dizer "você provavelmente se enquadra no Mercosul" é afirmar
+ * enquadramento, que é análise de caso e é do advogado.
+ */
+const MODALIDADE_POR_PAIS: Record<string, string> = {
+  Argentina: "Acordo Mercosul", Bolívia: "Acordo Mercosul", Chile: "Acordo Mercosul",
+  Colômbia: "Acordo Mercosul", Equador: "Acordo Mercosul", Paraguai: "Acordo Mercosul",
+  Peru: "Acordo Mercosul", Uruguai: "Acordo Mercosul",
+  Venezuela: "Política migratória", Suriname: "Política migratória", Guiana: "Política migratória",
+  Senegal: "Política migratória nacional",
+  Haiti: "Acolhida humanitária", Afeganistão: "Acolhida humanitária", Síria: "Acolhida humanitária",
+};
+
+export function modalidadeProvavel(nacionalidade?: string): string | undefined {
+  if (!nacionalidade) return undefined;
+  return MODALIDADE_POR_PAIS[nacionalidade] ?? "A definir (família, estudo, trabalho ou refúgio)";
+}
+
+/** Lê o caso inteiro a partir de tudo que a pessoa escreveu na conversa. */
+export function lerCaso(textoDaConversa: string): CasoTriagem {
+  const t = textoDaConversa ?? "";
+  const slots = extractSlots(t);
+
+  const caso: CasoTriagem = {
+    nacionalidade: slots.nacionalidade,
+    ondeEsta: slots.ondeEsta,
+    objetivo: slots.caminhos,
+    prazo: slots.urgency,
+    documentosBrasileiros: [],
+  };
+
+  caso.entrada = detectarEntrada(t);
+  if (caso.entrada) caso.entradaRelato = slots.situacao;
+
+  if (PASSAPORTE_NAO_TEM.test(t)) caso.passaporte = "nao_tem";
+  else if (PASSAPORTE_VENCIDO.test(t)) caso.passaporte = "vencido";
+  else if (PASSAPORTE_TEM.test(t)) caso.passaporte = "valido";
+
+  // "não tenho certidão de nascimento" e "tenho a certidão" são fatos opostos, e o que
+  // interessa ao advogado é justamente qual dos dois.
+  if (CERTIDAO.test(t)) caso.certidaoNascimento = !frasePerto(t, CERTIDAO, NEGATIVA);
+  if (ANTECEDENTES.test(t)) caso.antecedentes = !frasePerto(t, ANTECEDENTES, NEGATIVA);
+
+  const vinculo = t.match(VINCULO)?.[0];
+  if (vinculo) caso.vinculoFamiliar = vinculo.trim();
+
+  for (const [re, nome] of DOCS_BR) {
+    if (re.test(t) && !caso.documentosBrasileiros.includes(nome)) caso.documentosBrasileiros.push(nome);
+  }
+
+  for (const [re, rotulo] of DECISAO_NEGATIVA) {
+    if (re.test(t)) { caso.decisaoNegativa = rotulo; break; }
+  }
+
+  if (RECUSA_PF.test(t)) caso.recusaPf = true;
+  if (MENOR.test(t)) caso.menorEnvolvido = true;
+  if (SEM_CONDICOES.test(t)) caso.semCondicoes = true;
+
+  return caso;
+}
+
+/** A negação está na MESMA frase do termo? "Não tenho certidão" vs "tenho a certidão". */
+function frasePerto(texto: string, termo: RegExp, negacao: RegExp): boolean {
+  const frases = texto.split(/(?<=[.!?])\s+|\n+|\s{2,}/);
+  const frase = frases.find((f) => termo.test(f));
+  return frase ? negacao.test(frase) : false;
 }
 
 export function extractSlots(raw: string): TriagemSlots {
