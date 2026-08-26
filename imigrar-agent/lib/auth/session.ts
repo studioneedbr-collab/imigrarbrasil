@@ -1,5 +1,75 @@
-import { SignJWT, jwtVerify } from "jose";
 import { normalizarPapel, type Papel } from "@/lib/auth/papeis";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POR QUE ESTE ARQUIVO NÃO USA UMA BIBLIOTECA DE JWT
+//
+// Usava a `jose`, e o deploy quebrava na Vercel:
+//
+//   The Edge Function "middleware" is referencing unsupported modules:
+//     @/lib/auth/session, @/lib/auth/public-paths
+//
+// O middleware é a única porta de autenticação do sistema e roda no Edge Runtime.
+// A `jose` traz, pelo barrel, o caminho de JWE que toca CompressionStream — o
+// bundler do Edge recusa, e aí NADA sobe: não é o login que fica capenga, é o
+// deploy inteiro que não acontece.
+//
+// HS256 é HMAC-SHA-256 com base64url em volta. A Web Crypto faz isso nativamente,
+// igual no Edge e no Node, sem dependência nenhuma. Trinta linhas de código que a
+// gente controla valem mais do que uma dependência que decide se o produto sobe.
+//
+// O que continua garantido, e está coberto por teste (tests/security.test.ts):
+// algoritmo fixo em HS256 (token forjado com "alg":"none" é recusado), assinatura
+// conferida antes de qualquer leitura do conteúdo, e expiração respeitada.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const enc = new TextEncoder();
+
+function base64urlFromBytes(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64urlFromString(texto: string): string {
+  return base64urlFromBytes(enc.encode(texto));
+}
+
+function stringFromBase64url(b64: string): string {
+  const padded = b64.replace(/-/g, "+").replace(/_/g, "/").padEnd(
+    b64.length + ((4 - (b64.length % 4)) % 4),
+    "=",
+  );
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function bytesFromBase64url(b64: string): ArrayBuffer {
+  const padded = b64.replace(/-/g, "+").replace(/_/g, "/").padEnd(
+    b64.length + ((4 - (b64.length % 4)) % 4),
+    "=",
+  );
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  // ArrayBuffer e não Uint8Array: é o que a Web Crypto aceita sem ambiguidade de tipo
+  // entre os runtimes (o Uint8Array pode estar sobre um SharedArrayBuffer).
+  return bytes.buffer;
+}
+
+async function chaveHmac(): Promise<CryptoKey> {
+  // O segredo sai como Uint8Array; `.slice()` devolve um ArrayBuffer limpo, que é o
+  // que a Web Crypto tipa como BufferSource em todo runtime.
+  const bruto = getSecret();
+  return crypto.subtle.importKey(
+    "raw",
+    bruto.buffer.slice(bruto.byteOffset, bruto.byteOffset + bruto.byteLength) as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
 
 // O nome do cookie era "shine_session", da base que originou este código. Trocar invalida
 // as sessões abertas — quem estiver logado faz login de novo, uma vez.
@@ -94,23 +164,50 @@ export function shouldRenew(session: { exp: number }, nowSeconds?: number): bool
 }
 
 export async function createSession(p: SessionPayload): Promise<string> {
-  return new SignJWT({ email: p.email, role: p.role })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(p.sub)
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_MAX_AGE_SECONDS}s`)
-    .sign(getSecret());
+  const agora = Math.floor(Date.now() / 1000);
+  const cabecalho = base64urlFromString(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const corpo = base64urlFromString(
+    JSON.stringify({
+      sub: p.sub,
+      email: p.email,
+      role: p.role,
+      iat: agora,
+      exp: agora + SESSION_MAX_AGE_SECONDS,
+    }),
+  );
+  const assinado = `${cabecalho}.${corpo}`;
+  const assinatura = await crypto.subtle.sign("HMAC", await chaveHmac(), enc.encode(assinado));
+  return `${assinado}.${base64urlFromBytes(new Uint8Array(assinatura))}`;
 }
 
 export async function verifySession(token: string): Promise<VerifiedSession | null> {
   try {
-    // `algorithms` fixo: sem isso, um token forjado com outro alg poderia ser
-    // aceito dependendo da configuração da lib.
-    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ["HS256"] });
+    const partes = token.split(".");
+    if (partes.length !== 3) return null;
+    const [cabecalho64, corpo64, assinatura64] = partes;
+
+    // ALGORITMO FIXO. Sem esta checagem, um token forjado com "alg":"none" — ou com
+    // qualquer outro algoritmo — poderia ser aceito. É a falha clássica de JWT.
+    const cabecalho = JSON.parse(stringFromBase64url(cabecalho64)) as { alg?: string };
+    if (cabecalho.alg !== "HS256") return null;
+
+    // A assinatura é conferida ANTES de olhar o conteúdo: `crypto.subtle.verify` faz a
+    // comparação em tempo constante, então não vaza informação por timing.
+    const valida = await crypto.subtle.verify(
+      "HMAC",
+      await chaveHmac(),
+      bytesFromBase64url(assinatura64),
+      enc.encode(`${cabecalho64}.${corpo64}`),
+    );
+    if (!valida) return null;
+
+    const payload = JSON.parse(stringFromBase64url(corpo64)) as Record<string, unknown>;
     if (!payload.sub || typeof payload.email !== "string") return null;
-    // jwtVerify já rejeita token expirado; o `exp` só desce daqui para o
-    // middleware decidir a renovação.
     if (typeof payload.exp !== "number") return null;
+    // Token expirado é token inválido. O `exp` também desce daqui para o middleware
+    // decidir se vale renovar o cookie.
+    if (payload.exp <= Math.floor(Date.now() / 1000)) return null;
+
     return {
       sub: String(payload.sub),
       email: payload.email,

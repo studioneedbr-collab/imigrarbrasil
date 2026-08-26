@@ -33,6 +33,13 @@ export async function GET() {
       tokenSet: Boolean(config.token),
       clientTokenSet: Boolean(config.clientToken),
     },
+    // O webhook é o caminho de ENTRADA: sem ele a Ana não recebe mensagem nenhuma, e
+    // o painel fica com cara de agente mudo. Aqui vai só se o segredo existe — o valor
+    // em si não desce para o navegador.
+    webhook: {
+      tokenSet: Boolean(process.env.WEBHOOK_VERIFY_TOKEN),
+      caminho: "/api/webhook/whatsapp",
+    },
   });
 }
 
