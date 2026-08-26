@@ -10,7 +10,10 @@ from pathlib import Path
 import texto as T
 
 RAIZ = Path(__file__).resolve().parent
-PDFS = RAIZ.parent
+# Os PDFs vivem em material-oficial/, na raiz do repositório. Ficaram soltos na raiz até
+# 26/08/2026, com nome de arquivo em caixa alta e espaço — o que obrigava a citar cada um
+# entre aspas em qualquer comando e escondia o resto da estrutura.
+PDFS = RAIZ.parent / "material-oficial"
 SAIDA = RAIZ / "out" / "paginas"
 
 

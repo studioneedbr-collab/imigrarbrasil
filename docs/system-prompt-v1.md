@@ -3,6 +3,12 @@
 > Versão 1.0 — para colar no system prompt do DeepSeek.
 > Ajustar os campos entre `{{ }}` antes de subir.
 
+**Este arquivo é referência histórica, não a fonte da verdade.** O prompt que o agente
+realmente usa é montado em código, a cada turno, em `imigrar-agent/lib/agent/knowledge.ts`
+(+ `system-prompt.ts` e `deepseek.ts`): ele carrega o material oficial recuperado, o que já
+se sabe do contato, o idioma detectado e os freios de encaminhamento. Editar o texto abaixo
+não muda o comportamento de ninguém.
+
 ---
 
 ```

@@ -1,0 +1,16 @@
+# Dependências e caches — nada disso vai para o repositório.
+node_modules/
+.next/
+out/
+__pycache__/
+
+# Segredos. As variáveis reais ficam na Vercel; o modelo delas está em
+# imigrar-agent/.env.example.
+.env
+.env.local
+.env*.local
+
+# Lixo do sistema de arquivos. O .DS_Store chegou a ser versionado uma vez —
+# é ruído em todo diff de quem usa macOS.
+.DS_Store
+Thumbs.db

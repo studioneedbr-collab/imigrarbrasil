@@ -103,7 +103,7 @@ compilação de legislação de fevereiro/2018.
 
 A base tem prazo de validade. Regra migratória muda por portaria e a atualização não é
 responsabilidade técnica — é do responsável do lado do cliente (item 8.3 da proposta).
-O ciclo é: trocar o PDF na raiz do projeto, ajustar `atualizado_em` em `fontes.json`,
+O ciclo é: trocar o PDF em `material-oficial/` (mesmo nome de arquivo), ajustar `atualizado_em` em `fontes.json`,
 rodar `extrair.py <fonte> && chunk.py <fonte> && embed_upsert.py --fonte <fonte>`.
 Os ids dos chunks são derivados do conteúdo, então o `upsert` substitui o que mudou —
 mas **chunks que sumiram do PDF novo continuam na base**. Ao trocar uma cartilha inteira,

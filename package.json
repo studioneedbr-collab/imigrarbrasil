@@ -1,0 +1,14 @@
+{
+  "name": "imigrarbrasil",
+  "private": true,
+  "description": "Raiz do repositório. A aplicação vive em imigrar-agent/ — estes scripts só encaminham para lá, porque digitar `npm run dev` na raiz é o reflexo de todo mundo.",
+  "scripts": {
+    "dev": "npm --prefix imigrar-agent run dev",
+    "build": "npm --prefix imigrar-agent run build",
+    "start": "npm --prefix imigrar-agent run start",
+    "test": "npm --prefix imigrar-agent run test",
+    "lint": "npm --prefix imigrar-agent run lint",
+    "typecheck": "npm --prefix imigrar-agent exec tsc -- --noEmit",
+    "setup": "npm --prefix imigrar-agent install"
+  }
+}

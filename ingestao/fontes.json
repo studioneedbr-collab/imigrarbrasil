@@ -7,7 +7,7 @@
   "fontes": [
     {
       "id": "regularizacao",
-      "arquivo": "CARTILHA DE REGULARIZAÇÃO MIGRATÓRIA.pdf",
+      "arquivo": "regularizacao-migratoria.pdf",
       "titulo": "Cartilha de Orientação sobre Regularização Migratória",
       "orgao": "DPU / OIM",
       "colecao": "cartilha",
@@ -29,7 +29,7 @@
     },
     {
       "id": "naturalizacao",
-      "arquivo": "CARTILHA SOBRE NATURALIZAÇÃO DPU.pdf",
+      "arquivo": "naturalizacao-dpu.pdf",
       "titulo": "Cartilha de Orientação sobre Naturalização e Nacionalidade",
       "orgao": "DPU",
       "colecao": "cartilha",
@@ -48,7 +48,7 @@
     },
     {
       "id": "visto",
-      "arquivo": "CARTILHA PARA EMISSÃO DE VISTO.pdf",
+      "arquivo": "emissao-de-visto.pdf",
       "titulo": "Cartilha para Emissão/Solicitação de Vistos no Exterior",
       "orgao": "DPU",
       "colecao": "cartilha",
@@ -104,7 +104,7 @@
     },
     {
       "id": "mercosul",
-      "arquivo": "Cartilha Mercosul - COMO TRABALHAR NO MERCOSUL.pdf",
+      "arquivo": "mercosul-trabalho.pdf",
       "titulo": "Cartilha Mercosul — Como Trabalhar nos Países do Bloco",
       "orgao": "MTE / Mercosul",
       "colecao": "cartilha",
@@ -125,7 +125,7 @@
     },
     {
       "id": "refugio",
-      "arquivo": "Cartilha para refugiados no Brasil.pdf",
+      "arquivo": "refugiados-no-brasil.pdf",
       "titulo": "Cartilha para Refugiados no Brasil",
       "orgao": "ACNUR / CONARE",
       "colecao": "cartilha",
@@ -151,7 +151,7 @@
     },
     {
       "id": "legislacao",
-      "arquivo": "COMPILAÇÃO DE LEGISLAÇÃO MIGRATÓRIA.pdf",
+      "arquivo": "legislacao-migratoria.pdf",
       "titulo": "Compilação de Legislação Migratória",
       "orgao": "OAB/RS",
       "colecao": "legislacao",
@@ -171,7 +171,7 @@
     },
     {
       "id": "comentarios",
-      "arquivo": "LIVRO SOBRE IMIGRAÇÃO.pdf",
+      "arquivo": "comentarios-lei-migracao.pdf",
       "titulo": "Comentários à Lei 13.445/2017 — A Lei de Migração",
       "orgao": "—",
       "colecao": "doutrina",
