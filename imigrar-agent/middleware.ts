@@ -32,13 +32,34 @@ function withNoStore(res: NextResponse, pathname: string): NextResponse {
   return res;
 }
 
+/**
+ * FALHA NA AUTENTICAÇÃO NÃO PODE VIRAR 500 OPACO.
+ *
+ * Em produção o `AUTH_SECRET` é fail-closed de propósito: sem ele, `getSecret()` lança.
+ * Só que uma exceção aqui dentro não é uma tela de erro — é `MIDDLEWARE_INVOCATION_FAILED`
+ * em TODA rota do matcher, sem uma linha dizendo por quê. Foi assim que um deploy sem
+ * variável de ambiente pareceu, por um bom tempo, um problema de domínio.
+ *
+ * Com o try/catch, o comportamento passa a ser o mesmo de quem não tem sessão — que é o
+ * lado seguro: quando a autenticação não funciona, ninguém entra. E o motivo real vai
+ * para o log de runtime, onde dá para ler.
+ */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isPublicPath(pathname)) return withNoStore(NextResponse.next(), pathname);
 
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const session = token ? await verifySession(token) : null;
+  let session: Awaited<ReturnType<typeof verifySession>> = null;
+  try {
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    session = token ? await verifySession(token) : null;
+  } catch (err) {
+    console.error(
+      "[middleware] autenticação indisponível:",
+      err instanceof Error ? err.message : err,
+    );
+    session = null;
+  }
 
   if (!session) {
     // API responde 401 em JSON; página redireciona para o login.
@@ -59,12 +80,21 @@ export async function middleware(req: NextRequest) {
   // Só o cookie é renovado — o conteúdo da sessão continua sendo o que foi
   // assinado no login, então isto não é caminho para elevar papel.
   if (shouldRenew(session)) {
-    const renovado = await createSession({
-      sub: session.sub,
-      email: session.email,
-      role: session.role,
-    });
-    res.cookies.set(SESSION_COOKIE, renovado, sessionCookieOptions());
+    try {
+      const renovado = await createSession({
+        sub: session.sub,
+        email: session.email,
+        role: session.role,
+      });
+      res.cookies.set(SESSION_COOKIE, renovado, sessionCookieOptions());
+    } catch (err) {
+      // Renovar é conveniência: se falhar, a sessão atual continua valendo até expirar.
+      // Derrubar a requisição por causa disso seria trocar um incômodo por uma queda.
+      console.error(
+        "[middleware] falha ao renovar o cookie:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return res;
