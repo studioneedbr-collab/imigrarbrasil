@@ -1,4 +1,8 @@
-import { normalizarPapel, type Papel } from "@/lib/auth/papeis";
+// Relativo, e não `@/`: este arquivo está no grafo do middleware, que é empacotado
+// para o Edge Runtime — e ali o alias não resolve (ver o comentário em middleware.ts).
+// A regra vale para TODO módulo alcançável a partir do middleware, e tem teste:
+// tests/middleware-edge.test.ts falha se um `@/` reaparecer neste grafo.
+import { normalizarPapel, type Papel } from "./papeis";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POR QUE ESTE ARQUIVO NÃO USA UMA BIBLIOTECA DE JWT
