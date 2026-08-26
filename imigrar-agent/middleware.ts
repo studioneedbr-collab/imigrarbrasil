@@ -1,12 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
+// IMPORT RELATIVO, e não pelo alias `@/`, só aqui.
+//
+// O build de produção na Vercel morria com "The Edge Function 'middleware' is
+// referencing unsupported modules: @/lib/auth/session, @/lib/auth/public-paths".
+// Não era módulo incompatível: o bundler do Edge não RESOLVIA o alias. O middleware é
+// empacotado dentro de um namespace próprio (`__vc__ns__/0/imigrar-agent/`), a base do
+// `@/*` deixa de bater, e o que não resolve vira "externo" — ou seja, "não suportado".
+//
+// O `baseUrl` no tsconfig.json resolve a causa. Este import relativo é o cinto além do
+// suspensório: é o único arquivo do projeto que roda no Edge, e é o arquivo cuja falha
+// impede o deploy inteiro de acontecer — não vale depender de resolução de alias aqui.
 import {
   verifySession,
   createSession,
   shouldRenew,
   sessionCookieOptions,
   SESSION_COOKIE,
-} from "@/lib/auth/session";
-import { isPublicPath } from "@/lib/auth/public-paths";
+} from "./lib/auth/session";
+import { isPublicPath } from "./lib/auth/public-paths";
 
 // Ponto único de autenticação. O matcher abaixo cobre TODA a superfície de dados:
 // páginas do painel e, principalmente, /api/* — que antes respondia a qualquer um.
