@@ -267,17 +267,35 @@ nenhuma migration tinha rodado ali. Foram aplicadas 12:
 **Vercel** — a conta é do cliente (`Imigrar Brasil`), não a nossa. A armadilha que custou
 duas builds:
 
-> **Root Directory = `imigrar-agent`.** A aplicação está numa subpasta. Com o campo vazio, a
-> Vercel constrói a raiz, não acha o Next.js, e o build morre com `exit 127` — ou, se
-> passar, todas as rotas dão 404. E o `vercel.json` (que registra os **dois crons de
-> follow-up**) também está dentro de `imigrar-agent/`: com Root Directory errado, os crons
-> nunca foram agendados.
+> **1. Root Directory = `imigrar-agent`.** A aplicação está numa subpasta. Com o campo
+> vazio, a Vercel constrói a raiz, não acha o Next.js, e o build morre com `exit 127`. E o
+> `vercel.json` (que registra os **dois crons de follow-up**) também está dentro de
+> `imigrar-agent/`: com Root Directory errado, os crons nunca foram agendados.
+>
+> **2. O grafo do middleware não pode usar o alias `@/`.** Três deploys seguidos morreram
+> com *"The Edge Function 'middleware' is referencing unsupported modules"*. O nome engana:
+> não havia módulo incompatível. O middleware é empacotado para o Edge dentro de um
+> namespace próprio (`__vc__ns__/0/imigrar-agent/`), o alias não resolve ali, e o que não
+> resolve vira "externo" — que no Edge é reportado como "não suportado". Corrigir só o
+> arquivo de entrada **empurra o erro para o import seguinte**, o que de fato aconteceu.
+> Hoje o grafo é fechado e relativo, e `tests/middleware-edge.test.ts` falha se alguém
+> reintroduzir um `@/` ou uma dependência de `node_modules` ali. Foi por isso também que a
+> `jose` saiu: ela puxava CompressionStream para dentro do Edge.
+>
+> Nada disso aparece no build local, no typecheck ou no lint. E o efeito não é uma tela
+> quebrada: é o deploy inteiro não acontecer.
 
 **Variáveis** — Supabase entrou pela integração nativa (`NEXT_PUBLIC_SUPABASE_URL` e
 `SUPABASE_SERVICE_ROLE_KEY` são as duas que o app usa; as outras sete sobram sem
 atrapalhar). Ainda faltam: `AUTH_SECRET` (**sem ela o login falha alto em produção, de
 propósito**), `NEXT_PUBLIC_APP_URL`, `DEEPSEEK_API_KEY`, `ZAPI_*`,
 `WEBHOOK_VERIFY_TOKEN`, `OPENAI_API_KEY` + embeddings, `CRON_SECRET`, `TEAM_WHATSAPP`.
+
+**Domínio** — `agente.imigrarbrasil.com.br` aponta para a Vercel (CNAME
+`a2d5ad103604362a.vercel-dns-017.com`), mas responde o 404 **da plataforma**
+(`Code: NOT_FOUND`), não o 404 do Next. Isso é domínio sem deploy atrás: ou não está
+atribuído a este projeto, ou está preso a um branch sem build bem-sucedido. Conferir em
+**Settings → Domains**.
 
 ⚠️ Se as variáveis do Supabase estiverem só em **Production**, os deploys de *preview*
 rodam em memória: painel abre, fila vazia, tudo some no refresh.
