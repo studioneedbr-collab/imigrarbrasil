@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { filtrarServicos } from "@/lib/agent/function-search";
+﻿import { describe, it, expect } from "vitest";
+import { filtrarServicos } from "@/lib/comercial/function-search";
 
 // O catálogo tem mais de 100 funções: num <select> nativo, achar "Auxiliar de Serviços
 // Gerais" era rolar a lista inteira até a letra certa.

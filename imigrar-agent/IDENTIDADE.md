@@ -111,14 +111,18 @@ atrás do logo.
 **Cuidado com `simbolo-branco`:** a versão negativa não tem forma interna, então sobre
 o azul ela lê como um bloco chapado. Em fundo escuro prefira o logotipo completo.
 
-## O que ainda é da Shine Rio
+## O que ainda é da base herdada
 
-A troca de identidade cobriu a interface. **Não cobriu `lib/agent/*`**, que é a lógica
-de domínio da Shine Rio — precificação de limpeza, CCT, dimensionamento de posto — e
-ainda cita "Shayene" e "Shine Rio" internamente. Renomear ali seria cosmético num
-código que a Fase 4 substitui inteiro, e quebraria a suíte de 476 testes sem
-benefício.
+`lib/agent/` agora é só o atendimento de imigração. O motor de precificação, a CCT e o
+dimensionamento de posto **saíram de dentro do agente e moram em `lib/comercial/`** —
+existem para as telas do painel, não para a Ana, que não cota, não gera proposta e não
+cadastra funcionário.
 
-Do mesmo modo, **Propostas, Preços, Orçamento e Funcionários saíram do menu mas
-continuam no disco**. São telas de precificação de limpeza sem equivalente em
-imigração. Tirá-las da navegação é o primeiro passo; apagar as rotas é Fase 4.
+O que **continua** com cara da base original:
+
+- **Propostas, Preços, Orçamento e Funcionários** — fora do menu, mas as rotas e as telas
+  seguem no disco. São telas de precificação de mão de obra sem equivalente em imigração.
+- **O PDF da proposta e o e-mail que o acompanha** (`lib/pdf/generate.ts`,
+  `lib/email/proposal-email.ts`) ainda saem com a marca e o texto institucional da empresa
+  de origem. Nada do agente os aciona; quem os aciona é a tela de Orçamento. Se essas
+  telas forem ficar, o texto precisa ser reescrito antes de alguém enviar um desses.

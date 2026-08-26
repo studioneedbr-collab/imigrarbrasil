@@ -45,20 +45,6 @@ const TRANSFER_RESPONSE =
   "Esse ponto depende dos detalhes da sua situação, e quem analisa isso é um advogado do nosso time. Posso passar o seu contato para eles darem sequência?";
 
 /**
- * Material de limpeza e equipamento — herança do motor de precificação, que continua no
- * sistema. NÃO faz parte do atendimento da Imigrar Brasil: fica aqui porque
- * lib/agent/tools.ts usa o padrão para recusar linha de material na proposta, e remover a
- * constante quebraria a tool. O gate de transferência do agente NÃO usa mais nenhum dos
- * dois — as regras de transbordo deste domínio estão em TRANSFER_RULES, logo abaixo.
- */
-export const MATERIAL_EQUIPAMENTO =
-  /\b(materia(?:l|is)|produtos? de limpeza|equipamentos?(?!\s+de\s+prote[çc])|aspirador|enceradeira|dispenser)\b/i;
-
-/** Idem: equipamento citado pelo nome. Preservado para o motor de preço, fora do atendimento. */
-export const EQUIPAMENTO_ESPECIFICO =
-  /\b(aspirador|enceradeira|dispenser|carrinho coletor|lavadora de alta press[ãa]o|extratora|roçadeira|ro[çc]adeira)\b/i;
-
-/**
  * GATILHOS DE TRANSBORDO PARA O TIME JURÍDICO.
  *
  * A lógica aqui é o INVERSO da de um agente comercial. Lá, encaminhar cedo era o erro;
@@ -137,9 +123,15 @@ export const TRANSFER_RULES: TransferRule[] = [
     categoria: "honorarios_e_contratacao",
     regex:
       /\b(honor[áa]rio|quanto (custa|fica|sai|voc[êe]s cobram)|qual o (valor|pre[çc]o)|valor do servi[çc]o|tabela de pre[çc]o|forma de pagamento|parcel|contratar voc[êe]s|fechar o servi[çc]o|or[çc]amento)\b/i,
+    // "quanto vocês cobram" é a forma mais comum da pergunta e não casa com "quanto
+    // custa" nem com "quanto cobram" — as palavras aqui viram regex por SUBSTRING, então
+    // precisam ser o pedaço que a pessoa realmente escreve.
     keywords: [
       "honorários",
       "quanto custa",
+      "quanto cobram",
+      "vocês cobram",
+      "voces cobram",
       "qual o valor",
       "tabela de preço",
       "forma de pagamento",
@@ -234,9 +226,17 @@ export const CONFIDENTIAL: string[] = [
  * para que nada mude para quem nunca abriu o painel.
  */
 export function findObjection(text: string, pool?: Objection[]): Objection | undefined {
-  const t = text.toLowerCase();
+  // Sem acento dos dois lados, pelo mesmo motivo das regras de transbordo: a palavra é
+  // cadastrada no painel com acento e chega do WhatsApp sem ele. Sem isto, "quanto voces
+  // cobram" não achava a preocupação cadastrada como "quanto vocês cobram".
+  const t = sa(text.toLowerCase());
   const lista = pool ?? DEFAULT_KNOWLEDGE.objections ?? [];
-  return lista.find((o) => o.keywords.some((k) => t.includes(k.toLowerCase())));
+  return lista.find((o) => o.keywords.some((k) => t.includes(sa(k.toLowerCase()))));
+}
+
+/** Idem `semAcento` de lib/agent/training.ts — duplicado aqui para não criar ciclo. */
+function sa(texto: string): string {
+  return (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 /**
@@ -267,7 +267,7 @@ export const OBJECTIONS: Objection[] = [
     querDizer: "Quer saber se cabe no bolso antes de continuar.",
     resposta:
       "Os valores quem passa é o time jurídico, porque dependem do que o seu caso exige — eu não tenho essa informação aqui. Posso pedir para eles te retornarem com isso?",
-    keywords: ["quanto custa", "quanto cobram", "qual o valor", "honorários", "preço", "quanto fica"],
+    keywords: ["quanto custa", "quanto cobram", "vocês cobram", "qual o valor", "honorários", "preço", "quanto fica"],
   },
   {
     objecao: "Consigo resolver isso sozinho, sem advogado?",

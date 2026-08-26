@@ -3,7 +3,7 @@ import type { Repository } from "@/lib/data/repository";
 import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Proposal, Followup, ServiceCatalogItem, ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario } from "@/lib/domain/types";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
 import { createServerClient } from "@/lib/supabase/client";
-import type { PricingParams } from "@/lib/agent/pricing-params";
+import type { PricingParams } from "@/lib/comercial/pricing-params";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 const mapFunctionPricing = (r: Record<string, any>): PricingParams => ({
@@ -119,7 +119,7 @@ export class SupabaseRepository implements Repository {
   }
 
   // Atendimento humano: só estes dois métodos mexem em assumed_by. Encaminhar para um
-  // setor (tool transferir_para_humano) NÃO assume a conversa — a Shayene segue atendendo.
+  // setor (tool transferir_para_humano) NÃO assume a conversa — a Ana segue atendendo.
   async assumeConversation(id: string, who: string) {
     await this.db.from("conversations")
       .update({ assumed_by: who, assumed_at: new Date().toISOString(), status: "transferred", updated_at: new Date().toISOString() })

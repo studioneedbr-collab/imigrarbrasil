@@ -24,7 +24,10 @@ export async function GET() {
     ok: true,
     repo: useSupabase ? "supabase" : "memory",
     persistent: useSupabase,
-    agent: useSmartAgent ? "deepseek" : "engine",
+    // "fallback" é o caminho determinístico de lib/agent/fallback.ts — acolhe e encaminha,
+    // mas não informa nada sobre imigração. O nome antigo era "engine", da máquina de
+    // estados comercial que não existe mais.
+    agent: useSmartAgent ? "deepseek" : "fallback",
     integrations: {
       supabase: useSupabase,
       zapi,

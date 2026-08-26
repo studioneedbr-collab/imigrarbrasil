@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { computeCostBreakdown } from "@/lib/agent/pricing";
-import { getPricingParams } from "@/lib/agent/pricing-params";
+﻿import { describe, it, expect } from "vitest";
+import { computeCostBreakdown } from "@/lib/comercial/pricing";
+import { getPricingParams } from "@/lib/comercial/pricing-params";
 
 describe("preço paramétrico", () => {
   it("ASG fecha em R$ 4.965,47/posto", () => {

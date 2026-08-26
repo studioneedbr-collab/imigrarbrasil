@@ -3,7 +3,7 @@ import { proximoAtendimento, agoraEmBrasilia } from "@/lib/agent/expediente";
 
 // Todas as datas abaixo são UTC (o "Z"), de propósito: em produção o processo roda em
 // UTC e era daí que vinha o erro — às 22h de sexta no Rio, `new Date().getDay()` já
-// dizia sábado, e a Shayene mandava o cliente esperar até segunda sem motivo.
+// dizia sábado, e a Ana mandava a pessoa esperar até segunda sem motivo.
 const utc = (s: string) => new Date(s);
 
 describe("relógio de Brasília", () => {

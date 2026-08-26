@@ -9,7 +9,7 @@ import {
 } from "@/lib/dashboard/periodo";
 
 /**
- * O painel dizia "Conversas hoje: 0" com a Shayene tendo trocado 45 mensagens no dia.
+ * O painel dizia "Conversas hoje: 0" com o agente tendo trocado 45 mensagens no dia.
  *
  * Duas causas, as duas reproduzidas aqui com os dados REAIS de produção de 17/08/2026:
  *
@@ -20,7 +20,7 @@ import {
  *
  * 2. "Hoje" saía do relógio do servidor, que na Vercel é UTC. Meia-noite UTC são 21h no
  *    Rio: das 21h à meia-noite o painel já contava o dia seguinte. É a mesma armadilha que
- *    lib/agent/index.ts já resolve para a saudação da Shayene.
+ *    lib/agent/index.ts já resolve para a saudação da Ana.
  */
 
 // As quatro conversas que tiveram atividade em 17/08/2026, como estão no banco.

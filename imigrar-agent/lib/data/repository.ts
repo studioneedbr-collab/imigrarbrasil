@@ -2,7 +2,7 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Proposal, Followup, ServiceCatalogItem,
   ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario,
 } from "@/lib/domain/types";
-import type { PricingParams } from "@/lib/agent/pricing-params";
+import type { PricingParams } from "@/lib/comercial/pricing-params";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 export interface Repository {
@@ -19,13 +19,13 @@ export interface Repository {
   getInactiveConversations(): Promise<Conversation[]>;
   /**
    * Um atendente REAL assume a conversa (e-mail do usuário do painel). A partir daqui
-   * a Shayene fica em silêncio no WhatsApp para não falar por cima dele.
+   * a Ana fica em silêncio no WhatsApp para não falar por cima dele.
    * `releaseConversation` devolve o atendimento para ela.
    */
   assumeConversation(id: string, who: string): Promise<void>;
   releaseConversation(id: string): Promise<void>;
   /**
-   * O contato pediu para parar de receber mensagem. `bloquear` cala a Shayene de vez
+   * O contato pediu para parar de receber mensagem. `bloquear` cala a Ana de vez
    * neste número; `sem_followup` só impede as mensagens automáticas. Nunca é revertido
    * por código — só o próprio contato voltando a escrever (e aí quem puxou foi ele).
    */
@@ -72,8 +72,8 @@ export interface Repository {
   listProposals(): Promise<Proposal[]>;
   deleteProposal(id: string): Promise<void>;
   /**
-   * Esta conversa já recebeu proposta? É o que libera (ou não) o encaminhamento para o
-   * comercial: antes do PDF, quem atende é a Shayene.
+   * Esta conversa já recebeu proposta? Herdado da base comercial e usado só pelo painel
+   * (telas de Propostas/Orçamento) — o agente não gera mais proposta nenhuma.
    */
   hasProposalForConversation(conversationId: string): Promise<boolean>;
 

@@ -1,15 +1,20 @@
-# Conferência das CCTs 2026 — o que a Shayene já usa e o que falta liberar
+# Conferência das CCTs 2026 — motor de preço herdado
+
+> **Este documento descreve a maquinaria comercial que veio da base que originou este
+> código.** Ela NÃO faz mais parte do agente: a Ana não cota, não precifica e não fala de
+> valor. O que está aqui serve às telas de Preços e Orçamento do painel, e o código mora
+> em `lib/comercial/`.
 
 **Origem:** `SHAIENE-CTTs-2026.zip`, enviado pelo Pedro Provadelli em 13/08/2026.
-**Onde os dados vivem:** `lib/agent/cct.ts`. Cada valor tem a cláusula de origem no campo `fonte`.
+**Onde os dados vivem:** `lib/comercial/cct.ts`. Cada valor tem a cláusula de origem no campo `fonte`.
 
-O Eduardo pediu, em 13/08/2026, que a IA inserisse os dados da CCT numa planilha modelo e
+O pedido do cliente da base original, em 13/08/2026, foi que a IA inserisse os dados da CCT numa planilha modelo e
 chegasse ao preço a partir dela. É o que está feito: o motor reproduz a aba SERVENTE da
-*Planilha de Composição de Custos Shine Rio 2026* (layout da IN 05/2017), alimentado pela
+*Planilha de Composição de Custos 2026* da empresa de origem (layout da IN 05/2017), alimentado pela
 convenção da praça, e cada cotação gera a planilha preenchida em `.xlsx`, com a cláusula
 ao lado de cada célula.
 
-As cinco células que o Eduardo listou estão implementadas: **adicional noturno**,
+As cinco células listadas pelo cliente estão implementadas: **adicional noturno**,
 **insalubridade**, **periculosidade**, **intrajornada** e **liderança**.
 
 ---
@@ -17,11 +22,11 @@ As cinco células que o Eduardo listou estão implementadas: **adicional noturno
 ## Regra de liberação
 
 Uma praça só cota quando alguém confere. No código isso é o campo `cadastrada` de cada
-praça em `lib/agent/cct.ts`.
+praça em `lib/comercial/cct.ts`.
 
 | | |
 |---|---|
-| `cadastrada: true` | A Shayene cota sozinha. |
+| `cadastrada: true` | O motor cota sozinho. |
 | `cadastrada: false` | Sai "sob consulta": ela nomeia a praça, explica que o piso é da convenção local e passa para um consultor. |
 
 Hoje **só o Rio está liberado**. As outras oito têm os dados lidos da convenção, mas
@@ -29,7 +34,7 @@ travados — é o que evita repetir 10/08/2026, quando um piso de portaria inven
 (R$ 1.998,00) chegou a um cliente. O piso real do Rio é R$ 2.051,95.
 
 **Para liberar uma praça:** confira as pendências da seção dela, corrija o que estiver
-errado em `lib/agent/cct.ts`, esvazie a lista `pendencias` e vire `cadastrada` para `true`.
+errado em `lib/comercial/cct.ts`, esvazie a lista `pendencias` e vire `cadastrada` para `true`.
 
 ---
 
@@ -66,7 +71,7 @@ seção OBSERVAÇÕES — não é um piso nominal.
 | Intrajornada | 30 min indenizados com acréscimo de 50%, por dia trabalhado | 40ª §4º |
 | Liderança | 15% até 15 pessoas · 25% de 16 a 30 · 30% de 31 a 60 · 40% acima de 61 | 14ª e 13ª |
 
-Nenhum é automático: a Shayene pergunta o local, o horário e o tamanho da equipe, e passa
+Nenhum é automático: o operador do painel informa o local, o horário e o tamanho da equipe, e o motor passa
 o que o cliente disse. Se o cliente não souber, ela cota sem o adicional e **diz isso** ao
 apresentar o valor.
 
@@ -200,14 +205,14 @@ R$ 2.097,50 · zelador R$ 1.977,73 · porteiro R$ 2.496,27 · encarregado nível
 ## Fora do lote
 
 Nordeste e Norte e Centro-Oeste estão cadastrados só como nome, sem piso. Servem para a
-Shayene dizer "atendemos Salvador sim" sem cair no preço do Rio. **Nenhuma convenção
+o painel nomear a praça sem cair no preço do Rio. **Nenhuma convenção
 dessas regiões veio no lote** — pedir ao Pedro antes de cotar.
 
 ---
 
 ## Pendência que atravessa três praças
 
-`SALARIO_MINIMO_NACIONAL` está zerado em `lib/agent/cct.ts`. DF, Paraná e Santa Catarina
+`SALARIO_MINIMO_NACIONAL` está zerado em `lib/comercial/cct.ts`. DF, Paraná e Santa Catarina
 calculam insalubridade sobre o salário mínimo nacional, e nenhum documento do lote traz o
 valor de 2026. Enquanto estiver zerado, posto insalubre nessas praças sai sob consulta —
 que é o desfecho seguro, mas é uma trava a menos para liberar.
@@ -219,7 +224,7 @@ que é o desfecho seguro, mas é uma trava a menos para liberar.
 **Rode a migration `015_cct_rj_2026_catalogo.sql`.** Ela copia os pisos do Rio para a
 tabela `function_pricing`, que é o que a tela Comercial → Preços por função mostra.
 
-Ela é de **sincronia, não de comportamento**: o motor lê o piso de `lib/agent/cct.ts` e
+Ela é de **sincronia, não de comportamento**: o motor lê o piso de `lib/comercial/cct.ts` e
 acerta o preço mesmo sem a migration. Sem ela, o preço sai certo mas a tela do admin
 continua mostrando os R$ 0,00 antigos — e é esse tipo de desencontro entre tela e motor
 que produziu o preço inventado de 10/08/2026.

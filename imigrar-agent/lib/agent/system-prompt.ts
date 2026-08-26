@@ -105,7 +105,7 @@ async function getBriefingBlock(): Promise<string> {
   return `\n\n=== BRIEFING DA EMPRESA (fornecido pela equipe — prioridade alta, use como verdade) ===\n${lines.join("\n")}`;
 }
 
-// "Treinar a Shayene": perguntas/respostas livres cadastradas no painel (config "faq").
+// "Treinar o agente": perguntas/respostas livres cadastradas no painel (config "faq").
 // Anexadas ao prompt como verdade — é como a equipe ensina a empresa sem programador.
 async function getFaqBlock(): Promise<string> {
   const items = await getRepository().getConfig<{ pergunta: string; resposta: string }[]>("faq");

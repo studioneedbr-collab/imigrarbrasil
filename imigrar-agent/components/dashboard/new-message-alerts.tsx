@@ -5,9 +5,12 @@ import { selectNewMessages, newestTimestamp, type ActivityMessage } from "@/lib/
 
 /** Curto de propósito: é o intervalo entre a mensagem chegar e você saber. */
 const POLL_MS = 5000;
-const STORAGE_KEY = "shine:lastSeenMessageAt";
+// Os prefixos eram "shine:", da base que originou este código. Trocar zera o "visto por
+// último" de quem já tinha o painel aberto: na primeira carga tudo aparece como novo, uma
+// vez só.
+const STORAGE_KEY = "ib:lastSeenMessageAt";
 /** Evento de janela que faz as telas de Conversas refazerem o fetch na hora. */
-export const NEW_MESSAGE_EVENT = "shine:new-message";
+export const NEW_MESSAGE_EVENT = "ib:new-message";
 
 function notificationsSupported(): boolean {
   return typeof window !== "undefined" && "Notification" in window;

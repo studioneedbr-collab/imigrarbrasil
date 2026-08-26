@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { capturarDadosDoLead, dossieComercialFaltando, temDocumento } from "@/lib/agent/lead-capture";
+import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { avaliarEncaminhamentoComercial } from "@/lib/agent/transfer-gate";
 import type { Lead } from "@/lib/domain/types";
 
@@ -11,131 +11,133 @@ const lead = (patch: Partial<Lead> = {}): Lead =>
     ...patch,
   }) as Lead;
 
-// Atendimento real do "Ph" (5521993138140, 17/08): ele disse serviço e quantidade na
-// terceira mensagem, e o dossiê do painel continuou em "Coletando…" porque o modelo
-// nunca chamou registrar_dados_lead.
+// O dossiê tem que se preencher sozinho: quando o modelo não chama registrar_dados_lead
+// — e ele esquece direto —, o painel ficava em "Coletando…" enquanto a pessoa já tinha
+// contado tudo. Aqui isso pesa mais do que num atendimento comercial: quem está aflito e
+// tem que repetir a própria história pela terceira vez desiste.
 describe("dossiê que se preenche sozinho", () => {
-  it("lê serviço e quantidade do pedido do cliente", () => {
+  it("lê nacionalidade, onde a pessoa está e o que ela procura", () => {
     const p = capturarDadosDoLead(
-      "Preciso de 4 porteiros e 5 auxiliares de limpeza sendo 1 com adicional de insalubridade.",
+      "Sou venezuelana, moro em Boa Vista e preciso regularizar minha residência.",
       null,
     );
-    expect(p?.servicesInterested).toEqual(["Porteiro", "Auxiliar de Serviços Gerais"]);
-    expect(p?.employeesNeeded).toBe(4);
+    expect(p?.clientType).toBe("Venezuela");
+    expect(p?.region).toBe("Brasil — Boa Vista");
+    expect(p?.servicesInterested).toEqual(["Regularização migratória"]);
   });
 
-  it("pega CNPJ, e-mail e região", () => {
+  it("guarda como a pessoa entrou, na frase dela", () => {
+    const p = capturarDadosDoLead("Entrei pela fronteira em 2024 e tenho protocolo.", null);
+    expect(p?.contractDuration).toMatch(/Entrei pela fronteira/);
+  });
+
+  it("pega e-mail e prazo", () => {
     const p = capturarDadosDoLead(
-      "somos o Condomínio Alfa, CNPJ 18.623.185/0001-56, fica em Botafogo, manda pro contato@alfa.com.br",
+      "meu e-mail é yolanda@exemplo.com, e é urgente, meu prazo está correndo",
       null,
     );
-    expect(p?.notes).toMatch(/18\.623\.185\/0001-56/);
-    expect(p?.email).toBe("contato@alfa.com.br");
-    expect(p?.region).toBe("Botafogo");
+    expect(p?.email).toBe("yolanda@exemplo.com");
+    expect(p?.urgency).toBe("immediate");
   });
 
   it("nunca sobrescreve o que já está gravado", () => {
-    const p = capturarDadosDoLead("preciso de 4 porteiros em Copacabana", lead({
-      region: "Barra", employeesNeeded: 10,
-    }));
+    const p = capturarDadosDoLead(
+      "sou haitiano e estou no Brasil",
+      lead({ clientType: "Angola", region: "Exterior — Angola" }),
+    );
+    expect(p?.clientType).toBeUndefined();
     expect(p?.region).toBeUndefined();
-    expect(p?.employeesNeeded).toBeUndefined();
   });
 
-  it("acumula serviço novo em vez de trocar", () => {
-    const p = capturarDadosDoLead("também vou precisar de jardineiro", lead({
-      servicesInterested: ["Porteiro"],
+  it("acumula caminho novo em vez de trocar", () => {
+    const p = capturarDadosDoLead("depois eu queria pedir naturalização também", lead({
+      servicesInterested: ["Regularização migratória"],
     }));
-    expect(p?.servicesInterested).toEqual(["Porteiro", "Jardineiro"]);
+    expect(p?.servicesInterested).toEqual(["Regularização migratória", "Naturalização"]);
   });
 
   it("sem novidade nenhuma, não escreve no banco", () => {
     expect(capturarDadosDoLead("boa tarde", null)).toBeNull();
-    expect(capturarDadosDoLead("obrigado!", lead({ region: "Barra" }))).toBeNull();
-  });
-
-  it("reconhece o documento onde o painel procura", () => {
-    expect(temDocumento(lead({ notes: "CNPJ: 18.623.185/0001-56" }))).toBe(true);
-    expect(temDocumento(lead())).toBe(false);
+    expect(capturarDadosDoLead("obrigado!", lead({ region: "Brasil" }))).toBeNull();
   });
 });
 
-// 17/08/2026: a triagem que segura o PDF caiu de sete campos para quatro. CNPJ e e-mail
-// deixaram de travar a proposta — a Shayene ficava em loop pedindo cadastro e o cliente
-// nunca via o orçamento.
-describe("triagem mínima antes da proposta", () => {
+// A qualificação daqui não é a triagem comercial que ela substituiu: nada nesta lista
+// SEGURA nada. Um caso concreto vai para o advogado mesmo com a lista pela metade.
+describe("o que o time jurídico ainda não sabe", () => {
   const completo = lead({
-    servicesInterested: ["Porteiro"], employeesNeeded: 4, region: "Botafogo",
-    companyName: "Condomínio Alfa",
+    clientType: "Venezuela",
+    region: "Brasil — Boa Vista",
+    servicesInterested: ["Regularização migratória"],
+    urgency: "immediate",
   });
 
-  it("lista o que falta, na ordem de perguntar", () => {
-    const r = dossieComercialFaltando(lead({ servicesInterested: ["Porteiro"], employeesNeeded: 4 }));
+  it("lista o que falta, na ordem de descobrir", () => {
+    const r = qualificacaoFaltando(lead({ clientType: "Haiti" }));
     expect(r.completo).toBe(false);
-    expect(r.faltam).toEqual(["a cidade/região do serviço", "o nome da empresa"]);
-  });
-
-  it("serviço, postos, região e empresa bastam — sem CNPJ e sem e-mail", () => {
-    expect(dossieComercialFaltando(completo).completo).toBe(true);
-  });
-
-  it("CNPJ, e-mail e nome do contato viram complementares, para depois do PDF", () => {
-    const r = dossieComercialFaltando(completo);
-    expect(r.faltam).not.toContain("o CNPJ (só se ele pedir nota fiscal)");
-    expect(r.complementares).toEqual([
-      "o seu nome",
-      "o e-mail para enviar a proposta",
-      "o CNPJ (só se ele pedir nota fiscal)",
+    expect(r.faltam).toEqual([
+      "onde a pessoa está agora (no Brasil ou no exterior)",
+      "o que ela quer conseguir",
+      "se há prazo ou urgência",
     ]);
   });
 
-  it("com o cadastro completo, não sobra complementar nenhum", () => {
-    const r = dossieComercialFaltando(lead({
-      servicesInterested: ["Porteiro"], employeesNeeded: 4, region: "Botafogo",
-      companyName: "Condomínio Alfa", contactName: "Pedro Henrique",
-      notes: "CNPJ: 18.623.185/0001-56", email: "ph@alfa.com.br",
-    }));
-    expect(r.complementares).toEqual([]);
+  it("nacionalidade, onde está, o que quer e prazo bastam", () => {
+    expect(qualificacaoFaltando(completo).completo).toBe(true);
+  });
+
+  it("nome e situação são complementares — não seguram o encaminhamento", () => {
+    const r = qualificacaoFaltando(completo);
+    expect(r.faltam).toEqual([]);
+    expect(r.complementares).toEqual(["o nome dela", "como ela entrou e o que tem hoje"]);
+  });
+
+  // A lista NUNCA pede número de documento: quem faz isso é o time jurídico, depois.
+  it("não pede documento em lugar nenhum", () => {
+    const r = qualificacaoFaltando(lead());
+    expect([...r.faltam, ...r.complementares].join(" ")).not.toMatch(/cpf|cnpj|passaporte|n[úu]mero/i);
   });
 });
 
-// A regra do Eduardo (17/08/2026): o comercial humano é 1% dos atendimentos, e só
-// depois do orçamento em PDF.
-describe("o comercial só entra depois do PDF", () => {
+// O portão da tool de encaminhamento. Na base comercial ele segurava o handoff até a
+// proposta sair; aqui ele libera por padrão e segura um caso só — a conversa que ainda
+// não tem nada. É o freio contra despachar quem acabou de mandar "oi".
+describe("o portão só segura a conversa que ainda não tem nada", () => {
   const base = {
-    jaTemProposta: false,
     dossieCompleto: false,
-    textoRecente: "quero uma cotação de 4 porteiros",
+    textoRecente: "oi, bom dia",
     assuntoExigePessoa: false,
   };
 
-  it("segura a cotação em andamento", () => {
+  it("segura o 'oi' sem sinal nenhum", () => {
     expect(avaliarEncaminhamentoComercial(base).liberado).toBe(false);
   });
 
-  it("libera depois que a proposta foi enviada", () => {
-    expect(avaliarEncaminhamentoComercial({ ...base, jaTemProposta: true }).liberado).toBe(true);
+  it("libera na hora quando há caso concreto", () => {
+    expect(
+      avaliarEncaminhamentoComercial({ ...base, textoRecente: "meu visto venceu" }).liberado,
+    ).toBe(true);
   });
 
-  it("libera quando o cliente pede uma pessoa", () => {
+  it("libera quando a pessoa pede um advogado", () => {
     expect(
-      avaliarEncaminhamentoComercial({ ...base, textoRecente: "quero falar com um atendente" })
+      avaliarEncaminhamentoComercial({ ...base, textoRecente: "quero falar com um advogado" })
         .liberado,
     ).toBe(true);
   });
 
-  it("libera emergência", () => {
+  it("libera risco à pessoa", () => {
     expect(
-      avaliarEncaminhamentoComercial({ ...base, textoRecente: "teve um acidente no prédio" })
+      avaliarEncaminhamentoComercial({ ...base, textoRecente: "estou correndo risco de vida" })
         .liberado,
     ).toBe(true);
   });
 
-  it("libera assunto que não é cotação (contrato, jurídico, financeiro)", () => {
+  it("libera assunto que a regra de transbordo reconhece", () => {
     expect(avaliarEncaminhamentoComercial({ ...base, assuntoExigePessoa: true }).liberado).toBe(true);
   });
 
-  it("libera o 1%: triagem completa e ainda assim não dá para cotar", () => {
+  it("libera quando a qualificação já está completa", () => {
     expect(avaliarEncaminhamentoComercial({ ...base, dossieCompleto: true }).liberado).toBe(true);
   });
 });

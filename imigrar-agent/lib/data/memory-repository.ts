@@ -3,9 +3,9 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Proposal, Followup, ServiceCatalogItem,
   ProposalStatus, ProposalEmailStatus, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Funcionario,
 } from "@/lib/domain/types";
-import { SEED_SERVICES } from "@/lib/agent/catalog";
-import { calcularPreco } from "@/lib/agent/pricing";
-import { DEFAULT_PRICING, type PricingParams } from "@/lib/agent/pricing-params";
+import { SEED_SERVICES } from "@/lib/comercial/catalog";
+import { calcularPreco } from "@/lib/comercial/pricing";
+import { DEFAULT_PRICING, type PricingParams } from "@/lib/comercial/pricing-params";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 let counter = 0;
@@ -78,7 +78,7 @@ export class MemoryRepository implements Repository {
   }
 
   // Atendimento humano: só estes dois métodos mexem em assumedBy. Encaminhar para um
-  // setor NÃO assume a conversa — a Shayene segue atendendo até alguém entrar de fato.
+  // setor NÃO assume a conversa — a Ana segue atendendo até alguém entrar de fato.
   async assumeConversation(id: string, who: string) {
     const c = this.conversations.get(id);
     if (c) this.conversations.set(id, { ...c, assumedBy: who, assumedAt: now(), status: "transferred", updatedAt: now() });

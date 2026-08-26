@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
 import { DEFAULT_TRAINING, buildTechnicalBlock } from "@/lib/agent/training";
 
-// Este arquivo testava a composição de custos em 6 módulos que a Shayene decorava (piso da
+// Este arquivo testava a composição de custos em 6 módulos que o agente comercial decorava (piso da
 // CCT, percentual de encargo, valor do vale-refeição) e conferia se o texto batia com o
 // motor de preço. Nada disso existe no prompt do agente da Imigrar Brasil.
 //

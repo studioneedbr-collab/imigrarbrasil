@@ -2,22 +2,22 @@
 //
 // O que derruba um número não é volume: é TAXA DE BLOQUEIO E DENÚNCIA. E o caminho mais
 // curto para uma denúncia é a pessoa pedir para parar e continuar recebendo mensagem.
-// Antes disto, quem escrevia "para de me mandar mensagem" recebia resposta da Shayene na
-// hora e ainda levava o follow-up automático 24h depois.
+// Antes disto, quem escrevia "para de me mandar mensagem" recebia resposta na hora e
+// ainda levava o follow-up automático 24h depois.
 //
 // A detecção é DETERMINÍSTICA de propósito. Depender do modelo perceber o pedido é
 // exatamente o tipo de coisa que ele erra num dia ruim, e aqui o erro custa o número.
 //
 // A régua é conservadora: exige a frase inteira, nunca uma palavra solta. Os dois erros
 // possíveis têm custos muito diferentes — deixar passar custa uma denúncia, silenciar sem
-// o cliente pedir custa uma venda. "Quero cancelar o contrato", "o funcionário vai sair
-// às 18h" e "parar o serviço em janeiro" são assunto de NEGÓCIO e têm que passar.
+// a pessoa pedir custa um atendimento que ela precisava. "Meu prazo parou", "quero parar
+// o processo" e "cancelar o pedido" são assunto do CASO dela e têm que passar.
 
 /**
- * `bloquear`: pediu explicitamente para parar. A Shayene se despede uma última vez e
- * nunca mais fala com esse número sozinha.
- * `sem_followup`: disse que não tem interesse. Segue conversando normalmente (ele pode
- * mudar de ideia na mesma conversa), mas nenhuma mensagem automática o persegue depois.
+ * `bloquear`: pediu explicitamente para parar. A Ana se despede uma última vez e nunca
+ * mais fala com esse número sozinha.
+ * `sem_followup`: disse que não tem interesse. Segue conversando normalmente (a pessoa
+ * pode mudar de ideia na mesma conversa), mas nenhuma mensagem automática vai atrás dela.
  */
 export type OptOut = "bloquear" | "sem_followup";
 

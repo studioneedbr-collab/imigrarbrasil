@@ -3,7 +3,7 @@ import { processMessage, buildAgoraBlock } from "@/lib/agent";
 import { getRepository } from "@/lib/data";
 
 // Horário de Brasília é UTC-3: 12:00Z = 09:00 em SP (manhã), 21:00Z = 18:00 (noite).
-describe("bloco AGORA — a Shayene sabe que horas são", () => {
+describe("bloco AGORA — a Ana sabe que horas são", () => {
   it("de manhã manda dar bom dia", () => {
     const b = buildAgoraBlock(new Date("2026-08-07T12:00:00Z"));
     expect(b).toContain('"bom dia"');
@@ -16,6 +16,14 @@ describe("bloco AGORA — a Shayene sabe que horas são", () => {
 
   it("à noite manda dar boa noite", () => {
     expect(buildAgoraBlock(new Date("2026-08-07T23:00:00Z"))).toContain('"boa noite"');
+  });
+
+  // 04:00Z = 01:00 em SP. "Bom dia" à 1h da manhã é o tipo de coisa que entrega na
+  // primeira linha que não há ninguém lendo — e aqui é justamente de madrugada que
+  // escreve quem está sem dormir com um prazo correndo.
+  it("de madrugada é boa noite, não bom dia", () => {
+    expect(buildAgoraBlock(new Date("2026-08-07T04:00:00Z"))).toContain('"boa noite"');
+    expect(buildAgoraBlock(new Date("2026-08-07T04:00:00Z"))).toContain("01:00");
   });
 
   it("proíbe copiar a saudação de quem escreveu", () => {

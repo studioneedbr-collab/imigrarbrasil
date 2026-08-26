@@ -1,9 +1,9 @@
-import React from "react";
+﻿import React from "react";
 import fs from "fs";
 import path from "path";
 import { Document, Page, Text, View, Image, StyleSheet, pdf } from "@react-pdf/renderer";
 import type { ProposalServiceLine } from "@/lib/domain/types";
-import { dimensionar, descreverPosto } from "@/lib/agent/dimensionamento";
+import { dimensionar, descreverPosto } from "@/lib/comercial/dimensionamento";
 
 export interface ProposalInput {
   leadData: { contact_name?: string; company_name?: string; whatsapp_number?: string; email?: string; cnpj?: string; address?: string };

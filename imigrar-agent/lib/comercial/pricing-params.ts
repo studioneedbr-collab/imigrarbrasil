@@ -1,5 +1,5 @@
-import { FUNCTION_CATALOG } from "@/lib/agent/function-catalog";
-import { PRACA_BASE, resolverPiso, type CCT } from "@/lib/agent/cct";
+﻿import { FUNCTION_CATALOG } from "@/lib/comercial/function-catalog";
+import { PRACA_BASE, resolverPiso, type CCT } from "@/lib/comercial/cct";
 
 export interface PricingParams {
   functionName: string;
@@ -26,8 +26,8 @@ export {
   baseDeCalculo,
   pracasCadastradas,
   SALARIO_MINIMO_NACIONAL,
-} from "@/lib/agent/cct";
-export type { CCT, BaseCalculo, AdicionaisCCT, BeneficiosCCT, PisoResolvido } from "@/lib/agent/cct";
+} from "@/lib/comercial/cct";
+export type { CCT, BaseCalculo, AdicionaisCCT, BeneficiosCCT, PisoResolvido } from "@/lib/comercial/cct";
 /** @deprecated Nome antigo de `CCT`. Mantido só para imports legados. */
 export type CCTEstadual = CCT;
 

@@ -1,6 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export const SESSION_COOKIE = "shine_session";
+// O nome do cookie era "shine_session", da base que originou este código. Trocar invalida
+// as sessões abertas — quem estiver logado faz login de novo, uma vez.
+export const SESSION_COOKIE = "ib_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 dias, com renovação a cada uso
 
 /**

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // BUSCA POR DIGITAÇÃO NO CATÁLOGO DE FUNÇÕES.
 //
@@ -8,7 +8,7 @@
 // input + lista; o casamento dos termos está em lib/agent/function-search.
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { filtrarServicos } from "@/lib/agent/function-search";
+import { filtrarServicos } from "@/lib/comercial/function-search";
 
 export interface ServicePickerOption {
   name: string;

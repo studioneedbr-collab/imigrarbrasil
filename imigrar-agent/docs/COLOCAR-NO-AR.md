@@ -22,7 +22,7 @@ sem perceber.
      (é a chave que ignora RLS. Nunca vai para o navegador — só para variável de servidor.)
 3. **SQL Editor** → rodar os arquivos de `supabase/migrations/` **em ordem numérica**,
    do `001` ao `018`. Um por vez, conferindo que cada um termina sem erro.
-   - `SETUP_COMPLETO.sql` é um consolidado antigo, da base da Shine Rio. Ignore: use as
+   - `SETUP_COMPLETO.sql` é um consolidado antigo, da base que originou este código. Ignore: use as
      migrations numeradas.
    - A `017_rag_chunks.sql` cria a extensão `vector` e a função `buscar_chunks`. Se a
      extensão falhar, habilite `vector` em **Database → Extensions** e rode de novo.
@@ -73,8 +73,11 @@ dois materiais e reindexar.
 
 ## 3. DeepSeek — o que faz a Ana não ser um robô
 
-Sem `DEEPSEEK_API_KEY` o app cai no motor determinístico (`lib/agent/flow/`), que é um
-menu de opções numeradas. É literalmente o "chatbot ou robô" que o projeto não quer ser.
+Sem `DEEPSEEK_API_KEY` o app cai no caminho determinístico (`lib/agent/fallback.ts`). Ele
+não deixa ninguém sem resposta — acolhe, aplica os guardrails e encaminha ao time jurídico
+assim que aparece caso concreto —, mas **não informa nada**: sem o modelo e sem o material
+oficial no prompt, qualquer frase sobre procedimento seria invenção. É o comportamento
+seguro, não o produto.
 
 1. Conta em <https://platform.deepseek.com> e adicionar crédito.
 2. Criar API key → `DEEPSEEK_API_KEY`.
@@ -95,8 +98,8 @@ português. Sem a chave, o áudio chega, é salvo, e a Ana pede para a pessoa es
 
 ## 5. Z-API — o WhatsApp
 
-**Instância DEDICADA desta operação.** Reaproveitar a da Shine Rio faz este agente
-responder pelo WhatsApp da outra empresa.
+**Instância DEDICADA desta operação.** A instância Z-API é por cliente: reaproveitar a de
+outra operação faz este agente responder pelo WhatsApp da outra empresa.
 
 1. Criar instância em <https://z-api.io> e parear o WhatsApp da Imigrar Brasil (QR Code).
 2. Copiar `Instance ID`, `Token` e o `Client-Token` da conta.

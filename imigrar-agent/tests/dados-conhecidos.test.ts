@@ -3,7 +3,7 @@ import { buildDadosConhecidosBlock } from "@/lib/agent";
 import { executeTool } from "@/lib/agent/tools";
 import type { Lead } from "@/lib/domain/types";
 
-// Relato do Eduardo em 11/08/2026: "algumas vezes ela faz perguntas que já foram
+// Relato do cliente da base original: "algumas vezes ela faz perguntas que já foram
 // respondidas anteriormente". O histórico completo sempre foi para o modelo, mas o bloco
 // que DESTACA o que já se sabe listava só 6 campos — escala, tipo de cliente, prazo e
 // duração ficavam de fora, e a resposta se perdia no meio da conversa.

@@ -7,7 +7,7 @@ import {
   SESSION_MAX_AGE_SECONDS,
 } from "@/lib/auth/session";
 
-const payload = { sub: "u1", email: "alguem@shinerio.com", role: "admin" as const };
+const payload = { sub: "u1", email: "alguem@imigrarbrasil.com.br", role: "admin" as const };
 
 describe("auth/session", () => {
   it("faz round-trip de sub/email/role", async () => {

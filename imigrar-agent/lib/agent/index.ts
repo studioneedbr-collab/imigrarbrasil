@@ -1,4 +1,4 @@
-import { getRepository } from "@/lib/data";
+﻿import { getRepository } from "@/lib/data";
 import { getSystemPrompt } from "@/lib/agent/system-prompt";
 import { runAgent, type AgentTurn, type ToolCallTrace } from "@/lib/agent/runner";
 import { computeLeadScore } from "@/lib/agent/lead-score";
@@ -10,7 +10,6 @@ import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, detectarIdioma, registrarIdioma } from "@/lib/agent/idioma";
-import { detectarCobertura, dimensionar, descreverPosto } from "@/lib/agent/dimensionamento";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -69,13 +68,18 @@ export function buildDadosConhecidosBlock(lead: Lead | null): string {
 }
 
 // Bloco "AGORA": data e hora de Brasília + a saudação correta para este momento.
-// O DeepSeek não sabe que horas são; sem isto ele espelha a saudação que o cliente
-// usou (ou chuta), e a Shayene acaba dando "boa noite" às 9h da manhã.
+// O DeepSeek não sabe que horas são; sem isto ele espelha a saudação que a pessoa
+// usou (ou chuta), e a Ana acaba dando "boa noite" às 9h da manhã — o que é ainda mais
+// fácil de acontecer aqui, onde metade de quem escreve está em outro fuso.
 export function buildAgoraBlock(now: Date): string {
   const fmt = (opts: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", ...opts }).format(now);
   const hora = Number(fmt({ hour: "2-digit", hourCycle: "h23" }));
-  const saudacao = hora < 12 ? "bom dia" : hora < 18 ? "boa tarde" : "boa noite";
+  // A MADRUGADA É "BOA NOITE". O corte em `hora < 12` mandava dar bom dia à 1h da manhã —
+  // e quem escreve de madrugada para uma assessoria de imigração é justamente quem está
+  // sem dormir com um prazo correndo.
+  const saudacao =
+    hora < 5 ? "boa noite" : hora < 12 ? "bom dia" : hora < 18 ? "boa tarde" : "boa noite";
   const diaSemana = fmt({ weekday: "long" });
   const data = fmt({ day: "2-digit", month: "2-digit", year: "numeric" });
   const relogio = fmt({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -150,7 +154,7 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // olhar o relógio. O horário vai explícito, em Brasília, junto da saudação correta.
   systemPrompt += buildAgoraBlock(new Date());
 
-  // Reinício após 24h: se o cliente sumiu por mais de 24h e voltou, a Shayene recomeça
+  // Reinício após 24h: se a pessoa sumiu por mais de 24h e voltou, a Ana recomeça
   // a saudação (mas aproveita os dados já conhecidos para confirmar, não reperguntar).
   if (rawMsgs.length >= 2) {
     const last = new Date(rawMsgs[rawMsgs.length - 1].createdAt).getTime();
@@ -166,30 +170,11 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   const lastUserText = [...rawMsgs].reverse().find((m) => m.role === "user")?.content ?? "";
   const allUserText = rawMsgs.filter((m) => m.role === "user").map((m) => m.content).join("  ");
 
-  // COBERTURA DE POSTO — herança do motor de precificação, que continua no sistema.
-  //
-  // O bloco só entra quando a conversa é REALMENTE de dimensionamento de posto. Sem esse
-  // segundo filtro, "meu visto vence em 24h" acionava o detector e a Ana recebia, no meio
-  // de um atendimento de imigração, um bloco falando de porteiro na escala 12x36.
-  const falaDePosto = /\b(posto|portaria|porteir|vigia|zelador|asg|limpeza|faxin|recep[çc]ion|escala)\b/i.test(
-    allUserText,
-  );
-  const coberturaFalada = falaDePosto ? detectarCobertura(allUserText) : null;
-  if (coberturaFalada) {
-    const dim = dimensionar(coberturaFalada);
-    systemPrompt +=
-      `\n\n════════ ATENÇÃO: o cliente descreveu COBERTURA DE POSTO ════════\n` +
-      `Ele falou de ${descreverPosto(dim)}. Um posto assim NÃO é uma pessoa nem duas.\n` +
-      `Ao cotar: employees_count = quantidade de POSTOS e cobertura = "${coberturaFalada}". ` +
-      `NÃO multiplique por ${dim.funcionariosPorPosto} de cabeça, NÃO marque adicionais.noturno junto e ` +
-      `NÃO cote como se fosse ${dim.turnos.length} pessoa(s) — o sistema dimensiona e aplica o adicional noturno pela CCT. ` +
-      `Confirme com o cliente se é isso mesmo que ele precisa antes de fechar o valor, e pergunte se haverá rendição no intervalo.`;
-  }
-
-  // O DOSSIÊ NÃO DEPENDE MAIS DO MODELO LEMBRAR DA TOOL. Antes, quando o DeepSeek não
-  // chamava registrar_dados_lead — e ele esquece direto —, o painel ficava em
-  // "Coletando…" enquanto o cliente já tinha dito serviço, quantidade e região. Aqui a
-  // leitura é determinística, roda a todo turno e só preenche o que está vazio.
+  // O DOSSIÊ NÃO DEPENDE DO MODELO LEMBRAR DA TOOL. Quando o DeepSeek não chama
+  // registrar_dados_lead — e ele esquece direto —, o painel ficava em "Coletando…"
+  // enquanto a pessoa já tinha dito a nacionalidade, onde está e o que precisa. Aqui a
+  // leitura é determinística (lib/agent/triagem.ts), roda a todo turno e só preenche o
+  // que está vazio.
   let knownLead = await repo.getLeadByConversation(conversationId);
   try {
     const patch = capturarDadosDoLead(allUserText, knownLead);
@@ -198,7 +183,7 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     console.error("[agent] captura automática do lead falhou:", err instanceof Error ? err.message : err);
   }
 
-  // Injeta o que já se sabe deste contato — a Shayene confirma em vez de reperguntar.
+  // Injeta o que já se sabe deste contato — a Ana confirma em vez de reperguntar.
   systemPrompt += buildDadosConhecidosBlock(knownLead);
 
   // IDIOMA. A regra de responder na língua de quem escreveu já é a REGRA ABSOLUTA 1 do
@@ -244,7 +229,6 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // porque a mesma lista perguntada de enfiada vira interrogatório com quem já chega com
   // medo de estar sendo fiscalizado.
   const setorLead = knownLead?.setor ?? "comercial";
-  const jaTemProposta = await repo.hasProposalForConversation(conversationId).catch(() => false);
   const faltaNaTriagem = qualificacaoFaltando(knownLead);
   // A rede de roteamento também é consultada aqui (e não só depois da resposta): quem
   // procura vaga na assessoria não recebe pergunta sobre nacionalidade e prazo de visto.
@@ -289,35 +273,7 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     }
   }
 
-  // REDE DE SEGURANÇA de roteamento: cobre o que o DeepSeek deixar passar. Se a mensagem
-  // casa com um padrão CLARO (colaborador alocado, funcionário interno, candidato) e o
-  // modelo não disparou a tool certa, o sistema força o encaminhamento e assume a resposta.
   const alreadyTransferred = toolCalls.some((t) => t.name === "transferir_para_humano");
-  // A rede é só um BACKSTOP e age TARDE de propósito: os primeiros turnos são a triagem
-  // natural da Shayene (acolher, entender quem é, coletar nome/CPF/o que precisa). A partir
-  // do 3º turno do cliente — antes disso ela ainda está entendendo o caso, e encaminhar aí
-  // é o que fazia o atendimento parecer apressado — se ela ainda não encaminhou um caso
-  // CLARO de operacional (colaborador alocado) ou DP (folha/salário), a rede garante o
-  // encaminhamento. CANDIDATO fica fora da rede: o modelo conduz.
-  // Efeitos colaterais em best-effort; o push + override do reply acontecem quando a rede age.
-  if (
-    userTurns >= 3 &&
-    routed &&
-    (routed.kind === "operacional" || routed.kind === "departamento_pessoal") &&
-    !alreadyTransferred
-  ) {
-    await executeTool("transferir_para_humano", {
-      conversation_id: conversationId,
-      reason: routed.reason,
-      summary: lastUserText,
-      setor: routed.setor,
-    }).catch((err) => console.error("[routing-net] transferir:", err instanceof Error ? err.message : err));
-    // Marca como SOLICITAÇÃO (não lead comercial) na pipeline do setor certo.
-    await repo.upsertLead(conversationId, { setor: routed.setor, stage: "transferido" }).catch(() => {});
-    toolCalls.push({ name: "transferir_para_humano", input: { setor: routed.setor, reason: routed.reason }, result: { ok: true, net: true } });
-    reply = routed.handoffMsg;
-    buttons = undefined;
-  }
 
   // CANDIDATO A VAGA — lado do CRM: mesmo que o modelo não chame tool nenhuma, a pessoa
   // entra no funil do RH. Antes ela respondia o e-mail do RH e o candidato sumia.
@@ -335,11 +291,11 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   }
 
   // TRAVOU REPETINDO A MESMA RESPOSTA: sinal de que ela esbarrou em algo que não sabe
-  // resolver (evento por diária, função sem preço, pedido fora do padrão). Insistir na
-  // mesma mensagem é o pior desfecho possível — o cliente confirma, ela repergunta, e a
-  // proposta nunca sai. Aqui a conversa é entregue a uma pessoa, com dossiê — do SETOR
-  // desta conversa: mandar um candidato a vaga para o comercial ouvir sobre "valores
-  // exatos" é pior do que não encaminhar nada.
+  // resolver (uma pergunta que o material oficial não cobre, um caso que ela não deveria
+  // estar conduzindo). Insistir na mesma mensagem é o pior desfecho possível — quem está
+  // com prazo correndo lê isso como não estar sendo ouvido. Aqui a conversa é entregue a
+  // uma pessoa, do SETOR desta conversa: mandar um candidato a vaga para o time jurídico
+  // é pior do que não encaminhar nada.
   const respostasAnteriores = [...rawMsgs]
     .reverse()
     .filter((m) => m.role === "assistant")
@@ -355,9 +311,6 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     setor: setorDaConversa,
     fonte: source,
     jaTransferiu: toolCalls.some((t) => t.name === "transferir_para_humano"),
-    // No comercial, travar não chama ninguém: falta dado na triagem, e a saída é
-    // perguntar o que falta e mandar o PDF.
-    jaTemProposta,
     faltamNoDossie: faltaNaTriagem.faltam,
     proximoRetorno: janela.dentroDoExpediente ? undefined : janela.quando,
   });
@@ -381,23 +334,27 @@ export async function respondToConversation(conversationId: string): Promise<Pro
 
   await repo.addMessage(conversationId, "assistant", reply);
 
-  const transferred = toolCalls.some((t) => t.name === "transferir_para_humano");
-  const proposalMade = toolCalls.some((t) => t.name === "gerar_proposta_pdf");
+  // CHAMAR A TOOL NÃO É TER ENCAMINHADO. O portão de lib/agent/transfer-gate.ts recusa o
+  // encaminhamento quando a conversa ainda não tem caso nenhum, e devolve `ok: false`.
+  // Contar a CHAMADA marcava a conversa como "transferida" no painel sem ninguém ter sido
+  // chamado: o atendente via um caso encaminhado que não existia no funil, e a Ana parava
+  // de ser cobrada pelo atendimento que continuava só dela.
+  const transferred = toolCalls.some(
+    (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok !== false,
+  );
   const desqualificado = toolCalls.some(
     (t) => t.name === "registrar_dados_lead" && (t.input as { stage?: string })?.stage === "desqualificado",
   );
-  // SHAYENE RESPONDEU: define o status do ciclo de vida da conversa.
-  // proposta → negociando · transferência → transferida · desqualificado → finalizada ·
-  // caso contrário → aguardando resposta do lead (o cron cuida do follow-up de 24h).
+  // A ANA RESPONDEU: define o status do ciclo de vida da conversa.
+  // transferência → transferida · desqualificado (engano/spam) → finalizada ·
+  // caso contrário → aguardando resposta (o cron cuida do follow-up de 24h).
   const status: ConversationStatus = transferred
     ? "transferred"
-    : proposalMade
-      ? "negotiating"
-      : desqualificado
-        ? "finished"
-        : "waiting";
-  // try/catch: sem a migration 008 o CHECK antigo rejeitaria 'waiting'/'negotiating';
-  // isso não pode impedir a Shayene de responder.
+    : desqualificado
+      ? "finished"
+      : "waiting";
+  // try/catch: sem a migration 008 o CHECK antigo rejeitaria 'waiting';
+  // isso não pode impedir a Ana de responder.
   try {
     await repo.updateConversationStatus(conversationId, status);
     await repo.updateLastMessageAt(conversationId);
@@ -407,8 +364,8 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   const conv = await repo.getConversation(conversationId);
 
   // Lead score + funil: computa o score e persiste na CONVERSA (antes ficava sempre 0
-  // na lista de Conversas) e move o lead no Kanban — 'orçado' quando gera proposta,
-  // 'qualificado' quando o score sobe. Sem isto o CRM não reagia ao atendimento.
+  // na lista de Conversas) e move o contato no Kanban para 'qualificado' quando o score
+  // sobe. Sem isto o CRM não reagia ao atendimento.
   try {
     const msgs = await repo.listMessages(conversationId);
     const lead = await repo.getLeadByConversation(conversationId);
@@ -417,13 +374,12 @@ export async function respondToConversation(conversationId: string): Promise<Pro
       await repo.updateConversation(conversationId, { leadScore: score });
     }
     if (lead) {
-      // Não mexe em estágios "finais" definidos manualmente ou pela Shayene
+      // Não mexe em estágios "finais" definidos manualmente ou pela Ana
       // (desqualificado/perdido/ganho/transferido) — a automação não os sobrescreve.
       const terminal = ["desqualificado", "perdido", "ganho", "transferido"];
       let stage = lead.stage;
       if (!terminal.includes(lead.stage ?? "novo")) {
-        if (proposalMade) stage = "orcado";
-        else if (score >= 45 && (!lead.stage || lead.stage === "novo")) stage = "qualificado";
+        if (score >= 45 && (!lead.stage || lead.stage === "novo")) stage = "qualificado";
       }
       if (stage !== lead.stage || lead.score !== score) {
         await repo.upsertLead(conversationId, { score, stage });

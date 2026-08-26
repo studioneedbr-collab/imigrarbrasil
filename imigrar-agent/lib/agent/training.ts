@@ -35,8 +35,8 @@ const REASONING_HEADING = /^═+\s*(.+?)\s*═+$/;
  * Quebra o texto do raciocínio nos blocos separados por `════════ TÍTULO ════════`.
  *
  * Um textarea com as 300 linhas do bloco inteiro seria intocável na prática — ninguém
- * edita "como a Shayene pensa" rolando um campo desses. Em blocos, dá para mexer só em
- * "COMO VOCÊ VENDE" sem esbarrar no resto.
+ * edita "como a Ana pensa" rolando um campo desses. Em blocos, dá para mexer só em
+ * "QUANDO ENCAMINHAR PARA O TIME JURÍDICO" sem esbarrar no resto.
  */
 export function parseReasoning(texto: string): ReasoningBlock[] {
   const blocos: ReasoningBlock[] = [];
@@ -171,15 +171,53 @@ export const DEFAULT_TRANSFER_RULES: TransferRuleConfig[] = TRANSFER_RULES.map((
 }));
 
 /**
+ * Tira o acento sem tocar no resto. Existe porque a regra de transbordo é escrita no
+ * painel POR QUEM ACENTUA e testada contra o que a pessoa digita NO WHATSAPP, onde
+ * ninguém acentua — e aqui boa parte de quem escreve nem tem teclado em português.
+ *
+ * Sem isto, "o que e refugio?" não casava com a palavra "refúgio" cadastrada, e um tema
+ * que a regra manda levar ao advogado caía na resposta genérica.
+ */
+export function semAcento(texto: string): string {
+  return (texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+/**
+ * Cada vogal (e o c e o n) vira uma classe com todas as suas formas. É isto que faz a
+ * regra casar NOS DOIS SENTIDOS: a palavra cadastrada com acento encontra o texto sem, e
+ * a cadastrada sem acento encontra o texto com.
+ */
+const CLASSES: Record<string, string> = {
+  a: "aáàâãä", e: "eéèêë", i: "iíìîï", o: "oóòôõö", u: "uúùûü", c: "cç", n: "nñ",
+};
+const PARA_CLASSE = new Map<string, string>();
+for (const variantes of Object.values(CLASSES)) {
+  for (const ch of variantes) PARA_CLASSE.set(ch, `[${variantes}]`);
+}
+
+/**
  * Regex a partir das palavras editadas no painel. Sem \b nas bordas: as palavras vêm com
- * acento e espaço ("nota fiscal", "má conduta"), e a borda de palavra do JS não entende
- * acento — "insatisfação\b" nunca casaria. `includes` semântico, portanto, é o certo aqui.
+ * acento e espaço ("reunião familiar", "documento vencido"), e a borda de palavra do JS
+ * não entende acento — "situação\b" nunca casaria. `includes` semântico, portanto, é o
+ * certo aqui.
+ *
+ * INSENSÍVEL A ACENTO, e isso não é detalhe: a regra é escrita no painel POR QUEM ACENTUA
+ * e testada contra o que a pessoa digita NO WHATSAPP, onde ninguém acentua — e aqui boa
+ * parte de quem escreve nem tem teclado em português. Sem isto, "o que e refugio?" não
+ * casava com a palavra "refúgio" cadastrada, e um tema que a regra manda levar ao
+ * advogado caía na resposta genérica.
  */
 export function buildTransferRegex(keywords: string[]): RegExp | null {
   const parts = keywords
     .map((k) => k.trim())
     .filter(Boolean)
-    .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    .map((k) =>
+      k
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .split("")
+        .map((ch) => PARA_CLASSE.get(ch.toLowerCase()) ?? ch)
+        .join(""),
+    );
   if (parts.length === 0) return null;
   return new RegExp(parts.join("|"), "i");
 }
@@ -243,7 +281,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
 ];
 
 export interface GuardrailsConfig {
-  /** Termos que a Shayene nunca revela. */
+  /** Termos que a Ana nunca revela. */
   termos: string[];
   /** Regras gerais ligadas/desligadas. */
   regras: Record<BehaviorRuleId, boolean>;

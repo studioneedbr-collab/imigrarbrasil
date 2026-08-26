@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import {
   SkeletonCard,
   type IconName,
 } from "@/components/dashboard/ui";
-import { computeCostBreakdown } from "@/lib/agent/pricing";
+import { computeCostBreakdown } from "@/lib/comercial/pricing";
 import {
   LENGTH_LABEL,
   TONE_LABEL,

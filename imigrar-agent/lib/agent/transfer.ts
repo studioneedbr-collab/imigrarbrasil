@@ -11,6 +11,8 @@ export function detectTransfer(
   text: string,
   rules?: TransferRuleConfig[],
 ): { categoria: string; resposta: string } | undefined {
+  // `buildTransferRegex` já é insensível a acento nos dois sentidos — a regra vem do
+  // painel escrita com acento e a mensagem chega do WhatsApp quase sempre sem.
   if (rules) {
     for (const r of rules) {
       if (!r.ativo) continue;
@@ -23,14 +25,23 @@ export function detectTransfer(
   return rule ? { categoria: rule.categoria, resposta: rule.resposta } : undefined;
 }
 
+/**
+ * O RESUMO QUE O ADVOGADO LÊ PRIMEIRO, quando um chamado é aberto pelo painel.
+ *
+ * Os campos são os da estrutura herdada, com a leitura deste domínio: `cidade` é onde a
+ * pessoa está agora, `servicos` é o caminho migratório que ela procura e `necessidade` é
+ * o que ela pediu. Quantidade de postos e escala de trabalho saíram — eram da base de
+ * terceirização e não significam nada num caso de imigração.
+ */
 export function buildDossie(input: {
   cliente?: Partial<Cliente>; lead?: Partial<Lead>; necessidade?: string; historicoResumo?: string;
 }): TransferDossie {
   return {
-    nome: input.cliente?.nome, empresa: input.cliente?.empresa, cpf: input.cliente?.cpf,
+    nome: input.cliente?.nome ?? input.lead?.contactName ?? undefined,
+    empresa: input.cliente?.empresa ?? input.lead?.companyName ?? undefined,
     cidade: input.cliente?.cidade ?? input.lead?.region ?? undefined,
-    servicos: input.lead?.servicesInterested ?? undefined, quantidade: input.lead?.employeesNeeded ?? undefined,
-    escala: input.lead?.schedule, necessidade: input.necessidade,
+    servicos: input.lead?.servicesInterested ?? undefined,
+    necessidade: input.necessidade,
     historicoResumo: input.historicoResumo,
   };
 }

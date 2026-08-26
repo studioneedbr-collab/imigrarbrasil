@@ -1,4 +1,4 @@
-import ExcelJS from "exceljs";
+﻿import ExcelJS from "exceljs";
 import {
   calcularPreco,
   SUBMODULOS,
@@ -7,9 +7,9 @@ import {
   TRIBUTOS,
   type AdicionaisInput,
   type PriceResult,
-} from "@/lib/agent/pricing";
+} from "@/lib/comercial/pricing";
 import type { ServiceSchedule } from "@/lib/domain/types";
-import { dimensionar, type Cobertura } from "@/lib/agent/dimensionamento";
+import { dimensionar, type Cobertura } from "@/lib/comercial/dimensionamento";
 
 /**
  * PLANILHA DE COMPOSIÇÃO DE CUSTOS — gerada por cotação.

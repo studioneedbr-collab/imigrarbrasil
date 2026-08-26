@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { MemoryRepository } from "@/lib/data/memory-repository";
-import { FUNCTION_CATALOG } from "@/lib/agent/function-catalog";
-import { DEFAULT_PRICING, FUNCOES_COM_CCT } from "@/lib/agent/pricing-params";
-import { executeTool } from "@/lib/agent/tools";
+import { FUNCTION_CATALOG } from "@/lib/comercial/function-catalog";
+import { DEFAULT_PRICING, FUNCOES_COM_CCT } from "@/lib/comercial/pricing-params";
+import { calcularPreco } from "@/lib/comercial/pricing";
 
 describe("catálogo de funções", () => {
   it("não tem nome duplicado", () => {
@@ -44,34 +44,26 @@ describe("catálogo de funções", () => {
   });
 });
 
-describe("calcular_preco_servico não vaza preço de função sob consulta", () => {
-  it("ASG (confirmado) devolve o preço", async () => {
-    const r = (await executeTool("calcular_preco_servico", {
-      service_name: "Auxiliar de Serviços Gerais",
-      employees_count: 1,
-    })) as Record<string, unknown>;
+// O motor não inventa preço para o que não tem piso conferido. Antes isto era testado
+// pela tool do agente; a tool não existe mais, e a garantia passou a ser cobrada direto
+// no motor, que é quem as telas do painel chamam.
+describe("o motor não devolve preço de função sob consulta", () => {
+  it("ASG (confirmado) devolve o preço", () => {
+    const r = calcularPreco({ serviceName: "Auxiliar de Serviços Gerais", employeesCount: 1 });
     expect(r.priceConfirmed).toBe(true);
     expect(r.unitSalePrice).toBeCloseTo(4965.47, 2);
   });
 
-  it("praça sem conferência não devolve valor nenhum", async () => {
-    const r = (await executeTool("calcular_preco_servico", {
-      service_name: "Vigia",
-      employees_count: 2,
-      region: "São Paulo",
-    })) as Record<string, unknown>;
+  it("praça sem conferência não confirma preço", () => {
+    const r = calcularPreco({ serviceName: "Vigia", employeesCount: 2, region: "São Paulo" });
     expect(r.sobConsulta).toBe(true);
     expect(r.priceConfirmed).toBe(false);
-    expect(r).not.toHaveProperty("unitSalePrice");
-    expect(r).not.toHaveProperty("totalSalePrice");
+    expect(r.cctCadastrada).toBe(false);
   });
 
-  it("função fora do catálogo também não devolve valor", async () => {
-    const r = (await executeTool("calcular_preco_servico", {
-      service_name: "Astronauta",
-      employees_count: 1,
-    })) as Record<string, unknown>;
+  it("função fora do catálogo também não confirma preço", () => {
+    const r = calcularPreco({ serviceName: "Astronauta", employeesCount: 1 });
     expect(r.sobConsulta).toBe(true);
-    expect(r).not.toHaveProperty("unitSalePrice");
+    expect(r.priceConfirmed).toBe(false);
   });
 });

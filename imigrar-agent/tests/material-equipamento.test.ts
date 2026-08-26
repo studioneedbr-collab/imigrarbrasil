@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { detectTransfer } from "@/lib/agent/transfer";
-import { computeCostBreakdown, calcularPreco, POSTOS_MINIMOS_MATERIAL } from "@/lib/agent/pricing";
-import { getPricingParams, DEFAULT_PRICING } from "@/lib/agent/pricing-params";
+import { computeCostBreakdown, calcularPreco, POSTOS_MINIMOS_MATERIAL } from "@/lib/comercial/pricing";
+import { getPricingParams, DEFAULT_PRICING } from "@/lib/comercial/pricing-params";
 import { DEFAULT_KNOWLEDGE } from "@/lib/agent/knowledge";
 
 const ASG = "Auxiliar de Serviços Gerais";

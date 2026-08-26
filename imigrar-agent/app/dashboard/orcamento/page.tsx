@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@/components/dashboard/ui";
 import { ServicePicker } from "@/components/dashboard/service-picker";
 import type { ServiceSchedule } from "@/lib/domain/types";
-import type { PricingParams } from "@/lib/agent/pricing-params";
+import type { PricingParams } from "@/lib/comercial/pricing-params";
 import { buildProposalEmail } from "@/lib/email/proposal-email";
 import { maskCpfCnpj } from "@/lib/format/masks";
 

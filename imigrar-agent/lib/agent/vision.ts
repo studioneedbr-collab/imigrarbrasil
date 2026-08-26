@@ -10,7 +10,7 @@ import type { MediaKind } from "@/lib/domain/types";
 // lib/agent/deepseek.ts, então basta a variável quando houver um modelo disponível).
 //
 // Com a leitura desligada o anexo continua sendo GUARDADO, exibido no painel e
-// baixável; a Shayene apenas não sabe o que está escrito e pergunta à pessoa.
+// baixável; a Ana apenas não sabe o que está escrito e pergunta à pessoa.
 
 const VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL ?? "";
 

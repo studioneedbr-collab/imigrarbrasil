@@ -1,6 +1,6 @@
-import type { ServiceSchedule } from "@/lib/domain/types";
-import { SEED_SERVICES, SCHEDULE_POSTS } from "@/lib/agent/catalog";
-import { getPricingParams, type PricingParams } from "@/lib/agent/pricing-params";
+﻿import type { ServiceSchedule } from "@/lib/domain/types";
+import { SEED_SERVICES, SCHEDULE_POSTS } from "@/lib/comercial/catalog";
+import { getPricingParams, type PricingParams } from "@/lib/comercial/pricing-params";
 import {
   resolverPraca,
   resolverPiso,
@@ -9,9 +9,9 @@ import {
   type CCT,
   type AdicionaisCCT,
   type BeneficiosCCT,
-} from "@/lib/agent/cct";
-import { FUNCTION_CATALOG } from "@/lib/agent/function-catalog";
-import { dimensionar, coberturaDimensionavel, type Cobertura } from "@/lib/agent/dimensionamento";
+} from "@/lib/comercial/cct";
+import { FUNCTION_CATALOG } from "@/lib/comercial/function-catalog";
+import { dimensionar, coberturaDimensionavel, type Cobertura } from "@/lib/comercial/dimensionamento";
 
 // ──────────────────── PERCENTUAIS DA PLANILHA SHINE RIO 2026 ────────────────────
 // Aba SERVENTE, a única composição fechada da planilha: salário 1.851,90 → custo

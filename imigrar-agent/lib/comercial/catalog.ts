@@ -1,5 +1,5 @@
-import type { ServiceCatalogItem, ServiceSchedule } from "@/lib/domain/types";
-import { getPricingParams } from "@/lib/agent/pricing-params";
+﻿import type { ServiceCatalogItem, ServiceSchedule } from "@/lib/domain/types";
+import { getPricingParams } from "@/lib/comercial/pricing-params";
 
 // O piso e o "preço confirmado" de cada função vivem em pricing-params (DEFAULT_PRICING),
 // que por sua vez lê a CCT da praça-base em lib/agent/cct.ts. Aqui só espelhamos, para

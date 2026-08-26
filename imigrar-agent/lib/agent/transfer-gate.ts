@@ -20,7 +20,7 @@ export const EMERGENCIA =
  * situações que o prompt manda levar ao time jurídico sem intermediar.
  */
 export const CASO_JURIDICO =
-  /\b(ref[úu]gio|refugiad|as[íi]lo|conare|crian[çc]a desacompanhad|menor desacompanhad|apatrid|irregular|indocumentad|sem documento|documento vencido|visto vencido|passei do prazo|overstay|deporta|expuls[ãa]o|indefer|negaram|recurso|notifica[çc][ãa]o|intima[çc][ãa]o|exig[êe]ncia|protocolo|meu processo|prazo|vence|venceu|honor[áa]rio|quanto custa|quanto cobram|qual o valor)/i;
+  /\b(ref[úu]gio|refugiad|as[íi]lo|conare|crian[çc]a desacompanhad|menor desacompanhad|apatrid|irregular|indocumentad|sem documento|documento vencido|visto vencido|passei do prazo|overstay|deporta|expuls[ãa]o|indefer|negaram|recurso|notifica[çc][ãa]o|intima[çc][ãa]o|exig[êe]ncia|protocolo|meu processo|prazo|vence|venceu|honor[áa]rio|quanto custa|quanto cobram|voc[êe]s cobram|qual o valor)/i;
 
 export const PEDIU_HUMANO =
   /\b(falar|conversar|atendimento)\s+com\s+(um[a]?\s+)?(atendente|humano|pessoa|algu[ée]m|respons[áa]vel|consultor|especialista|supervisor|gerente|vendedor|advogad[oa]|doutor[a]?)\b|\bme\s+(transfere|passa para)\b|\bquero\s+(um[a]?\s+)?(atendente|humano|consultor|advogad[oa]|especialista)\b|\bchama[r]?\s+(o|a)\s+(respons[áa]vel|advogad[oa])\b|(^|[^a-zà-ú])rob[ôo](?![a-zà-ú])/i;
@@ -66,8 +66,6 @@ export function avaliarTransferencia(i: TransferGateInput): TransferGateResult {
 // qualificação. É o freio contra despachar quem acabou de mandar "oi".
 
 export interface EncaminhamentoComercialInput {
-  /** Esta conversa já recebeu proposta em PDF? (herdado; libera, mas raro neste domínio) */
-  jaTemProposta: boolean;
   /** A qualificação (nacionalidade, onde está, o que quer, prazo) está completa? */
   dossieCompleto: boolean;
   /** Últimas mensagens da pessoa — é nelas que se vê o caso concreto e o pedido de humano. */
@@ -84,7 +82,6 @@ export interface EncaminhamentoComercialResult {
 export function avaliarEncaminhamentoComercial(
   i: EncaminhamentoComercialInput,
 ): EncaminhamentoComercialResult {
-  if (i.jaTemProposta) return { liberado: true, motivo: "atendimento já formalizado" };
   const texto = i.textoRecente ?? "";
   if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "risco à pessoa" };
   if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };

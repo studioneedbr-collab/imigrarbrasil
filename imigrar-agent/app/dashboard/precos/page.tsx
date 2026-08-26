@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -12,8 +12,8 @@ import {
   EmptyState,
 } from "@/components/dashboard/ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
-import { computeCostBreakdown } from "@/lib/agent/pricing";
-import { SCHEDULE_POSTS } from "@/lib/agent/catalog";
+import { computeCostBreakdown } from "@/lib/comercial/pricing";
+import { SCHEDULE_POSTS } from "@/lib/comercial/catalog";
 
 type FunctionPricing = {
   functionName: string;

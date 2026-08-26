@@ -1,11 +1,12 @@
-// QUANDO O TIME VOLTA. Domingo não tem ninguém no comercial — e dizer "já chamei uma
+// QUANDO O TIME VOLTA. Domingo não tem advogado no escritório — e dizer "já chamei uma
 // pessoa aqui" às 21h de sábado é prometer um retorno que não vai acontecer. Aqui o
 // horário de expediente vira uma frase pronta ("na segunda-feira a partir das 8h") que
 // tanto o prompt quanto as mensagens automáticas usam, em vez de cada uma inventar a sua.
 //
 // O relógio é SEMPRE o de Brasília, lido pelo Intl: `new Date().getDay()` usa o fuso do
 // servidor, e na Vercel isso é UTC — às 22h de sexta no Rio o servidor já acha que é
-// sábado, e a Shayene mandaria o cliente esperar até segunda por engano.
+// sábado, e a Ana mandaria a pessoa esperar até segunda por engano. Aqui isso pesa: boa
+// parte de quem escreve está em outro fuso e já escreve de madrugada.
 
 export const EXPEDIENTE = { inicio: 8, fim: 18 } as const;
 
@@ -45,7 +46,7 @@ export interface JanelaAtendimento {
 
 /**
  * A próxima janela em que existe gente no escritório. Fora do expediente, é isto que a
- * Shayene promete — nunca "em instantes" nem "em até 30 minutos".
+ * Ana promete — nunca "em instantes" nem "em até 30 minutos".
  */
 export function proximoAtendimento(now: Date): JanelaAtendimento {
   const { diaSemana, hora } = agoraEmBrasilia(now);

@@ -4,8 +4,13 @@ import type { Lead, Message, LeadStage } from "@/lib/domain/types";
 //  • engajamento    — volume de mensagens do lead (mais troca = mais quente)
 //  • responsividade — quanto o lead responde ao agente (respostas / perguntas)
 //  • velocidade     — quão rápido responde (gaps curtos entre agente→lead)
-//  • interesse      — sinais de compra: estágio do funil + serviço + quantidade + valor
-// O resultado vem com o detalhamento por componente para exibir no card do lead.
+//  • interesse      — o quanto o caso já está formado: estágio do funil + o que a pessoa
+//                     procura + onde ela está + se há prazo
+// O resultado vem com o detalhamento por componente para exibir no card do contato.
+//
+// O componente "interesse" era, na base comercial, sinal de COMPRA (serviço, quantidade de
+// postos, valor estimado). Aqui ele mede outra coisa: o quanto o time jurídico já tem para
+// trabalhar. Quantidade e valor saíram — não existem neste atendimento.
 
 export interface LeadScoreBreakdown {
   engajamento: number;
@@ -34,7 +39,7 @@ function clamp(n: number, min = 0, max = 25): number {
 
 export function computeLeadScore(input: {
   messages: Pick<Message, "role" | "createdAt">[];
-  lead?: Pick<Lead, "stage" | "servicesInterested" | "employeesNeeded" | "estimatedValue"> | null;
+  lead?: Pick<Lead, "stage" | "servicesInterested" | "region" | "urgency"> | null;
 }): LeadScoreResult {
   const msgs = input.messages ?? [];
   const userMsgs = msgs.filter((m) => m.role === "user");
@@ -64,11 +69,11 @@ export function computeLeadScore(input: {
     velocidade = clamp(25 * (1 - (minutes - 2) / 58));
   }
 
-  // Interesse: estágio + serviço + quantidade + valor estimado.
+  // Interesse: estágio + o que ela procura + onde está + se há prazo.
   let interesse = STAGE_INTEREST[input.lead?.stage ?? "novo"] ?? 2;
   if (input.lead?.servicesInterested?.length) interesse += 2;
-  if (input.lead?.employeesNeeded) interesse += 2;
-  if (input.lead?.estimatedValue) interesse += 3;
+  if (input.lead?.region) interesse += 2;
+  if (input.lead?.urgency) interesse += 3;
   interesse = clamp(interesse);
 
   const score = Math.round(engajamento + responsividade + velocidade + interesse);

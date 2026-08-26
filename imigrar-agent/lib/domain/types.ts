@@ -1,7 +1,7 @@
-// Ciclo de vida da conversa (gerido automaticamente pela Shayene):
-// active: em andamento · waiting: Shayene respondeu, aguardando o lead ·
-// negotiating: proposta enviada, lead avaliando · transferred: encaminhada a humano ·
-// finished: fechada/desqualificada/encerrada · inactive: sem resposta após follow-up de 24h.
+// Ciclo de vida da conversa (gerido automaticamente pela Ana):
+// active: em andamento · waiting: a Ana respondeu, aguardando o contato ·
+// negotiating: herdado da base comercial, o agente não usa mais · transferred: encaminhada
+// ao time jurídico · finished: encerrada · inactive: sem resposta após o follow-up de 24h.
 export type ConversationStatus =
   | "active" | "waiting" | "negotiating" | "transferred" | "finished" | "inactive";
 export type LeadStatus = "new" | "contacted" | "proposal_sent" | "negotiating" | "won" | "lost";
@@ -12,10 +12,11 @@ export type FollowupStatus = "pending" | "sent" | "cancelled";
 export type ServiceSchedule = "5x2_44h" | "6x1_44h" | "12x36";
 export type FlowStateId = "S0"|"S1"|"S2"|"S3"|"S4"|"S5"|"S6"|"S7"|"S8"|"S9"|"S10";
 export type LeadStage = "novo"|"qualificado"|"orcado"|"transferido"|"ganho"|"perdido"|"desqualificado";
-// Setor de destino do lead (define em qual pipeline/CRM ele cai).
-// suprimentos = quem quer VENDER para a Shine (fornecedor/parceiro); diretoria = imprensa
-// e institucional. Os dois não são funil de venda, mas precisam de um destino de verdade —
-// sem isso a Shayene jogava fornecedor e jornalista na pipeline comercial.
+// Setor de destino do contato (define em qual pipeline/CRM ele cai). "comercial" é o
+// funil do TIME JURÍDICO — é para lá que vai todo atendimento de imigração.
+// suprimentos = quem quer VENDER para a assessoria (fornecedor/parceiro); diretoria =
+// imprensa e institucional. Os dois precisam de um destino de verdade — sem isso um
+// fornecedor ou um jornalista cai na fila de quem está pedindo ajuda com um visto.
 export type LeadSetor = "comercial"|"operacional"|"rh"|"departamento_pessoal"|"suprimentos"|"diretoria";
 
 export interface Conversation {
@@ -31,9 +32,9 @@ export interface Conversation {
   handedOffTo?: string;
   handoffReason?: string;
   // ATENDIMENTO HUMANO. `status: 'transferred'` diz apenas que a conversa foi
-  // ENCAMINHADA a um setor (ticket aberto) — a Shayene continua acolhendo o cliente.
+  // ENCAMINHADA a um setor (ticket aberto) — a Ana continua acolhendo a pessoa.
   // `assumedBy` diz que uma pessoa REAL pegou a conversa (e-mail do usuário do painel):
-  // só aí a Shayene fica em silêncio para não falar por cima do atendente.
+  // só aí a Ana fica em silêncio para não falar por cima do atendente.
   assumedBy?: string | null;
   assumedAt?: string | null;
   // Ciclo de status/follow-up automático.
@@ -41,7 +42,7 @@ export interface Conversation {
   followupSentAt?: string | null;
   reopenedAt?: string | null;
   // PEDIU PARA PARAR. Preenchido quando o contato escreve algo como "para de me mandar
-  // mensagem": a Shayene se despede uma vez e nunca mais fala com este número sozinha.
+  // mensagem": a Ana se despede uma vez e nunca mais fala com este número sozinha.
   // É o que evita o Bloquear + Denunciar que derruba o WhatsApp da empresa.
   optOutAt?: string | null;
   // Disse que não tem interesse. Continua conversando (pode mudar de ideia agora), mas
@@ -62,7 +63,7 @@ export interface MessageMedia {
   url: string;
   kind: MediaKind;
   name: string;
-  /** Conteúdo lido do arquivo (visão/OCR) — alimenta a resposta da Shayene. */
+  /** Conteúdo lido do arquivo (visão/OCR) — alimenta a resposta da Ana. */
   text?: string | null;
 }
 
@@ -125,8 +126,8 @@ export interface ProposalServiceLine {
   /**
    * O que a linha assumiu ao ser precificada. Guardado junto porque a planilha de
    * composição (GET /api/proposal/[id]/planilha) é gerada sob demanda a partir daqui —
-   * sem isto, a planilha do Eduardo sairia com o preço do Rio e sem os adicionais,
-   * diferente do PDF que o cliente recebeu. A coluna é jsonb, então não precisa migration.
+   * sem isto, a planilha sairia com o preço do Rio e sem os adicionais, diferente do PDF
+   * que o cliente recebeu. A coluna é jsonb, então não precisa migration.
    */
   region?: string;
   semUniforme?: boolean;

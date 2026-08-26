@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { BDI, CUSTOS_INDIRETOS, LUCRO, calcularPreco, computeCostBreakdown } from "@/lib/agent/pricing";
-import { getPricingParams } from "@/lib/agent/pricing-params";
+﻿import { describe, it, expect } from "vitest";
+import { BDI, CUSTOS_INDIRETOS, LUCRO, calcularPreco, computeCostBreakdown } from "@/lib/comercial/pricing";
+import { getPricingParams } from "@/lib/comercial/pricing-params";
 
 describe("pricing engine", () => {
   it("ancora ASG 5x2 44h em ~R$ 4.965,47 por posto", () => {

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { calcularPreco } from "@/lib/agent/pricing";
+import { calcularPreco } from "@/lib/comercial/pricing";
 import type { ServiceSchedule } from "@/lib/domain/types";
 
 const itemSchema = z.object({

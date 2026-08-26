@@ -3,10 +3,10 @@ import { MemoryRepository } from "@/lib/data/memory-repository";
 import { executeTool } from "@/lib/agent/tools";
 import { getRepository } from "@/lib/data";
 
-// O bug: `status: 'transferred'` significava ao mesmo tempo "a Shayene encaminhou
-// pro setor" e "um atendente assumiu". Como a Shayene encaminha sozinha, TODA
+// O bug: `status: 'transferred'` significava ao mesmo tempo "a Ana encaminhou
+// pro setor" e "um atendente assumiu". Como a Ana encaminha sozinha, TODA
 // conversa encaminhada aparecia no painel como "Você assumiu esta conversa" — e o
-// webhook a calava, deixando o cliente falando sozinho. Quem assumiu agora é
+// webhook a calava, deixando a pessoa falando sozinha. Quem assumiu agora é
 // `assumedBy`, e só ele.
 describe("assumir conversa", () => {
   let repo: MemoryRepository;
@@ -19,16 +19,16 @@ describe("assumir conversa", () => {
     const b = await repo.getOrCreateConversation("sim:b", "Bruno");
     const c = await repo.getOrCreateConversation("sim:c", "Carla");
 
-    await repo.assumeConversation(b.id, "eduardo@shinerio.com");
+    await repo.assumeConversation(b.id, "atendente@imigrarbrasil.com.br");
 
     expect((await repo.getConversation(a.id))!.assumedBy).toBeFalsy();
-    expect((await repo.getConversation(b.id))!.assumedBy).toBe("eduardo@shinerio.com");
+    expect((await repo.getConversation(b.id))!.assumedBy).toBe("atendente@imigrarbrasil.com.br");
     expect((await repo.getConversation(c.id))!.assumedBy).toBeFalsy();
   });
 
   it("devolver pra IA limpa quem assumiu e reabre a conversa", async () => {
     const c = await repo.getOrCreateConversation("sim:d", "Diego");
-    await repo.assumeConversation(c.id, "eduardo@shinerio.com");
+    await repo.assumeConversation(c.id, "atendente@imigrarbrasil.com.br");
     await repo.releaseConversation(c.id);
 
     const depois = (await repo.getConversation(c.id))!;
@@ -36,15 +36,15 @@ describe("assumir conversa", () => {
     expect(depois.status).toBe("active");
   });
 
-  it("encaminhar pro setor NÃO assume a conversa — a Shayene continua atendendo", async () => {
+  it("encaminhar pro setor NÃO assume a conversa — a Ana continua atendendo", async () => {
     // executeTool usa o repositório singleton da aplicação, não a instância local.
     const app = getRepository();
     const c = await app.getOrCreateConversation("sim:encaminhar", "Elis");
     await executeTool("transferir_para_humano", {
       conversation_id: c.id,
-      reason: "Assunto de folha de pagamento.",
-      summary: "Colaborador pediu os contracheques dos dois últimos meses.",
-      setor: "departamento_pessoal",
+      reason: "Situação irregular com prazo correndo.",
+      summary: "Visto vencido há três meses; pediu ajuda para regularizar.",
+      setor: "comercial",
     });
 
     const depois = (await app.getConversation(c.id))!;

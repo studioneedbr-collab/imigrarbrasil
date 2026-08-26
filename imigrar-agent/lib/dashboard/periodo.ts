@@ -1,8 +1,8 @@
 /**
  * PERÍODO E ATIVIDADE DO PAINEL.
  *
- * Em 17/08/2026 o painel mostrava "Conversas hoje: 0" num dia em que a Shayene tinha
- * trocado 45 mensagens e atendido quatro clientes. Nada estava travado — o painel media a
+ * Em 17/08/2026 o painel mostrava "Conversas hoje: 0" num dia em que o agente tinha
+ * trocado 45 mensagens e atendido quatro contatos. Nada estava travado — o painel media a
  * coisa errada, de duas formas:
  *
  * 1. Contava conversa por data de CRIAÇÃO e chamava isso de "volume de atendimento". As
@@ -13,7 +13,7 @@
  *
  * 2. Tirava o "hoje" do relógio do servidor. Na Vercel o processo roda em UTC, e meia-noite
  *    UTC são 21h no Rio: das 21h à meia-noite o painel já contava o dia seguinte. É a mesma
- *    armadilha que lib/agent/index.ts documenta e resolve para a saudação da Shayene ("às
+ *    armadilha que lib/agent/index.ts documenta e resolve para a saudação da Ana ("às
  *    22h de sexta no Rio o getDay() já dizia sábado").
  *
  * Por isso as duas coisas moram aqui, juntas e testadas: qualquer indicador de "atendimento"

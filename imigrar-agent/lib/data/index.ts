@@ -7,10 +7,10 @@ import { useSupabase } from "@/lib/env";
 // Cada recompilação reavalia este módulo (zerando um `let` de módulo e, com ele, os
 // Maps do MemoryRepository), mas não zera `globalThis`. Mesmo padrão recomendado para
 // o PrismaClient em Next.js. Mantém a seleção memory|supabase e a interface Repository.
-const globalForRepo = globalThis as unknown as { __shineRepository?: Repository };
+const globalForRepo = globalThis as unknown as { __ibRepository?: Repository };
 
 export function getRepository(): Repository {
-  if (globalForRepo.__shineRepository) return globalForRepo.__shineRepository;
+  if (globalForRepo.__ibRepository) return globalForRepo.__ibRepository;
   const repo: Repository = useSupabase ? new SupabaseRepository() : new MemoryRepository();
   // eslint-disable-next-line no-console
   console.log(`[data] repository = ${useSupabase ? "supabase" : "memory"} (singleton global)`);
@@ -25,7 +25,7 @@ export function getRepository(): Repository {
         "requisições. Configure NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no deploy.",
     );
   }
-  globalForRepo.__shineRepository = repo;
+  globalForRepo.__ibRepository = repo;
   return repo;
 }
 

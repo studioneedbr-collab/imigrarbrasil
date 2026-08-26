@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { BDI, calcularPreco, POSTOS_MINIMOS_MATERIAL } from "@/lib/agent/pricing";
-import { COBERTURAS, detectarCobertura, dimensionar, descreverPosto } from "@/lib/agent/dimensionamento";
+﻿import { describe, it, expect } from "vitest";
+import { BDI, calcularPreco, POSTOS_MINIMOS_MATERIAL } from "@/lib/comercial/pricing";
+import { COBERTURAS, detectarCobertura, dimensionar, descreverPosto } from "@/lib/comercial/dimensionamento";
 import { abasDoPosto } from "@/lib/planilha/composicao";
 
 /**

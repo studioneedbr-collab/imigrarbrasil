@@ -52,7 +52,7 @@ describe("opt-out corta o follow-up automático", () => {
     const c = await conversaEsquecida("5521999990006");
     await repo.marcarOptOut(c.id, "bloquear");
     // É o que o webhook faz quando o próprio contato reabre a conversa: quem puxou
-    // agora foi ele, então a Shayene pode falar de novo.
+    // agora foi ele, então a Ana pode falar de novo.
     await repo.updateConversation(c.id, { optOutAt: null, noFollowupAt: null });
     const fila = await repo.getConversationsForFollowup();
     expect(fila.map((x) => x.id)).toContain(c.id);

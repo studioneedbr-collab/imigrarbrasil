@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { calcularPreco, computeCostBreakdown } from "@/lib/agent/pricing";
+import { calcularPreco, computeCostBreakdown } from "@/lib/comercial/pricing";
 import {
   getPricingParams,
   resolverPraca,
@@ -9,8 +9,8 @@ import {
   DEFAULT_PRICING,
   FUNCOES_COM_CCT,
   FUNCOES_PENDENTES_CCT,
-} from "@/lib/agent/pricing-params";
-import { SEED_SERVICES } from "@/lib/agent/catalog";
+} from "@/lib/comercial/pricing-params";
+import { SEED_SERVICES } from "@/lib/comercial/catalog";
 import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
 
 const ASG = "Auxiliar de Serviços Gerais";

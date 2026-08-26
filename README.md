@@ -1,8 +1,10 @@
 # Imigrar Brasil — agente de IA
 
-Agente de WhatsApp para assessoria jurídica em imigração. Duplicação da base da
-Shine Rio, com duas diferenças estruturais: atendimento multi-idioma e base de
-conhecimento jurídica própria (RAG sobre as cartilhas oficiais).
+Agente de WhatsApp para assessoria jurídica em imigração. Nasceu da duplicação de um
+agente comercial de terceirização de mão de obra, com duas diferenças estruturais:
+atendimento multi-idioma e base de conhecimento jurídica própria (RAG sobre as cartilhas
+oficiais). A lógica comercial herdada já saiu de dentro do agente — ver
+[o que sobrou da base comercial](#o-que-sobrou-da-base-comercial).
 
 ```
 imigrar-agent/   aplicação Next.js 14 (painel, webhook, orquestração, transbordo)
@@ -41,11 +43,11 @@ as migrations de `imigrar-agent/supabase/migrations/`.
 
 ### Testes
 
-`npm test` — 507 testes, 52 arquivos, todos passando. Cobrem webhook, sessão, transbordo,
-anti-loop e máquina de estados (reaproveitados), a precificação e a CCT (que continuam no
-sistema), o atendimento do domínio novo (gatilhos de transbordo jurídico, "não inventar
-informação migratória", "não falar de honorários") e, desde que o RAG foi ligado, a
-recuperação do material oficial e a detecção de idioma.
+`npm test` — 466 testes, 45 arquivos, todos passando. Cobrem webhook, sessão, transbordo e
+anti-loop, o atendimento do domínio (gatilhos de transbordo jurídico, "não inventar
+informação migratória", "não falar de honorários", triagem de nacionalidade/onde a pessoa
+está/o que ela procura), a recuperação do material oficial e a detecção de idioma — e,
+separada em `lib/comercial/`, a precificação herdada que serve às telas do painel.
 
 ## Estado por fase
 
@@ -69,26 +71,18 @@ sobre imigração**: o prompt manda responder só com base no material oficial, 
 material ela diz que não tem a informação e encaminha todos os casos. É o comportamento
 seguro e correto — não é o produto. É o passo 2 do runbook que muda isso.
 
-### O que a Fase 4 mudou, e o que ela NÃO mudou
+### O que muda quando não há chave de LLM
 
-Mudou a **cabeça** do agente: base de conhecimento, raciocínio, regras de transbordo,
-guardrails, blocos que o orquestrador injeta a cada turno, descrições das tools e as
-mensagens prontas (follow-up, opt-out, impasse). O agente agora é a Ana, da Imigrar Brasil
-— acolhe, informa o que é informação geral e leva o caso concreto ao time jurídico.
+**Sem `DEEPSEEK_API_KEY` o app cai no caminho determinístico** (`lib/agent/fallback.ts`).
+Ele não é um menu: acolhe em PT/ES, aplica os guardrails (honorários nunca), encaminha ao
+time jurídico assim que aparece caso concreto e **não afirma nada sobre procedimento** —
+ali não há material oficial na mão, então qualquer frase de requisito ou prazo seria
+invenção. Para ver a personalidade completa, configure a chave.
 
-Não mudou **nada da maquinaria**: motor de precificação, CCT, proposta em PDF, planilha,
-rotas e telas do painel continuam no lugar e testados (471 testes passam). As tools
-comerciais seguem existindo, mas a descrição delas manda o agente não usá-las.
-
-Duas coisas a saber antes de testar:
-
-1. **Sem `DEEPSEEK_API_KEY`, o app cai no motor determinístico** (`lib/agent/flow/`), que é
-   um menu — e o menu ainda é o comercial herdado, com a porta de entrada rebrandada. Para
-   ver a personalidade nova de verdade, configure a chave.
-2. **O RAG está ligado no código, mas a base precisa estar carregada.** `lib/agent/rag.ts`
-   recupera o material oficial a cada turno e injeta no prompt; sem Supabase, sem
-   `OPENAI_API_KEY` ou com a tabela `rag_chunks` vazia, ele devolve vazio em silêncio e o
-   agente volta a dizer que não tem a informação. Confira em `/api/health` → `rag`.
+**O RAG está ligado no código, mas a base precisa estar carregada.** `lib/agent/rag.ts`
+recupera o material oficial a cada turno e injeta no prompt; sem Supabase, sem
+`OPENAI_API_KEY` ou com a tabela `rag_chunks` vazia, ele devolve vazio em silêncio e o
+agente volta a dizer que não tem a informação. Confira em `/api/health` → `rag`.
 
 ## Identidade visual
 
@@ -96,13 +90,29 @@ Aplicada. Paleta tirada pixel a pixel do logotipo, tipografia própria (Archivo 
 Public Sans / IBM Plex Mono) e a faixa MRZ como elemento de assinatura. O detalhe
 das decisões está em [imigrar-agent/IDENTIDADE.md](imigrar-agent/IDENTIDADE.md).
 
-O atendimento já é o da Imigrar Brasil. O que segue com cara de Shine Rio é a maquinaria
-comercial herdada — precificação, CCT, proposta em PDF e as rotas
-Propostas/Preços/Orçamento/Funcionários, que saíram do menu mas continuam no disco e nos
-testes. Está desligada do agente, e retirá-la do repositório é uma decisão à parte.
+## O que sobrou da base comercial
+
+O **agente** está limpo: `lib/agent/` não tem mais precificação, CCT, dimensionamento de
+posto, proposta em PDF nem cadastro de funcionário, e as tools correspondentes deixaram de
+ser oferecidas ao modelo. A Ana não cota, não propõe e não fala de valor.
+
+A maquinaria em si continua no repositório, **fora do agente**, servindo às telas do
+painel:
+
+| onde | o que é | quem usa |
+|---|---|---|
+| `imigrar-agent/lib/comercial/` | preço, CCT, catálogo de funções, dimensionamento | telas Preços e Orçamento |
+| `imigrar-agent/lib/pdf/`, `lib/planilha/`, `lib/email/proposal-email.ts` | proposta em PDF, planilha de composição, e-mail de envio | tela Orçamento |
+| rotas `/api/quote*`, `/api/proposal*`, `/api/pricing-params`, `/api/funcionarios` | back-end dessas telas | painel |
+
+As telas **Propostas, Preços, Orçamento e Funcionários saíram do menu** mas seguem no
+disco. **Atenção:** o PDF da proposta e o e-mail que o acompanha ainda carregam a marca e
+o texto institucional da empresa de origem. Nada do agente os aciona — mas a tela de
+Orçamento sim. Se essas telas forem ficar, esse texto precisa ser reescrito antes de
+alguém enviar um deles; se forem sair, é uma decisão à parte.
 
 ## O que NÃO fazer
 
-Não reaproveite as credenciais da Shine Rio no `.env.local` daqui. A instância
-Z-API é dedicada por cliente — herdar aquela faz este agente responder pelo
-WhatsApp da Shine Rio.
+Não reaproveite as credenciais do agente que originou este código no `.env.local` daqui. A
+instância Z-API é dedicada por cliente — herdar a de outra operação faz este agente
+responder pelo WhatsApp dela.

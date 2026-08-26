@@ -12,9 +12,10 @@ type NavGroup = { section: string | null; links: NavLink[] };
  * O menu segue o trabalho da assessoria, não o da base que originou este código.
  *
  * Ficaram DE FORA, de propósito: Propostas, Preços, Orçamento e Funcionários — são
- * telas de precificação de limpeza, sem equivalente em imigração. As rotas ainda
- * existem no disco (apagá-las quebra a suíte herdada); tirá-las do menu é o primeiro
- * passo honesto, e a remoção fica para a troca de domínio da Fase 4.
+ * telas de precificação de mão de obra terceirizada, sem equivalente em imigração. As
+ * rotas continuam no disco e o motor por trás delas mora em `lib/comercial/`, fora do
+ * agente: a Ana não cota, não gera proposta e não cadastra funcionário. Apagar as telas
+ * é uma decisão à parte; tirá-las do caminho de quem usa o painel já está feito.
  */
 const navGroups: NavGroup[] = [
   {

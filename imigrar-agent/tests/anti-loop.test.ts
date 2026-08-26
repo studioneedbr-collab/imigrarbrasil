@@ -6,27 +6,28 @@ import {
   similaridade,
 } from "@/lib/agent/anti-loop";
 
-// Mensagens reais do atendimento da Vivi (evento no Aterro do Flamengo), em que a
-// Shayene reformulou a mesma confirmação três vezes e nunca enviou a proposta.
-const VIVI_1 =
-  "Vivi, como esse é um evento de 3 diárias de 8h (não um contrato mensal), o valor é montado por diária, não pelo preço mensal padrão. Deixa eu confirmar com você pra montar certinho: o valor que você precisa é por diária de 8h para os 30 staffs e 20 recepcionistas, totalizando os 3 dias? 😊";
-const VIVI_2 =
-  "Vivi, como esse é um evento pontual de 3 diárias de 8h (e não um contrato mensal), o valor é montado por diária. Vou calcular aqui com base na composição de custos e te retorno em instantes com o valor exato 😊 Só um detalhe: como é um evento de curta duração, o cálculo fica diferente do mensal. Me confirma se as 8h são por dia, totalizando os 3 dias, que eu já fecho o valor pra você.";
+// A Ana reformulando a MESMA pergunta de triagem sem sair do lugar. Num atendimento
+// comercial isso custava uma proposta; aqui custa o atendimento inteiro — quem está com
+// um prazo correndo lê a terceira mensagem repetida como não estar sendo ouvido, e some.
+const TRIAGEM_1 =
+  "Para eu te ajudar com o seu caso, preciso entender melhor a sua situação. Você já está no Brasil ou ainda está no exterior, e como foi a sua entrada no país? 😊";
+const TRIAGEM_2 =
+  "Deixa eu entender melhor a sua situação para poder te ajudar. Você já está no Brasil ou ainda está no exterior? E como foi a sua entrada no país?";
 
 describe("rede anti-repetição", () => {
   it("pega a mesma mensagem reenviada", () => {
-    expect(ehRepeticao(VIVI_1, [VIVI_1])).toBe(true);
+    expect(ehRepeticao(TRIAGEM_1, [TRIAGEM_1])).toBe(true);
   });
 
   it("pega a mesma ideia reescrita com outras palavras", () => {
-    expect(similaridade(VIVI_1, VIVI_2)).toBeGreaterThan(0.6);
-    expect(ehRepeticao(VIVI_1, [VIVI_2, VIVI_1])).toBe(true);
+    expect(similaridade(TRIAGEM_1, TRIAGEM_2)).toBeGreaterThan(0.6);
+    expect(ehRepeticao(TRIAGEM_1, [TRIAGEM_2, TRIAGEM_1])).toBe(true);
   });
 
   it("ignora acento, emoji e pontuação", () => {
     expect(
-      ehRepeticao("Me confirma a região do serviço para eu calcular certinho? 😊", [
-        "Me confirma a regiao do servico, para eu calcular certinho.",
+      ehRepeticao("Me confirma a sua nacionalidade para eu registrar certinho? 😊", [
+        "Me confirma a sua nacionalidade, para eu registrar certinho.",
       ]),
     ).toBe(true);
   });
@@ -34,35 +35,34 @@ describe("rede anti-repetição", () => {
   it("não acusa respostas de assuntos diferentes", () => {
     expect(
       ehRepeticao(
-        "Para 2 porteiros na Barra o valor fica em torno de R$ 9.219 por mês, já com tudo incluso.",
-        ["Me passa o nome da empresa e o CNPJ para eu gerar a proposta formal?"],
+        "Reunião familiar é o caminho de quem quer trazer para perto cônjuge, filhos ou pais.",
+        ["Me conta de quem se trata, para o time jurídico já saber o contexto do seu caso."],
       ),
     ).toBe(false);
   });
 
   it("não acusa confirmação curta repetida", () => {
-    expect(ehRepeticao("Perfeito! 😊", ["Perfeito! 😊"])).toBe(false);
+    expect(ehRepeticao("Entendi 😊", ["Entendi 😊"])).toBe(false);
   });
 
   it("só olha as três últimas respostas", () => {
-    const outras = ["a) preço do porteiro", "b) dados da empresa", "c) proposta enviada"];
-    expect(ehRepeticao(VIVI_1, [...outras, VIVI_1])).toBe(false);
+    const outras = ["a) o que é refúgio", "b) onde você está hoje", "c) caso encaminhado"];
+    expect(ehRepeticao(TRIAGEM_1, [...outras, TRIAGEM_1])).toBe(false);
   });
 });
 
-// Atendimento real do Wanderson (candidato a ASG, Campo Grande, 14/08): triagem feita,
-// currículo recebido, e no "muito obrigado" final a Shayene repetiu a tranquilização —
-// a rede leu como impasse e jogou o candidato na fila do COMERCIAL, oferecendo "os
-// valores exatos" para quem estava pedindo emprego.
+// Quem chega aqui se despede assim: "muito obrigado, só Deus sabe o que estou passando".
+// A repetição da tranquilização depois disso é o desfecho CERTO, não um impasse — sem esta
+// distinção, o agradecimento virava chamado para uma pessoa que não tinha nada a fazer.
 const RH_TRANQUILIZA =
-  "Entendo a urgência, Wanderson. Seu currículo já está com o RH e registrei sua prioridade. Assim que surgir uma oportunidade de ASG na sua região, eles entram em contato. Fica tranquilo que está tudo encaminhado 😊";
+  "Anotei aqui o seu interesse em fazer parte do time. Assim que abrir uma vaga na sua área, quem cuida das vagas aqui entra em contato com você 😊";
 const RH_REPETE =
-  "Fica tranquilo, Wanderson. Seu currículo está com o RH e sua prioridade registrada. Assim que surgir uma oportunidade de ASG na sua região eles entram em contato 😊";
+  "Já registrei o seu interesse em fazer parte do time. Quando abrir uma vaga na sua área, quem cuida das vagas aqui entra em contato com você.";
 
 describe("fechamento cordial", () => {
-  it("reconhece o agradecimento do Wanderson (mesmo com 'o brigado')", () => {
+  it("reconhece o agradecimento mesmo escrito torto ('o brigado')", () => {
     expect(
-      ehFechamentoCordial("muito o brigado dona shaiene só Deus sabe o que eu estou passando"),
+      ehFechamentoCordial("muito o brigado só Deus sabe o que eu estou passando"),
     ).toBe(true);
   });
 
@@ -72,25 +72,25 @@ describe("fechamento cordial", () => {
   });
 
   it("não conta como fechamento quando ainda há pedido em aberto", () => {
-    expect(ehFechamentoCordial("obrigado! mas me manda o valor do porteiro")).toBe(false);
-    expect(ehFechamentoCordial("obrigada, e quanto fica a proposta?")).toBe(false);
+    expect(ehFechamentoCordial("obrigado! mas ainda preciso saber do prazo")).toBe(false);
+    expect(ehFechamentoCordial("obrigada, e o meu protocolo?")).toBe(false);
   });
 
   it("mensagem sem agradecimento nenhum não é fechamento", () => {
-    expect(ehFechamentoCordial("preciso de 2 ASGs na Barra")).toBe(false);
+    expect(ehFechamentoCordial("meu visto vence semana que vem")).toBe(false);
   });
 });
 
 describe("impasse — para quem vai o atendimento travado", () => {
   const base = {
-    novaResposta: VIVI_1,
-    respostasAnteriores: [VIVI_2, VIVI_1],
-    ultimaMensagemDoCliente: "isso mesmo, são 3 dias",
+    novaResposta: TRIAGEM_1,
+    respostasAnteriores: [TRIAGEM_2, TRIAGEM_1],
+    ultimaMensagemDoCliente: "já respondi isso, estou no Brasil",
     setor: "comercial" as const,
     fonte: "deepseek" as const,
     jaTransferiu: false,
-    // Triagem fechada: é o caso raro em que nem com tudo na mão dá para cotar
-    // (evento por diária). Aí sim uma pessoa entra.
+    // Qualificação fechada: o caso raro em que, mesmo com tudo na mão, ela travou.
+    // Aí sim uma pessoa entra.
     faltamNoDossie: [] as string[],
   };
 
@@ -102,22 +102,16 @@ describe("impasse — para quem vai o atendimento travado", () => {
     expect(r?.msg).toMatch(/jurídico/i);
   });
 
-  // Decisão do Eduardo: o comercial humano é 1% dos atendimentos, e só depois do PDF.
-  // Travar no meio de uma cotação não é motivo para chamar ninguém — é sinal de que
-  // falta dado na triagem.
-  it("cotação travada com dado faltando NÃO encaminha: pede o que falta", () => {
+  // Travar com a qualificação pela metade não é motivo para chamar ninguém: o mais
+  // provável é que ela tenha se enrolado numa pergunta.
+  it("qualificação pela metade NÃO encaminha: pede o que falta", () => {
     const r = avaliarImpasse({
       ...base,
-      faltamNoDossie: ["o nome da empresa", "o CNPJ", "o e-mail para enviar a proposta"],
+      faltamNoDossie: ["a nacionalidade", "se há prazo ou urgência"],
     });
     expect(r?.acao).toBe("destravar");
-    expect(r?.msg).toMatch(/nome da empresa/i);
-    expect(r?.msg).not.toMatch(/comercial|encaminh|chamei/i);
-  });
-
-  it("com a proposta já enviada, o comercial volta a poder entrar", () => {
-    const r = avaliarImpasse({ ...base, jaTemProposta: true, faltamNoDossie: ["o CNPJ"] });
-    expect(r?.acao).toBe("encaminhar");
+    expect(r?.msg).toMatch(/nacionalidade/i);
+    expect(r?.msg).not.toMatch(/encaminh|chamei/i);
   });
 
   it("fora do expediente, promete o retorno na hora certa em vez de 'já chamei alguém'", () => {
@@ -127,10 +121,10 @@ describe("impasse — para quem vai o atendimento travado", () => {
   });
 
   it("nunca mais oferece 'os valores exatos' de um humano", () => {
-    expect(avaliarImpasse(base)?.msg).not.toMatch(/valores exatos/i);
+    expect(avaliarImpasse(base)?.msg).not.toMatch(/valores exatos|proposta|orçamento/i);
   });
 
-  it("candidato a vaga NUNCA cai no comercial nem ouve falar de valores", () => {
+  it("candidato a vaga NUNCA cai na fila do jurídico nem ouve falar do caso dele", () => {
     const r = avaliarImpasse({
       ...base,
       novaResposta: RH_REPETE,
@@ -141,16 +135,16 @@ describe("impasse — para quem vai o atendimento travado", () => {
     expect(r?.setor).toBe("rh");
     expect(r?.priority).toBe("normal");
     expect(r?.msg).toMatch(/vagas/i);
-    expect(r?.msg).not.toMatch(/jurídico|valores/i);
+    expect(r?.msg).not.toMatch(/jurídico/i);
   });
 
-  it("o agradecimento do Wanderson não vira transferência nenhuma", () => {
+  it("o agradecimento no fim não vira transferência nenhuma", () => {
     expect(
       avaliarImpasse({
         ...base,
         novaResposta: RH_REPETE,
         respostasAnteriores: [RH_TRANQUILIZA],
-        ultimaMensagemDoCliente: "muito o brigado dona shaiene só Deus sabe o que eu estou passando",
+        ultimaMensagemDoCliente: "muito obrigado, só Deus sabe o que eu estou passando",
         setor: "rh",
       }),
     ).toBeNull();
@@ -163,14 +157,24 @@ describe("impasse — para quem vai o atendimento travado", () => {
     );
   });
 
-  it("não age sobre o engine determinístico nem sobre conversa já encaminhada", () => {
-    expect(avaliarImpasse({ ...base, fonte: "engine" })).toBeNull();
+  it("não age sobre conversa já encaminhada", () => {
     expect(avaliarImpasse({ ...base, jaTransferiu: true })).toBeNull();
+  });
+
+  // A rede valia só para o modelo enquanto o caminho determinístico era um menu, que
+  // repete a tela de propósito. Sem menu, repetição ali é o mesmo defeito — e foi
+  // exatamente o que apareceu no primeiro teste real: a mesma pergunta duas vezes
+  // seguidas, logo depois de a pessoa tê-la respondido.
+  it("cobre também o caminho sem LLM", () => {
+    expect(avaliarImpasse({ ...base, fonte: "fallback" })?.acao).toBe("encaminhar");
   });
 
   it("sem repetição, não há impasse", () => {
     expect(
-      avaliarImpasse({ ...base, novaResposta: "Me passa o CNPJ para eu gerar a proposta formal?" }),
+      avaliarImpasse({
+        ...base,
+        novaResposta: "Me confirma a sua nacionalidade para eu registrar no seu atendimento?",
+      }),
     ).toBeNull();
   });
 });

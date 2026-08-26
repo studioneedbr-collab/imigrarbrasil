@@ -2,9 +2,9 @@ import { agoraEmBrasilia } from "@/lib/agent/expediente";
 
 // QUANDO E EM QUE RITMO O SISTEMA PODE FALAR PRIMEIRO.
 //
-// Vale só para mensagem que a Shine INICIA (follow-up automático). Resposta a quem
+// Vale só para mensagem que o SISTEMA INICIA (follow-up automático). Resposta a quem
 // escreveu continua saindo na hora, de madrugada, no domingo — quem puxou a conversa foi
-// o cliente, e deixá-lo esperando 10h seria pior atendimento e não protege nada.
+// a pessoa, e deixá-la esperando 10h seria pior atendimento e não protege nada.
 //
 // Dois riscos diferentes, duas travas:
 //  · HORÁRIO — follow-up às 3h da manhã é o tipo de coisa que faz a pessoa bloquear e

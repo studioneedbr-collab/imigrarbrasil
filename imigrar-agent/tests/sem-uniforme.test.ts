@@ -1,13 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { calcularPreco } from "@/lib/agent/pricing";
-import { executeTool } from "@/lib/agent/tools";
-import { getRepository } from "@/lib/data";
-import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
+﻿import { describe, it, expect } from "vitest";
+import { calcularPreco } from "@/lib/comercial/pricing";
 
-// Diretriz do Eduardo em 10/08/2026: quando o cliente já fornece o uniforme, a Shayene
-// pode refazer o preço sozinha — é item de planilha, não de convenção. Alimentação
-// (vale-refeição) NÃO sai: é cláusula da CCT e a Shine paga do mesmo jeito, então esse
-// pedido vai para o comercial. Sem essa separação ela cotaria abaixo do custo real.
+// Motor de preço herdado, hoje a serviço só das telas do painel: quando o cliente já
+// fornece o uniforme, o abatimento pode ser feito — é item de planilha, não de convenção.
+// Alimentação (vale-refeição) NÃO sai: é cláusula da CCT e é paga do mesmo jeito. Sem essa
+// separação a composição sairia abaixo do custo real.
 
 const ASG = "Auxiliar de Serviços Gerais";
 const UNIFORME_ASG = 46.97;
@@ -44,34 +41,15 @@ describe("abatimento de uniforme", () => {
     expect(a.unitSalePrice).toBe(b.unitSalePrice);
   });
 
-  it("a tool repassa sem_uniforme e avisa que o abatimento foi aplicado", async () => {
-    const cheio = (await executeTool("calcular_preco_servico", {
-      service_name: ASG,
-      employees_count: 2,
-    })) as { totalSalePrice: number; semUniforme?: boolean };
-    const sem = (await executeTool("calcular_preco_servico", {
-      service_name: ASG,
-      employees_count: 2,
-      sem_uniforme: true,
-    })) as { totalSalePrice: number; semUniforme?: boolean };
+  it("o abatimento vale para o contrato inteiro, não só para um posto", () => {
+    const cheio = calcularPreco({ serviceName: ASG, employeesCount: 2 });
+    const sem = calcularPreco({ serviceName: ASG, employeesCount: 2, semUniforme: true });
     expect(sem.totalSalePrice).toBeLessThan(cheio.totalSalePrice);
-    expect(sem.semUniforme).toBe(true);
-    expect(cheio.semUniforme).toBeUndefined();
-  });
-
-  it("a proposta em PDF aceita sem_uniforme e cota igual ao que foi falado", async () => {
-    const semNoPreco = calcularPreco({ serviceName: ASG, employeesCount: 2, semUniforme: true });
-    const r = (await executeTool("gerar_proposta_pdf", {
-      lead_data: { contact_name: "Teste", company_name: "Condomínio Teste" },
-      services: [{ name: ASG, quantity: 2, sem_uniforme: true }],
-    })) as { ok?: boolean; proposal_id?: string };
-    expect(r.ok).toBe(true);
-    const salva = await getRepository().getProposal(r.proposal_id!);
-    expect(salva?.totalValue).toBeCloseTo(semNoPreco.totalSalePrice, 1);
+    expect(sem.totalSalePrice).toBeCloseTo(sem.unitSalePrice * 2, 1);
   });
 });
 
-// REMOVIDO com a troca de domínio (Imigrar Brasil): o describe que existia aqui checava as
-// instruções de uniforme e vale-refeição no system prompt do agente comercial. O prompt
-// hoje é de imigração e não fala de preço; o cálculo de sem_uniforme continua testado
-// acima, direto no motor e na tool.
+// REMOVIDO com a troca de domínio (Imigrar Brasil): os casos que existiam aqui passavam
+// pelas tools `calcular_preco_servico` e `gerar_proposta_pdf` do agente, que não existem
+// mais — a Imigrar Brasil não cota serviço pelo assistente. O motor de preço continua no
+// sistema, servindo às telas do painel, e segue testado acima direto em lib/comercial.
