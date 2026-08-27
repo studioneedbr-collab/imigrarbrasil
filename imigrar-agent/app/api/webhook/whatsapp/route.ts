@@ -7,7 +7,7 @@ import { sendMessage, sendDocument, sendButtons } from "@/lib/whatsapp/send";
 import { getZapiConfig } from "@/lib/whatsapp/config";
 import { sendBrevoEmailWithUrl } from "@/lib/email/brevo";
 import { readDocument, mediaKindFor } from "@/lib/agent/vision";
-import { transcreverAudio } from "@/lib/agent/audio";
+import { transcreverAudio, transcricaoConfigurada } from "@/lib/agent/audio";
 import { registrarIdioma } from "@/lib/agent/idioma";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
 
@@ -220,6 +220,22 @@ export async function POST(req: NextRequest) {
           lido = t.texto;
           transcrito = true;
           idiomaDoAudio = t.idioma;
+        } else {
+          // ÁUDIO NÃO TRANSCRITO NÃO PODE SUMIR EM SILÊNCIO.
+          //
+          // O atendimento continua — a Ana pede, com cuidado, que a pessoa escreva. Mas
+          // quem manda áudio aqui é justamente quem tem dificuldade de escrever, quem
+          // está com pressa e quem está com medo. Boa parte não volta. Sem este registro,
+          // esse lead perdido não aparece em métrica nenhuma; com ele, alguém do time
+          // pode OUVIR o áudio no painel e resgatar a conversa.
+          await repo.registrarEventoOperacao({
+            tipo: "transcricao_falhou",
+            conversationId: conv.id,
+            mediaUrl: media.url,
+            detalhe: transcricaoConfigurada()
+              ? "A transcrição está configurada mas falhou nesta mensagem."
+              : "Sem OPENAI_API_KEY: a transcrição está desligada.",
+          });
         }
       } else {
         lido = await readDocument({ url: media.url, name: media.name });

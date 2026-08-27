@@ -1,0 +1,58 @@
+import Link from "next/link";
+import { Icon } from "@/components/dashboard/ui";
+import { saudeEmCache } from "@/lib/operacao/saude";
+import { fmtDate } from "@/components/dashboard/ui";
+
+/**
+ * QUANDO A CAPTAÇÃO PARA, O PAINEL PRECISA GRITAR.
+ *
+ * Antes isto era um chip cinza no canto superior dizendo "WhatsApp desconectado". Um
+ * alarme vestido de enfeite: se a instância cai às 9h, nenhum lead entra o dia todo e a
+ * fila vazia parece calmaria. É o pior defeito que um painel de captação pode ter —
+ * ele mente por omissão, e a mentira é tranquilizadora.
+ *
+ * Agora é uma faixa vermelha no topo de TODAS as telas, com a hora da última mensagem
+ * recebida e o caminho para reconectar. E ela não aparece quando está tudo bem: alarme
+ * permanente é decoração, e decoração é ignorada.
+ */
+export default async function FaixaAlerta() {
+  const saude = await saudeEmCache().catch(() => null);
+  if (!saude?.captacaoParada) return null;
+
+  const { ultimaMensagem } = saude;
+
+  return (
+    <div
+      role="alert"
+      className="mb-5 overflow-hidden rounded-xl bg-ib-danger text-white shadow-[0_8px_24px_-12px_rgba(196,44,44,0.6)]"
+    >
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="relative mt-0.5 flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-white/70 motion-safe:animate-signal-ping" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">A captação está parada</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-white/90">
+              {saude.motivo}{" "}
+              {ultimaMensagem.em ? (
+                <>Última mensagem recebida em {fmtDate(ultimaMensagem.em)}.</>
+              ) : (
+                <>Nenhuma mensagem foi recebida até agora.</>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/dashboard/integracoes"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-ib-danger transition hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          <Icon name="plug" className="h-4 w-4" />
+          Reconectar o WhatsApp
+        </Link>
+      </div>
+    </div>
+  );
+}

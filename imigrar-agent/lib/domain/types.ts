@@ -292,3 +292,46 @@ export interface AccessLogEntry {
   ip?: string | null;
   criadoEm: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAÚDE DA OPERAÇÃO E ACOMPANHAMENTO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * O que quebrou sem derrubar nada — e por isso passaria despercebido.
+ *
+ * `transcricao_falhou` é o mais caro: quem manda áudio aqui é quem não escreve bem em
+ * português, quem está com pressa e quem está com medo. O áudio guardado junto é o que
+ * permite alguém OUVIR, em vez de só saber que falhou.
+ */
+export type TipoEventoOperacao = "transcricao_falhou" | "deepseek_falhou" | "documento_falhou";
+
+export interface EventoOperacao {
+  id: string;
+  tipo: TipoEventoOperacao;
+  conversationId?: string | null;
+  messageId?: string | null;
+  mediaUrl?: string | null;
+  detalhe?: string | null;
+  resolvidoEm?: string | null;
+  resolvidoPor?: string | null;
+  criadoEm: string;
+  /** Preenchido na leitura, para a tela não precisar de outra consulta. */
+  contato?: { nome?: string | null; whatsappNumber?: string | null } | null;
+}
+
+/**
+ * Um retorno agendado. A nota é obrigatória: "ligar dia 12" não diz nada a quem abrir
+ * o painel duas semanas depois; "ligar quando ele conseguir a certidão consular" diz tudo.
+ */
+export interface Lembrete {
+  id: string;
+  leadId: string;
+  /** Data (YYYY-MM-DD) em que o lead volta ao topo de "Meus atendimentos". */
+  quando: string;
+  nota: string;
+  autor: string;
+  feitoEm?: string | null;
+  feitoPor?: string | null;
+  criadoEm: string;
+}

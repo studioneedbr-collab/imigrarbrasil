@@ -23,7 +23,10 @@ type NavGroup = { section: string | null; links: NavLink[] };
 const navGroups: NavGroup[] = [
   {
     section: null,
-    links: [{ href: "/dashboard", label: "Fila", icon: "bolt" }],
+    links: [
+      { href: "/dashboard", label: "Fila", icon: "bolt" },
+      { href: "/dashboard/meus", label: "Meus atendimentos", icon: "check" },
+    ],
   },
   {
     section: "Atendimento",
@@ -33,6 +36,9 @@ const navGroups: NavGroup[] = [
       // porque um agente que filtra demais só é descoberto por quem revisa isto.
       { href: "/dashboard/filtradas", label: "Filtradas", icon: "search" },
       { href: "/dashboard/documentos", label: "Documentos", icon: "doc" },
+      // Um áudio não transcrito é um lead perdido. Fica no menu, e não escondido numa
+      // aba, porque essa perda não avisa que aconteceu.
+      { href: "/dashboard/audios", label: "Áudios não ouvidos", icon: "pulse" },
     ],
   },
   {

@@ -42,10 +42,25 @@ export async function runAgent(params: {
       const { runDeepseek } = await import("@/lib/agent/deepseek");
       return { ...(await runDeepseek(params)), source: "deepseek" as const };
     } catch (err) {
-      console.error(
-        "[deepseek] falhou — caindo no atendimento determinístico:",
-        err instanceof Error ? err.message : "erro desconhecido",
-      );
+      const motivo = err instanceof Error ? err.message : "erro desconhecido";
+      console.error("[deepseek] falhou — caindo no atendimento determinístico:", motivo);
+      // A QUEDA É ELEGANTE, E É JUSTAMENTE POR ISSO QUE PRECISA APARECER.
+      //
+      // Cair no motor determinístico salva o atendimento daquela mensagem, mas rebaixa
+      // a Ana a um menu — o "chatbot" que este projeto existe para não ser. De fora não
+      // dá para notar: a pessoa recebe resposta, o painel mostra a conversa andando.
+      // Registrado, isso vira um número na saúde da operação em vez de uma degradação
+      // silenciosa que ninguém liga com "o agente está estranho hoje".
+      try {
+        const { getRepository } = await import("@/lib/data");
+        await getRepository().registrarEventoOperacao({
+          tipo: "deepseek_falhou",
+          conversationId: params.conversationId,
+          detalhe: motivo.slice(0, 500),
+        });
+      } catch {
+        // Registrar a falha não pode virar uma segunda falha.
+      }
     }
   }
   return {

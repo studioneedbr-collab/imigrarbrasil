@@ -12,7 +12,10 @@ import {
   PRAZO_TIPO_LABEL,
 } from "@/lib/domain/rotulos";
 import { CLASSIFICACOES } from "@/lib/domain/types";
-import type { Classificacao, Conversation, Lead, Message, PrazoTipo, Reclassificacao } from "@/lib/domain/types";
+import type {
+  Classificacao, Conversation, Lead, Lembrete, Message, PrazoTipo, Reclassificacao,
+} from "@/lib/domain/types";
+import type { EventoDaLinha } from "@/lib/operacao/linha-do-tempo";
 import { diasRestantes, faixaDoPrazo } from "@/lib/fila/ordenacao";
 
 /**
@@ -36,6 +39,8 @@ type Detalhe = {
   conversation: Conversation | null;
   messages: Message[];
   reclassificacoes: Reclassificacao[];
+  lembretes: Lembrete[];
+  linhaDoTempo: EventoDaLinha[];
   usuarios: { id: string; nome: string }[];
 };
 
@@ -129,8 +134,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         <div className="space-y-5 lg:sticky lg:top-4">
           {lead.temPrazoCorrendo ? <BlocoPrazo lead={lead} aoSalvar={carregar} /> : null}
           <Acoes detalhe={data} aoSalvar={carregar} />
+          <Retornos detalhe={data} aoSalvar={carregar} />
           <Ficha lead={lead} aoSalvar={carregar} />
           <Classificar detalhe={data} aoSalvar={carregar} />
+          <LinhaDoTempo eventos={data.linhaDoTempo} />
         </div>
       </div>
     </div>
@@ -670,6 +677,144 @@ function Classificar({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => 
           ))}
         </ul>
       ) : null}
+    </Card>
+  );
+}
+
+/* ────────────────────────── Retornos agendados ───────────────────────────── */
+
+/**
+ * O CICLO AQUI É LONGO — e é isso que faz o lembrete valer mais do que parece.
+ *
+ * A pessoa some três semanas esperando a certidão do consulado. Não é desinteresse, é o
+ * processo. Sem uma data e um motivo escritos, ela vira "lead frio" e alguém eventualmente
+ * fecha o caso por engano.
+ *
+ * A nota é obrigatória de propósito: "ligar dia 12" não diz nada a quem abrir o painel
+ * duas semanas depois — inclusive a quem escreveu.
+ */
+function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }) {
+  const { lead, lembretes } = detalhe;
+  const [quando, setQuando] = useState("");
+  const [nota, setNota] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function agendar() {
+    setSalvando(true);
+    setErro(null);
+    const r = await fetch(`/api/leads/${lead.id}/lembretes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quando, nota }),
+    });
+    setSalvando(false);
+    if (!r.ok) {
+      setErro((await r.json().catch(() => ({}))).error ?? "Não foi possível agendar.");
+      return;
+    }
+    setQuando("");
+    setNota("");
+    aoSalvar();
+  }
+
+  async function concluir(id: string) {
+    await fetch(`/api/lembretes/${id}`, { method: "POST" }).catch(() => null);
+    aoSalvar();
+  }
+
+  const pendentes = lembretes.filter((l) => !l.feitoEm);
+
+  return (
+    <Card className="p-5">
+      <h2 className="text-sm font-semibold text-ib-ink">Retornos</h2>
+      <p className="mt-1 text-xs leading-relaxed text-ib-slate">
+        No dia marcado, este caso sobe para o topo de <strong>Meus atendimentos</strong> com
+        a sua nota à vista.
+      </p>
+
+      {pendentes.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {pendentes.map((l) => (
+            <li
+              key={l.id}
+              className="flex items-start justify-between gap-3 rounded-lg border border-ib-line bg-ib-papel/60 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="font-mono text-xs tabular-nums text-ib-carimbo">{l.quando}</p>
+                <p className="mt-0.5 text-[13px] leading-snug text-ib-ink">{l.nota}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => concluir(l.id)}
+                className="shrink-0 text-[11px] font-semibold text-ib-mar hover:underline"
+              >
+                concluir
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="mt-3 space-y-2">
+        <input
+          type="date"
+          value={quando}
+          onChange={(e) => setQuando(e.target.value)}
+          aria-label="Data do retorno"
+          className="w-full rounded-lg border border-ib-line bg-white px-3 py-2 font-mono text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+        />
+        <input
+          value={nota}
+          onChange={(e) => setNota(e.target.value)}
+          placeholder="por que voltar a falar (ex.: quando ele conseguir a certidão consular)"
+          className="w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+        />
+        {erro ? <p className="text-xs font-medium text-ib-danger">{erro}</p> : null}
+        <button
+          type="button"
+          onClick={agendar}
+          disabled={salvando || !quando || nota.trim().length < 3}
+          className={`${btnGhost} w-full`}
+        >
+          {salvando ? "Agendando retorno…" : "Agendar retorno"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+/* ─────────────────────────── Linha do tempo ──────────────────────────────── */
+
+/**
+ * O que já foi feito neste caso, em ordem.
+ *
+ * É o que alguém precisa ler primeiro quando pega um caso do colega. A conversa inteira
+ * não responde isso: ela conta o que a PESSOA disse, não o que o time fez.
+ */
+function LinhaDoTempo({ eventos }: { eventos: EventoDaLinha[] }) {
+  if (!eventos.length) return null;
+  return (
+    <Card className="p-5">
+      <h2 className="text-sm font-semibold text-ib-ink">Linha do tempo</h2>
+      <ol className="mt-3 space-y-2.5 border-l border-ib-line pl-4">
+        {eventos.map((e, i) => (
+          <li key={`${e.em}-${i}`} className="relative">
+            <span
+              className={`absolute -left-[1.3rem] top-1.5 h-1.5 w-1.5 rounded-full ${
+                e.peso === "marco" ? "bg-ib-mar" : "bg-ib-line"
+              }`}
+            />
+            <p className={`text-[13px] leading-snug ${e.peso === "marco" ? "text-ib-ink" : "text-ib-slate"}`}>
+              {e.texto}
+            </p>
+            <p className="font-mono text-[11px] tabular-nums text-ib-slate">
+              {fmtTime(e.em)}
+              {e.autor ? ` · ${e.autor}` : ""}
+            </p>
+          </li>
+        ))}
+      </ol>
     </Card>
   );
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { requireSession } from "@/lib/auth/guard";
 import { registrarAcesso } from "@/lib/auth/auditoria";
+import { montarLinhaDoTempo } from "@/lib/operacao/linha-do-tempo";
 import type { Lead } from "@/lib/domain/types";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +28,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     repo.listMessages(lead.conversationId),
     repo.listUsers().catch(() => []),
   ]);
-  const reclassificacoes = (await repo.listReclassificacoes().catch(() => [])).filter(
-    (r) => r.leadId === lead.id,
-  );
+  const [todasReclass, acessosRecentes, lembretes] = await Promise.all([
+    repo.listReclassificacoes().catch(() => []),
+    // Filtra em memória porque o log é curto e a alternativa seria um parâmetro novo no
+    // repositório para uma tela só. Se o log crescer, vira consulta com `alvo_id`.
+    repo.listAcessos(500).catch(() => []),
+    repo.listLembretes({ leadId: lead.id }).catch(() => []),
+  ]);
+  const reclassificacoes = todasReclass.filter((r) => r.leadId === lead.id);
+  const linhaDoTempo = montarLinhaDoTempo({
+    lead,
+    reclassificacoes,
+    acessos: acessosRecentes.filter((a) => a.alvoId === lead.id),
+    lembretes,
+  });
 
   await registrarAcesso(auth.session, "abriu_lead", { tipo: "lead", id: lead.id }, req);
 
@@ -38,6 +50,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     conversation,
     messages,
     reclassificacoes,
+    lembretes,
+    linhaDoTempo,
     usuarios: usuarios.map((u) => ({ id: u.id, nome: u.name || u.email })),
   });
 }

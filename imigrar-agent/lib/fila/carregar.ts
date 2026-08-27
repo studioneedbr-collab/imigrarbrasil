@@ -22,9 +22,13 @@ export async function carregarLeadsDaFila(): Promise<LeadDaFila[]> {
 
   return leads.map((lead) => {
     const msgs = mensagensPorConversa.get(lead.conversationId) ?? [];
+    const ultima = msgs.length ? msgs[msgs.length - 1] : null;
     return {
       ...lead,
-      ultimoContatoEm: msgs.length ? msgs[msgs.length - 1].createdAt : lead.updatedAt,
+      ultimoContatoEm: ultima?.createdAt ?? lead.updatedAt,
+      // `assistant` cobre tanto a Ana quanto um atendente humano respondendo pelo painel:
+      // nos dois casos a bola está com a pessoa do outro lado, que é o que importa aqui.
+      ultimaMensagemDe: ultima?.role ?? null,
       responsavelNome: lead.responsavelId ? nomePorId.get(lead.responsavelId) ?? null : null,
     };
   });

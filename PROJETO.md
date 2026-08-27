@@ -313,13 +313,29 @@ rodam em memória: painel abre, fila vazia, tudo some no refresh.
 - [ ] chaves: DeepSeek, OpenAI, Z-API (a instância do 4664)
 - [ ] `AUTH_SECRET` e as demais variáveis na Vercel
 
-**Depois, com escopo a definir**
+**Feito depois da v1 (26/08, noite)**
 
-- [ ] **Dashboard** — uma visão de operação além da fila
-- [ ] **CRM** — histórico do contato por pessoa, e não por conversa
-- [ ] **Treinar o agente** — hoje são 7 abas herdadas da base comercial ("Empresa e
-      serviços", "Objeções") que não descrevem este trabalho
-- [ ] **Integrações** — só DeepSeek e Z-API importam; Brevo é resto da proposta comercial
+- [x] **Saúde da operação** — faixa vermelha quando a captação para, indicador permanente
+      na sidebar, e tela dos áudios que não foram transcritos
+- [x] **Meus atendimentos** — com a separação de quem está com a bola
+- [x] **Lembretes, SLA de primeiro contato e linha do tempo do caso**
+- [x] **Busca global** no lugar do motivo decorativo no topo
+
+**Segurando de propósito até as primeiras cem conversas**
+
+O painel ainda não recebeu conversa real. Fila de revisão, versionamento de prompt,
+filtros salvos, mapa de origem e as métricas novas dependem de saber COMO o agente erra —
+e isso não se adivinha. Construir doze telas antes do primeiro lead é o jeito mais rápido
+de descobrir, em três semanas, que metade não era necessária.
+
+- [ ] **Fila de revisão** do agente, com marcação do tipo de erro
+- [ ] **Lacunas de conhecimento** (o que perguntaram e a base não cobre)
+- [ ] **Versionamento de prompt** + bateria de casos de teste no simulador
+- [ ] **Filtros salvos, mapa de origem, métricas por versão de prompt**
+- [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco
+- [ ] **Dashboard e CRM por pessoa** — escopo a fechar
+- [ ] **Treinar o agente** — as 7 abas ainda são da base comercial
+- [ ] **Integrações** — DeepSeek e Z-API de verdade; Brevo fora do caminho
 
 **Fica registrado para não se perder**
 

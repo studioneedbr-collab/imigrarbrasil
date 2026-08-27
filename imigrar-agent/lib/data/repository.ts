@@ -1,7 +1,7 @@
 import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
-  Classificacao, Reclassificacao, AccessLogEntry,
+  Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
 } from "@/lib/domain/types";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
@@ -102,6 +102,29 @@ export interface Repository {
     motivo?: string,
   ): Promise<Lead>;
   listReclassificacoes(): Promise<Reclassificacao[]>;
+
+  /**
+   * SAÚDE DA OPERAÇÃO — o que quebrou sem derrubar nada.
+   *
+   * `registrarEventoOperacao` nunca lança: ele é chamado de dentro do atendimento, e
+   * um problema no registro do erro não pode virar um segundo erro. A transcrição que
+   * falhou já degradou com elegância; o que não pode é degradar em silêncio.
+   */
+  registrarEventoOperacao(
+    e: Omit<EventoOperacao, "id" | "criadoEm" | "contato">,
+  ): Promise<void>;
+  listEventosOperacao(opts?: {
+    tipo?: TipoEventoOperacao;
+    desde?: string;
+    apenasPendentes?: boolean;
+    limit?: number;
+  }): Promise<EventoOperacao[]>;
+  resolverEventoOperacao(id: string, quem: string): Promise<void>;
+
+  /** Retornos agendados. A nota é o que faz o lembrete servir para alguma coisa. */
+  criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }): Promise<Lembrete>;
+  listLembretes(opts?: { leadId?: string; apenasPendentes?: boolean }): Promise<Lembrete[]>;
+  concluirLembrete(id: string, quem: string): Promise<void>;
 
   /** Log de acesso e de exportação (LGPD): quem, o quê, quando. */
   registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">): Promise<void>;

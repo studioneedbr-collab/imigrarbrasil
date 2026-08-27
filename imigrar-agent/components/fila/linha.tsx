@@ -2,6 +2,7 @@ import Link from "next/link";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import { CLASSIFICACAO_LABEL, PRAZO_TIPO_LABEL, desde } from "@/lib/domain/rotulos";
 import { rotuloPrazo, type FaixaPrazo, type LeadDaFila } from "@/lib/fila/ordenacao";
+import { slaHorasDe } from "@/lib/operacao/limites";
 
 /**
  * A LINHA DA FILA.
@@ -45,6 +46,28 @@ export function ContadorPrazo({ dias, faixa }: { dias: number; faixa: FaixaPrazo
       className={`inline-flex items-center rounded-md px-2 py-1 font-mono text-xs font-semibold tabular-nums ${FAIXA_ESTILO[faixa].pill}`}
     >
       {rotuloPrazo(dias)}
+    </span>
+  );
+}
+
+/**
+ * SLA DE PRIMEIRO CONTATO — o relógio que corre do agente até a gente.
+ *
+ * Só aparece quando está estourado, e só enquanto ninguém assumiu. Um contador visível
+ * em todas as linhas viraria paisagem; aparecendo só no atraso, ele é uma exceção — que
+ * é o que ele deveria ser.
+ */
+function SlaEstourado({ lead, agora }: { lead: LeadDaFila; agora: Date }) {
+  if (lead.assumidoEm) return null;
+  const horas = (agora.getTime() - Date.parse(lead.createdAt)) / 3_600_000;
+  const limite = slaHorasDe(lead.classificacao);
+  if (!Number.isFinite(horas) || horas <= limite) return null;
+  return (
+    <span
+      title={`Limite de ${limite}h para o primeiro contato humano neste tipo de caso`}
+      className="inline-flex shrink-0 items-center rounded-md bg-ib-warn/12 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#9A6212] ring-1 ring-inset ring-ib-warn/25"
+    >
+      sem contato há {Math.floor(horas)}h
     </span>
   );
 }
@@ -100,7 +123,8 @@ export function LinhaDaFila({
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 sm:w-[13rem] sm:justify-end">
+        <div className="flex shrink-0 items-center gap-2 sm:w-[15rem] sm:justify-end">
+          <SlaEstourado lead={lead} agora={agora} />
           {prazo ? <ContadorPrazo dias={prazo.dias} faixa={prazo.faixa} /> : null}
           <div className="text-right">
             <p className="font-mono text-xs tabular-nums text-ib-slate">

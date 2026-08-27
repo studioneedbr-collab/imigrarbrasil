@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry } from "@/lib/domain/types";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
@@ -384,6 +384,76 @@ export class SupabaseRepository implements Repository {
       id: r.id, leadId: r.lead_id, de: r.de, para: r.para, motivo: r.motivo,
       autor: r.autor, criadoEm: r.criado_em,
     })) as Reclassificacao[];
+  }
+
+  async registrarEventoOperacao(e: Omit<EventoOperacao, "id" | "criadoEm" | "contato">) {
+    // NUNCA lança. Isto é chamado de dentro do atendimento, depois de algo já ter dado
+    // errado — um erro no registro do erro derrubaria a conversa por causa do log.
+    const { error } = await this.db.from("eventos_operacao").insert({
+      tipo: e.tipo, conversation_id: e.conversationId ?? null, message_id: e.messageId ?? null,
+      media_url: e.mediaUrl ?? null, detalhe: e.detalhe ?? null,
+    });
+    if (error) console.error("[eventos_operacao]", error.message);
+  }
+
+  async listEventosOperacao(opts: { tipo?: TipoEventoOperacao; desde?: string; apenasPendentes?: boolean; limit?: number } = {}) {
+    let q = this.db.from("eventos_operacao").select("*").order("criado_em", { ascending: false });
+    if (opts.tipo) q = q.eq("tipo", opts.tipo);
+    if (opts.desde) q = q.gte("criado_em", opts.desde);
+    if (opts.apenasPendentes) q = q.is("resolvido_em", null);
+    const { data } = await q.limit(opts.limit ?? 200);
+    const linhas = (data as Record<string, any>[] | null) ?? [];
+
+    // O contato vem numa consulta só, e não uma por evento: esta tela é aberta quando
+    // algo já está quebrado, e é justamente aí que ela não pode demorar.
+    const ids = Array.from(new Set(linhas.map((r) => r.conversation_id).filter(Boolean)));
+    const contatos = new Map<string, { nome?: string | null; whatsappNumber?: string | null }>();
+    if (ids.length) {
+      const { data: convs } = await this.db.from("conversations")
+        .select("id, contact_name, whatsapp_number").in("id", ids);
+      for (const c of ((convs as Record<string, any>[] | null) ?? [])) {
+        contatos.set(c.id, { nome: c.contact_name, whatsappNumber: c.whatsapp_number });
+      }
+    }
+
+    return linhas.map((r) => ({
+      id: r.id, tipo: r.tipo, conversationId: r.conversation_id, messageId: r.message_id,
+      mediaUrl: r.media_url, detalhe: r.detalhe, resolvidoEm: r.resolvido_em,
+      resolvidoPor: r.resolvido_por, criadoEm: r.criado_em,
+      contato: r.conversation_id ? contatos.get(r.conversation_id) ?? null : null,
+    })) as EventoOperacao[];
+  }
+
+  async resolverEventoOperacao(id: string, quem: string) {
+    const { error } = await this.db.from("eventos_operacao")
+      .update({ resolvido_em: new Date().toISOString(), resolvido_por: quem }).eq("id", id);
+    if (error) throw error;
+  }
+
+  async criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }) {
+    const { data, error } = await this.db.from("lembretes")
+      .insert({ lead_id: l.leadId, quando: l.quando, nota: l.nota, autor: l.autor })
+      .select("*").single();
+    if (error) throw error;
+    return { id: data.id, leadId: data.lead_id, quando: data.quando, nota: data.nota,
+      autor: data.autor, feitoEm: data.feito_em, feitoPor: data.feito_por, criadoEm: data.criado_em } as Lembrete;
+  }
+
+  async listLembretes(opts: { leadId?: string; apenasPendentes?: boolean } = {}) {
+    let q = this.db.from("lembretes").select("*").order("quando", { ascending: true });
+    if (opts.leadId) q = q.eq("lead_id", opts.leadId);
+    if (opts.apenasPendentes) q = q.is("feito_em", null);
+    const { data } = await q;
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
+      id: r.id, leadId: r.lead_id, quando: r.quando, nota: r.nota, autor: r.autor,
+      feitoEm: r.feito_em, feitoPor: r.feito_por, criadoEm: r.criado_em,
+    })) as Lembrete[];
+  }
+
+  async concluirLembrete(id: string, quem: string) {
+    const { error } = await this.db.from("lembretes")
+      .update({ feito_em: new Date().toISOString(), feito_por: quem }).eq("id", id);
+    if (error) throw error;
   }
 
   async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {

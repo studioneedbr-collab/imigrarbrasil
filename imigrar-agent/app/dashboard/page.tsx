@@ -77,6 +77,11 @@ export default async function FilaPage() {
   const vencidos = fila.correndo.filter((i) => i.faixa === "vencido").length;
   const criticos = fila.correndo.filter((i) => i.faixa === "critico").length;
 
+  const descricao =
+    fila.aConfirmar.length > 0
+      ? "Três blocos, nesta ordem: prazo a confirmar, prazos correndo e o resto do atendimento. Conversas sem caso concreto não aparecem aqui — estão em Filtradas."
+      : "Dois blocos: prazos correndo e o resto do atendimento. Nenhum prazo esperando confirmação no momento. Conversas sem caso concreto não aparecem aqui — estão em Filtradas.";
+
   return (
     <div className="space-y-6">
       <AutoRefresh seconds={30} />
@@ -84,7 +89,10 @@ export default async function FilaPage() {
       <PageHeader
         eyebrow="Fila de trabalho"
         title="O que vence primeiro"
-        description="Três blocos, nesta ordem: prazo a confirmar, prazos correndo e o resto do atendimento. Conversas sem caso concreto não aparecem aqui — estão em Filtradas."
+        // A descrição acompanha o que está na tela. Ela prometia três blocos mesmo quando
+        // o primeiro tinha sumido por estar vazio — e um texto que descreve uma tela que
+        // não existe faz o leitor procurar o que não está lá.
+        description={descricao}
         actions={
           <>
             <Link href="/dashboard/filtradas" className={btnGhost}>

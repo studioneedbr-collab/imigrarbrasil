@@ -2,7 +2,7 @@ import type { Repository } from "@/lib/data/repository";
 import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
-  Classificacao, Reclassificacao, AccessLogEntry,
+  Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo } from "@/lib/data/prazo";
@@ -24,6 +24,8 @@ export class MemoryRepository implements Repository {
   private users = new Map<string, User>(); // key = lowercased email
   private reclassificacoes: Reclassificacao[] = [];
   private acessos: AccessLogEntry[] = [];
+  private eventos: EventoOperacao[] = [];
+  private lembretes: Lembrete[] = [];
 
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
@@ -257,6 +259,43 @@ export class MemoryRepository implements Repository {
   async listReclassificacoes() {
     return [...this.reclassificacoes].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
   }
+  async registrarEventoOperacao(e: Omit<EventoOperacao, "id" | "criadoEm" | "contato">) {
+    this.eventos.push({ ...e, id: id("evt"), criadoEm: now() });
+  }
+  async listEventosOperacao(opts: { tipo?: TipoEventoOperacao; desde?: string; apenasPendentes?: boolean; limit?: number } = {}) {
+    let out = this.eventos.filter(
+      (e) =>
+        (!opts.tipo || e.tipo === opts.tipo) &&
+        (!opts.desde || e.criadoEm >= opts.desde) &&
+        (!opts.apenasPendentes || !e.resolvidoEm),
+    );
+    out = out.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+    for (const e of out) {
+      const conv = e.conversationId ? this.conversations.get(e.conversationId) : null;
+      e.contato = conv ? { nome: conv.contactName, whatsappNumber: conv.whatsappNumber } : null;
+    }
+    return out.slice(0, opts.limit ?? 200);
+  }
+  async resolverEventoOperacao(eventoId: string, quem: string) {
+    const e = this.eventos.find((x) => x.id === eventoId);
+    if (e) { e.resolvidoEm = now(); e.resolvidoPor = quem; }
+  }
+
+  async criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }) {
+    const lembrete: Lembrete = { ...l, id: id("lemb"), criadoEm: now() };
+    this.lembretes.push(lembrete);
+    return lembrete;
+  }
+  async listLembretes(opts: { leadId?: string; apenasPendentes?: boolean } = {}) {
+    return this.lembretes
+      .filter((l) => (!opts.leadId || l.leadId === opts.leadId) && (!opts.apenasPendentes || !l.feitoEm))
+      .sort((a, b) => a.quando.localeCompare(b.quando));
+  }
+  async concluirLembrete(lembreteId: string, quem: string) {
+    const l = this.lembretes.find((x) => x.id === lembreteId);
+    if (l) { l.feitoEm = now(); l.feitoPor = quem; }
+  }
+
   async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {
     this.acessos.push({ ...entry, id: id("acesso"), criadoEm: now() });
   }

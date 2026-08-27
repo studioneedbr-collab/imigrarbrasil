@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FaixaMrz } from "@/components/marca";
+import BuscaGlobal from "@/components/dashboard/busca-global";
 
 interface Transfer {
   id: string;
@@ -66,33 +66,22 @@ export default function Topbar() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const wa = data?.whatsapp;
   const unseen = data?.unseen ?? 0;
   const transfers = data?.transfers ?? [];
 
   return (
     // Barra de verdade, não dois chips soltos no canto: fundo, traço e a faixa de
     // identificação à esquerda dão base para o status e o sino ficarem em pé.
+    // O lugar mais valioso da tela passa a servir para alguma coisa: era o motivo de
+    // passaporte, decorativo, e virou busca. O motivo continua na sidebar, pequeno, onde
+    // marca é marca e não ocupa espaço de ferramenta.
     <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-ib-line bg-white/70 px-4 py-2.5 backdrop-blur-sm">
-      <FaixaMrz
-        texto="IB BRA ATENDIMENTO"
-        largura={30}
-        className="hidden text-ib-slate/45 sm:block"
-      />
+      <BuscaGlobal />
 
-      <div className="flex items-center gap-3">
-      {/* Status WhatsApp */}
-      <span
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${
-          wa?.connected
-            ? "border-ib-success/25 bg-ib-success/10 text-ib-success"
-            : "border-ib-danger/25 bg-ib-danger/5 text-ib-danger"
-        }`}
-        title={wa?.provider ?? "WhatsApp não conectado"}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${wa?.connected ? "bg-ib-success" : "bg-ib-danger"}`} />
-        WhatsApp {wa?.connected ? "conectado" : "desconectado"}
-      </span>
+      <div className="flex shrink-0 items-center gap-3">
+      {/* O status do WhatsApp saiu daqui. Era um chip cinza no canto para um problema que
+          para o negócio inteiro — alarme vestido de enfeite. Agora é a faixa vermelha do
+          topo (components/operacao/faixa-alerta.tsx) mais a linha permanente na sidebar. */}
 
       {/* Sino de transferências */}
       <div className="relative" ref={ref}>

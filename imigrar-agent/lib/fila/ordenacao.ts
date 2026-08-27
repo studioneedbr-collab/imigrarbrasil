@@ -27,6 +27,12 @@ import { diaEmBrasilia } from "@/lib/dashboard/periodo";
 export interface LeadDaFila extends Lead {
   ultimoContatoEm?: string | null;
   responsavelNome?: string | null;
+  /**
+   * Quem falou por último. É a informação que separa "esperando eu" de "esperando o
+   * cliente" — e sem ela todo lead parado parece igual, quando na verdade metade está
+   * esperando uma ação nossa e a outra metade está legitimamente esperando a pessoa.
+   */
+  ultimaMensagemDe?: "user" | "assistant" | null;
 }
 
 /**
