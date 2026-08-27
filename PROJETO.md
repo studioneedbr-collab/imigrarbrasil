@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **26/08/2026**.
+Última atualização: **27/08/2026**.
 
 ---
 
@@ -190,8 +190,10 @@ ninguém.
 
 ```
 WhatsApp da pessoa → Z-API → POST /api/webhook/whatsapp
+  → grava a mensagem (SEMPRE, antes de qualquer decisão)
+  → decidirAtendimento (os três níveis de ativação — ver §8)
   → respondToConversation → runAgent (DeepSeek conduz, chamando as tools)
-  → resposta pela Z-API
+  → resposta pela Z-API, pela MESMA instância por onde a mensagem entrou
 ```
 
 **Tools** (`lib/agent/tools.ts`): `registrar_dados_lead`, `transferir_para_humano`,
@@ -237,13 +239,130 @@ contradizia o que a própria Ana tinha dito duas mensagens antes. As correções
   eles não há transferência — **exceto** em caso urgente, que vai na hora com o que tiver.
   A trava é determinística, no `transfer-gate`, porque o prompt sozinho não segura.
 
+**O que a auditoria por palavra-chave errou.** A primeira leitura do acervo foi feita com
+busca léxica (BM25) e deu como lacuna a residência de pessoas venezuelanas. Estava errado:
+o chunk existe, é bom, e cita Venezuela, Suriname, Guiana e Guiana Francesa junto com a
+Portaria 19/2021 e o aviso de que pedir essa residência implica renunciar ao refúgio. Ele
+não apareceu porque a cartilha nunca escreve "venezuelano" — chama de "política migratória
+nacional". **Nenhum gentílico existe em nenhum lugar do acervo**, e é por isso que a busca
+precisa ser vetorial: quem escreve no WhatsApp diz "sou boliviano", nunca "sou nacional da
+Bolívia".
+
 **Antiban do WhatsApp**: a Ana é reativa (nunca dispara para lista), tem opt-out
 determinístico, janela de envio 8h–20h em dia útil para mensagens iniciadas pelo sistema,
 sem rajada nos crons, e ritmo humano no envio.
 
 ---
 
-## 8. Stack e estrutura
+## 8. Ligar e desligar a Ana
+
+Até 27/08 isto não era uma pergunta que o sistema soubesse responder. Havia **uma**
+credencial Z-API no banco, e a única forma de calar o agente era apagá-la — o que derruba
+junto a **entrada** das mensagens. Desligar significava ficar cego, e por isso ninguém
+desligava. Não dá para soltar um agente em cima de gente de verdade assim.
+
+Não é um booleano. São **três níveis independentes**, e a independência é o ponto.
+
+| nível | o quê | onde |
+|---|---|---|
+| 1 | **chave geral** — vale para tudo | topo de todas as telas, `agent_config['chave_geral']` |
+| 2 | **instância** — ambiente e ativação próprios por número | Integrações, tabela `zapi_instancias` |
+| 3 | **conversa** — um humano assumiu | dentro da conversa, `conversations.assumed_by` |
+
+A regra sai de **um** lugar: `decidirAtendimento` em `lib/agent/ativacao.ts` — puro, sem
+banco, com teste. O webhook não decide nada sozinho; pergunta e obedece.
+
+### Nível 1 — a chave geral
+
+Botão sempre visível, ligado ou desligado (botão que só aparece quando algo está errado é
+botão que ninguém sabe que existe). Desligar **exige motivo**, validado no servidor e não
+só no formulário — e o motivo aparece na faixa vermelha do topo, na mesma faixa do
+"WhatsApp desconectado": *"Agente desligado por {quem} desde {quando} — {motivo}"*. Quem
+chega às 9h não tem como não ver.
+
+Sem registro no banco a chave nasce **ligada**: o dia em que a linha de config sumir não
+pode ser o dia em que o WhatsApp da empresa emudece.
+
+### Nível 2 — por instância
+
+Cada instância da Z-API é uma linha com ambiente (`teste` | `producao`) e ativação
+próprios. **As travas não são de interface** — a interface é onde as regras vazam:
+
+- um **trigger** reescreve `ambiente='teste'` e `ativo=false` em *todo* INSERT, então
+  instância nasce em teste e desligada mesmo por payload forjado ou formulário mal montado;
+- um **CHECK** proíbe silêncio total em produção;
+- `atualizarInstancia` **não aceita** `ativo` — ligar tem rota própria, com confirmação
+  explícita e separada da chave geral. Ligar o número que fala com gente de verdade não
+  pode ser efeito colateral de salvar um formulário;
+- ligar é um UPDATE por `id`. Não existe caminho no código que leia o estado de uma
+  instância para decidir o de outra: **ligar a de teste não tem como ligar a de produção**.
+
+A conversa grava em que ambiente aconteceu, na primeira mensagem, e isso **nunca é
+reescrito**: promover a instância a produção amanhã não transforma os ensaios de hoje em
+atendimento real. **Conversa de teste não entra nas métricas nem na fila de trabalho** —
+filtrada na entrada de `calcularMetricas` e de `montarFila`, e não em cada cálculo, que é
+como o filtro seria esquecido no próximo número que alguém acrescentar.
+
+### Nível 3 — por conversa
+
+Já existia (`assumed_by`), mas com duas pontas soltas, agora fechadas: assumir o caso na
+fila **cala o agente naquela conversa** (antes eram dois gestos, e o segundo era esquecido
+justamente quando o caso era urgente o bastante para alguém correr), e a troca
+assumir/devolver virou linha de auditoria.
+
+### O comportamento com o agente desligado — mais importante que o botão
+
+**Desligado nunca significa ignorar.** A mensagem chega, o anexo é lido, o áudio é
+transcrito, tudo é gravado e aparece no painel **antes** de qualquer decisão de ativação.
+O que muda é só o que volta:
+
+| modo | o que a pessoa recebe |
+|---|---|
+| `silencio` | nada. **Só existe em instância de teste** |
+| `resposta_fixa` | avisa que um humano responde, e **quando** — o horário sai de `proximoAtendimento`, nunca "em instantes" às 21h de sábado |
+| `sombra` | nada é enviado, e a resposta que a Ana daria fica gravada para revisão |
+
+Em produção, toda conversa recebida com o agente desligado abre o **relógio da primeira
+resposta humana** e entra na fila. O relógio conta **minutos de expediente**, não tempo
+corrido: uma mensagem de sexta às 17h55 com SLA de 30min vence às 8h30 de segunda, não às
+18h25 de sexta. Um SLA que nasce vermelho é um SLA que ninguém olha. Estourado, o caso
+sobe ao **topo do bloco 3** — acima até de um caso judicial, porque a promessa do modo
+desligado ("alguém responde") já foi quebrada ali.
+
+O relógio fecha quando um **humano** responde, assume, ou decide um rascunho de sombra —
+e **não** quando o agente é religado: religar não desfaz o fato de que ninguém do time
+olhou para aquela conversa.
+
+### Modo sombra
+
+Na fase de testes vale mais que o liga/desliga. A Ana lê mensagem real, monta a resposta,
+e ela para no painel — na linha do tempo da conversa, exatamente onde teria ido, e numa
+fila própria em `/dashboard/sombra`. Três saídas: **enviar como está**, **editar antes de
+enviar**, **descartar com motivo**.
+
+Duas decisões que sustentam isso:
+
+- a resposta **não entra no histórico da conversa**. Uma mensagem `assistant` gravada sem
+  ter sido enviada faz o turno seguinte acreditar que a pessoa leu aquilo, e a partir daí a
+  conversa inteira se apoia numa coisa que não aconteceu;
+- o texto da Ana e o texto que a pessoa mandou ficam em **colunas separadas**. É o par que
+  ensina — só o texto final não ensina nada, e o descarte com motivo ensina mais ainda. É
+  daqui que sai a matéria-prima da fila de revisão (§11).
+
+### Auditoria
+
+Mudança de estado em qualquer um dos três níveis vira linha em `access_log`, com autor,
+timestamp, estado anterior, estado novo e motivo quando houver. Ações: `agente.chave_geral`,
+`agente.instancia.ativacao`, `agente.instancia.ambiente`, `agente.instancia.modo_desligado`,
+`agente.conversa`, `agente.rascunho`.
+
+**Código:** `lib/agent/ativacao.ts` (regra pura) · `lib/agent/estado.ts` (leitura, escrita e
+resolução de instância) · `app/api/agente/*` · `components/agente/*` ·
+`supabase/migrations/023_ativacao_do_agente.sql`. Testes: `tests/ativacao*.test.ts`.
+
+---
+
+## 9. Stack e estrutura
 
 **Next.js 14** (App Router, TS, Tailwind) · **Supabase** (Postgres + pgvector) ·
 **Vitest** · **DeepSeek** (LLM) · **Z-API** (WhatsApp) · **OpenAI** (embeddings do RAG e
@@ -267,7 +386,7 @@ logotipo, pixel a pixel. Densidade acima de espaço em branco — é ferramenta 
 
 ---
 
-## 9. Estado da infraestrutura (26/08/2026)
+## 10. Estado da infraestrutura (26/08/2026)
 
 **Supabase** — projeto `myfmqkgpnpmvlmvaewiq`. Estava **completamente vazio** até 26/08;
 nenhuma migration tinha rodado ali. Foram aplicadas 12:
@@ -275,6 +394,17 @@ nenhuma migration tinha rodado ali. Foram aplicadas 12:
 `004` (setup consolidado) · `005` users · `006` funcionarios · `007` hardening ·
 `008` conversation_status · `009` atendimento humano e mídia · `010` users_setor ·
 `014` leads setor+stage · `016` opt-out · `017` rag_chunks · `018` idioma · `019` fila de prazos
+
+**Pendentes de aplicar** (escritas depois daquela rodada): `020` saúde da operação ·
+`021` ficha mínima · `022` relógio (data) · `023` ativação do agente.
+
+> ⚠️ **A `023` precisa rodar antes do próximo deploy fazer sentido.** Sem ela o webhook cai
+> numa instância sintética e o comportamento continua o de hoje (produção respondendo
+> normalmente, nada quebra), mas o painel de instâncias fica vazio e o **modo sombra não
+> grava nada**. A migration também converte a credencial que já está em
+> `agent_config['zapi']` numa instância de **produção ligada** — de propósito: aplicar a
+> regra "nasce desligada" retroativamente faria o WhatsApp da empresa emudecer no instante
+> do deploy, sem ninguém ter pedido isso.
 
 **Puladas de propósito:**
 
@@ -321,20 +451,22 @@ atribuído a este projeto, ou está preso a um branch sem build bem-sucedido. Co
 ⚠️ Se as variáveis do Supabase estiverem só em **Production**, os deploys de *preview*
 rodam em memória: painel abre, fila vazia, tudo some no refresh.
 
-**Git** — `main` é a linha do Victor. O trabalho do painel está em **`fila-de-prazos`**
-(commits `ef28be6` e `a95ef58`).
+**Git** — `main` é a linha do Victor. O trabalho do painel seguiu para
+**`v3-ficha-minima-e-recall`**, onde estão a entrevista v3, a suíte de recuperação do RAG e
+a ativação do agente (`06416f4`).
 
 ---
 
-## 10. O que falta
+## 11. O que falta
 
 **Bloqueado esperando terceiros**
 
-- [ ] **A base vetorial está VAZIA** — `rag_chunks` tem 0 linhas e não há chave de
-      embeddings no ambiente. A ingestão nunca rodou contra o Supabase real. Enquanto for
-      assim, a Ana atende sem material oficial: diz que não tem a informação e encaminha.
-      É seguro e é metade do serviço não acontecendo. Ver `imigrar-agent/tests/rag-recall/`
-      (`npm run test:rag`), que falha visivelmente enquanto isso não for resolvido.
+- [x] **A base vetorial está carregada** — 1.723 chunks indexados (cartilha 312,
+      legislação 844, doutrina 567), embeddings de 1.024 dimensões, custo US$ 0,08.
+      `npm run test:rag` passa 25/25: as dez consultas da auditoria recuperam o trecho
+      certo dentro do top-6 e sobrevivem ao corte de relevância.
+- [ ] `OPENAI_API_KEY` nas variáveis da Vercel — sem ela, em produção continuam
+      desligados a busca no material oficial E a transcrição de áudio.
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
 - [ ] chaves: DeepSeek, OpenAI, Z-API (a instância do 4664)
 - [ ] `AUTH_SECRET` e as demais variáveis na Vercel
@@ -347,6 +479,15 @@ rodam em memória: painel abre, fila vazia, tudo some no refresh.
 - [x] **Lembretes, SLA de primeiro contato e linha do tempo do caso**
 - [x] **Busca global** no lugar do motivo decorativo no topo
 
+**Feito em 27/08**
+
+- [x] **Entrevista v3** — ordem de abertura, ramos, ficha mínima e o relógio do caso
+- [x] **Suíte de recuperação do RAG**, separada da suíte de prompt
+- [x] **Ativação do agente em três níveis** (§8) — chave geral, por instância e por
+      conversa, com o comportamento de desligado explícito e auditado
+- [x] **Modo sombra** — a Ana responde contra conversa real sem enviar nada, e cada
+      descarte ou edição vira dado
+
 **Segurando de propósito até as primeiras cem conversas**
 
 O painel ainda não recebeu conversa real. Fila de revisão, versionamento de prompt,
@@ -354,14 +495,17 @@ filtros salvos, mapa de origem e as métricas novas dependem de saber COMO o age
 e isso não se adivinha. Construir doze telas antes do primeiro lead é o jeito mais rápido
 de descobrir, em três semanas, que metade não era necessária.
 
-- [ ] **Fila de revisão** do agente, com marcação do tipo de erro
+- [ ] **Fila de revisão** do agente, com marcação do tipo de erro — a matéria-prima já
+      existe: cada rascunho de sombra descartado ou editado grava o par (o que ela
+      escreveu, o que a pessoa mandou) e o motivo. Falta a tela que lê isso por tipo de erro
 - [ ] **Lacunas de conhecimento** (o que perguntaram e a base não cobre)
 - [ ] **Versionamento de prompt** + bateria de casos de teste no simulador
 - [ ] **Filtros salvos, mapa de origem, métricas por versão de prompt**
 - [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco
 - [ ] **Dashboard e CRM por pessoa** — escopo a fechar
 - [ ] **Treinar o agente** — as 7 abas ainda são da base comercial
-- [ ] **Integrações** — DeepSeek e Z-API de verdade; Brevo fora do caminho
+- [ ] **Integrações** — DeepSeek de verdade; Brevo fora do caminho. *(A Z-API virou o
+      painel de instâncias — feito.)*
 
 **Fica registrado para não se perder**
 
@@ -370,16 +514,22 @@ de descobrir, em três semanas, que metade não era necessária.
 - data de prazo **só** por humano, com nome — e a data do relógio do caso
   (`relogio_data`) também: o agente escreve o texto, nunca a data;
 - relógio apertado sobe o lead na fila NORMAL e nada mais — não vira prazo processual;
-- exportação **sempre** com escopo e sempre logada.
+- exportação **sempre** com escopo e sempre logada;
+- **desligado nunca é ignorado** — a mensagem sempre chega, é gravada e aparece no painel;
+- **instância nasce em teste e desligada**, e a trava é um trigger no banco, não convenção;
+- **silêncio total só em teste** — em produção, do outro lado tem alguém que escreveu
+  pedindo ajuda;
+- **conversa de teste não conta** em métrica nenhuma nem na fila de trabalho;
+- resposta de sombra **não entra no histórico** enquanto não for enviada de verdade.
 
 ---
 
-## 11. Rodar
+## 12. Rodar
 
 ```bash
 npm run setup     # instala em imigrar-agent/
 npm run dev       # http://localhost:3000
-npm test          # 409 testes
+npm test          # 561 testes
 npm run typecheck
 ```
 
