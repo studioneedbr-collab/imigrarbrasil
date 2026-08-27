@@ -75,8 +75,47 @@ export interface Repository {
    * Quem corta AVISA na tela — ver lib/fila/paginacao.ts.
    */
   listLeads(opcoes?: { limite?: number }): Promise<Lead[]>;
-  /** Quantos leads existem ao todo. É o denominador do aviso de corte. */
+  /** Quantos leads existem ao todo. */
   contarLeads(): Promise<number>;
+
+  /**
+   * A FILA, MONTADA NO BANCO — em vez de carregar tudo e cortar na tela.
+   *
+   * A tela inicial mostrava "42 atendimentos mais recentes, de 43" e chamava aquilo de
+   * paginação. Não era: era um TETO. Os leads vinham todos numa consulta, a ordem dos três
+   * blocos era calculada em memória e o que não coubesse simplesmente não aparecia — com
+   * um aviso amarelo dizendo que faltava coisa, sem dizer qual. Com 43 casos isso é
+   * desconfortável; com 400 é alguém perdendo um prazo que estava na parte cortada.
+   *
+   * A separação aqui é a que importa: **os leads com prazo vêm TODOS, sempre**, sem teto e
+   * sem página. São poucos por natureza e são exatamente o que não pode sumir atrás de um
+   * botão — se houver quarenta casos com prazo, os quarenta aparecem. Quem pagina é o
+   * bloco 3, que é o resto do trabalho.
+   *
+   * `totalNormal` é o denominador honesto da paginação: conta o que ENTRARIA na fila,
+   * já sem as conversas de teste, sem as filtradas e sem os casos encerrados. Era
+   * justamente a falta dessa distinção que fazia o aviso amarelo aparecer quando nada
+   * tinha sido cortado.
+   */
+  listLeadsDaFila(opcoes: { pagina: number; porPagina: number }): Promise<{
+    /** Todos os leads com prazo processual sinalizado ou confirmado. Nunca cortados. */
+    comPrazo: Lead[];
+    /** A página pedida do bloco 3, do mais parado para o mais recente. */
+    normal: Lead[];
+    /** Quantos leads existem no bloco 3 ao todo. */
+    totalNormal: number;
+    /** Quantas conversas o agente filtrou (CURIOSO, DPU, FORA_ESCOPO). Só a contagem. */
+    totalFiltradas: number;
+  }>;
+
+  /**
+   * As conversas destes leads, e só elas.
+   *
+   * A fila precisa da conversa para saber o ambiente, o relógio de primeira resposta
+   * humana e o SLA. Buscar a tabela inteira para isso desfazia, na prática, a paginação
+   * que a consulta acima acabou de fazer.
+   */
+  listConversationsByIds(ids: string[]): Promise<Conversation[]>;
   deleteLead(id: string): Promise<void>;
 
   /**

@@ -11,6 +11,7 @@
 
 import type { AtendimentoStatus } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
+import { contaComoOperacaoReal } from "@/lib/domain/ambiente";
 import { relogioApertado, temPrazo, ultimaAtividade, type LeadDaFila } from "@/lib/fila/ordenacao";
 
 export const COLUNAS: AtendimentoStatus[] = [
@@ -46,6 +47,11 @@ export function montarKanban(leads: LeadDaFila[], agora: Date = new Date()): Col
   const porStatus = new Map<AtendimentoStatus, LeadDaFila[]>(COLUNAS.map((c) => [c, []]));
 
   for (const lead of leads) {
+    // ENSAIO NÃO É ATENDIMENTO. A fila já respeitava isso; o quadro não, e por isso
+    // `sim:v2-5` e companhia apareciam como cards entre casos de gente de verdade. Quem
+    // organiza o quadro está decidindo o que a equipe pega hoje — um ensaio ali não é
+    // ruído inofensivo, é trabalho alocado para uma pessoa que não existe.
+    if (!contaComoOperacaoReal(lead.ambiente)) continue;
     if (eFiltrada(lead.classificacao)) continue;
     const status = lead.atendimentoStatus ?? "novo";
     // Status desconhecido (coluna removida, dado antigo) cai em "novo" em vez de sumir:

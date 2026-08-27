@@ -6,9 +6,15 @@ import type {
   ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
+import { ambienteDaConversa } from "@/lib/domain/ambiente";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
+import {
+  conversaParaReaproveitar,
+  normalizarTelefone,
+  variantesDoTelefone,
+} from "@/lib/whatsapp/telefone";
 
 let counter = 0;
 const id = (p: string) => `${p}_${(++counter).toString(36)}_${Math.floor(performance.now())}`;
@@ -35,6 +41,24 @@ export class MemoryRepository implements Repository {
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
     if (existing) return this.conversations.get(existing)!;
+
+    // MESMO TELEFONE, OUTRA GRAFIA. Ver lib/whatsapp/telefone.ts: "+55 95 99123-4567" e
+    // "559591234567" são a mesma pessoa, e tratá-los como dois contatos foi o que fez
+    // Ana Rodríguez aparecer duas vezes na fila, com metade da ficha em cada registro.
+    const variantes = variantesDoTelefone(whatsappNumber);
+    if (variantes.length) {
+      const candidatas = Array.from(this.conversations.values())
+        .filter((c) => variantes.includes(normalizarTelefone(c.whatsappNumber)))
+        .map((c) => ({ id: c.id, status: c.status, atividadeEm: c.lastMessageAt ?? c.updatedAt }));
+      const escolhida = conversaParaReaproveitar(candidatas);
+      if (escolhida) {
+        // O apelido novo aponta para a conversa antiga: a próxima mensagem com esta
+        // mesma grafia cai direto, sem varrer nada.
+        this.byNumber.set(whatsappNumber, escolhida.id);
+        return this.conversations.get(escolhida.id)!;
+      }
+    }
+
     const conv: Conversation = {
       id: id("conv"), whatsappNumber, contactName: contactName ?? null,
       status: "active", leadScore: 0, createdAt: now(), updatedAt: now(),
@@ -374,6 +398,42 @@ export class MemoryRepository implements Repository {
     return opcoes.limite && opcoes.limite > 0 ? todos.slice(0, opcoes.limite) : todos;
   }
   async contarLeads() { return this.leads.size; }
+
+  async listConversationsByIds(ids: string[]) {
+    return ids.map((i) => this.conversations.get(i)).filter((c): c is Conversation => !!c);
+  }
+
+  /**
+   * A mesma fila do Supabase, com as mesmas regras: os leads com prazo vêm TODOS e o
+   * resto vem paginado, do mais parado para o mais recente. Ensaio, conversa filtrada e
+   * caso encerrado ficam de fora dos dois — é o mesmo recorte de `montarFila`, feito
+   * antes de contar em vez de depois, que é justamente o que consertou o "42 de 43".
+   */
+  async listLeadsDaFila(opcoes: { pagina: number; porPagina: number }) {
+    const FILTRADAS = ["CURIOSO", "DPU", "FORA_ESCOPO"];
+    const todos = Array.from(this.leads.values());
+    const naFila = todos.filter((l) => {
+      const conv = this.conversations.get(l.conversationId);
+      if (ambienteDaConversa(conv) === "teste") return false;
+      if (eFiltrada(l.classificacao)) return false;
+      return l.atendimentoStatus !== "fechado" && l.atendimentoStatus !== "perdido";
+    });
+    const temPrazo = (l: Lead) =>
+      !!l.temPrazoCorrendo || l.classificacao === "QUENTE_PRAZO" || !!l.prazoDataLimite;
+
+    const comPrazo = naFila.filter(temPrazo);
+    const resto = naFila
+      .filter((l) => !temPrazo(l))
+      .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+    const inicio = Math.max(0, (opcoes.pagina - 1) * opcoes.porPagina);
+
+    return {
+      comPrazo,
+      normal: resto.slice(inicio, inicio + opcoes.porPagina),
+      totalNormal: resto.length,
+      totalFiltradas: todos.filter((l) => FILTRADAS.includes(l.classificacao ?? "")).length,
+    };
+  }
   async deleteLead(id: string) {
     for (const [k, v] of Array.from(this.leads.entries())) {
       if (v.id === id) { this.leads.delete(k); break; }
