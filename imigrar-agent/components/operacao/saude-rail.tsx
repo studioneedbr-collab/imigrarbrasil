@@ -56,6 +56,12 @@ export default async function SaudeRail() {
         href="/dashboard/integracoes"
       />
       <Linha
+        rotulo="agente"
+        valor={s.ia.funcionando ? (s.ia.saldo ?? "no ar") : s.ia.configurado ? "sem saldo" : "desligado"}
+        tom={s.ia.funcionando ? "ok" : "alerta"}
+        href="/dashboard/integracoes"
+      />
+      <Linha
         rotulo="última mensagem"
         valor={s.ultimaMensagem.em ? desde(s.ultimaMensagem.em) : "nenhuma"}
         tom={s.captacaoParada ? "alerta" : "normal"}

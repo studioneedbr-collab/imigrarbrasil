@@ -33,10 +33,16 @@ export default async function FaixaAlerta() {
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold">A captação está parada</p>
+            <p className="text-sm font-semibold">
+              {saude.ia.configurado && !saude.ia.funcionando
+                ? "O agente não está pensando"
+                : "A captação está parada"}
+            </p>
             <p className="mt-0.5 text-sm leading-relaxed text-white/90">
               {saude.motivo}{" "}
-              {ultimaMensagem.em ? (
+              {saude.ia.configurado && !saude.ia.funcionando ? (
+                <>As conversas continuam sendo respondidas, mas pelo caminho determinístico — ela acolhe e encaminha, sem conduzir.</>
+              ) : ultimaMensagem.em ? (
                 <>Última mensagem recebida em {fmtDate(ultimaMensagem.em)}.</>
               ) : (
                 <>Nenhuma mensagem foi recebida até agora.</>
@@ -50,7 +56,7 @@ export default async function FaixaAlerta() {
           className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-ib-danger transition hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <Icon name="plug" className="h-4 w-4" />
-          Reconectar o WhatsApp
+          {saude.ia.configurado && !saude.ia.funcionando ? "Ver a conta da IA" : "Reconectar o WhatsApp"}
         </Link>
       </div>
     </div>

@@ -131,6 +131,18 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
     const conv = await repo.getConversation(conversationId);
     if (!conv || conv.idioma === idioma) return;
     await repo.updateConversation(conversationId, { idioma });
+
+    // O IDIOMA TAMBÉM VAI PARA O LEAD, e não só para a conversa.
+    //
+    // Quem lê o idioma não é só o follow-up automático: é a FILA. E a fila lê o lead,
+    // não a conversa. Sem esta linha o chip de idioma aparecia vazio em toda linha do
+    // painel — justo o dado que existe para o time saber, antes de abrir, se consegue
+    // atender aquela pessoa. Apareceu na primeira conversa real: `conversations.idioma`
+    // gravado como "es", `leads.idioma` null.
+    const lead = await repo.getLeadByConversation(conversationId);
+    if (lead && lead.idioma !== idioma) {
+      await repo.upsertLead(conversationId, { idioma });
+    }
   } catch (err) {
     console.error("[idioma] não foi possível gravar:", err instanceof Error ? err.message : err);
   }
