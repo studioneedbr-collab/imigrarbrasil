@@ -109,15 +109,43 @@ export class SupabaseRepository implements Repository {
     // upsert e não insert: duas mensagens do mesmo número chegando juntas caíam
     // ambas aqui e a segunda violava o unique de whatsapp_number — o webhook
     // engolia a exceção e a mensagem do cliente era perdida.
-    const { data, error } = await this.db.from("conversations")
-      .upsert(
-        {
-          whatsapp_number: whatsappNumber,
-          contact_name: contactName ?? null,
-          telefone_normalizado: normalizarTelefone(whatsappNumber) || null,
-        },
-        { onConflict: "whatsapp_number" },
-      ).select("*").single();
+    const criar = (comTelefone: boolean) =>
+      this.db
+        .from("conversations")
+        .upsert(
+          {
+            whatsapp_number: whatsappNumber,
+            contact_name: contactName ?? null,
+            ...(comTelefone
+              ? { telefone_normalizado: normalizarTelefone(whatsappNumber) || null }
+              : {}),
+          },
+          { onConflict: "whatsapp_number" },
+        )
+        .select("*")
+        .single();
+
+    let { data, error } = await criar(true);
+
+    // A MIGRATION AINDA NÃO RODOU — e isso não pode calar o WhatsApp da empresa.
+    //
+    // `telefone_normalizado` chega na 025. Se o código subir antes dela, este insert
+    // falha por coluna inexistente, e a falha acontece no ÚNICO caminho que cria conversa:
+    // ninguém mais é atendido, o webhook engole a exceção e de fora parece que o WhatsApp
+    // parou. Uma ordem de deploy trocada não pode custar isso.
+    //
+    // Então, quando o erro é esse e só esse, a conversa é criada sem a coluna. O que se
+    // perde é a deduplicação por telefone daquele contato — um registro a mais na fila,
+    // que alguém junta depois. É a troca certa: perder a deduplicação é um incômodo,
+    // perder o atendimento é o negócio parado.
+    if (error && /telefone_normalizado/.test(error.message ?? "")) {
+      console.error(
+        "[repo] a coluna telefone_normalizado não existe — rode a migration 025. " +
+          "A conversa foi criada sem deduplicação por telefone.",
+      );
+      ({ data, error } = await criar(false));
+    }
+
     if (error) throw error;
     return mapConversation(data as DbConversation);
   }
