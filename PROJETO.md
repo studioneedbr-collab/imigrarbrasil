@@ -386,25 +386,26 @@ logotipo, pixel a pixel. Densidade acima de espaço em branco — é ferramenta 
 
 ---
 
-## 10. Estado da infraestrutura (26/08/2026)
+## 10. Estado da infraestrutura (27/08/2026, noite)
 
-**Supabase** — projeto `myfmqkgpnpmvlmvaewiq`. Estava **completamente vazio** até 26/08;
-nenhuma migration tinha rodado ali. Foram aplicadas 12:
+> **O painel está NO AR e funcionando**: https://agente.imigrarbrasil.com.br
+> Login: `studioneedbr@gmail.com`. A senha foi redefinida direto no banco em 27/08 —
+> **peça a senha atual a quem redefiniu e troque**. Não existe tela de trocar senha
+> (ver seção 11): hoje o único caminho é `update users set password_hash` com o mesmo
+> formato scrypt de `lib/auth/password.ts`.
 
+**Supabase** — projeto `myfmqkgpnpmvlmvaewiq`. Estava **completamente vazio** até 26/08.
+
+**Aplicadas e conferidas contra o banco:**
 `004` (setup consolidado) · `005` users · `006` funcionarios · `007` hardening ·
 `008` conversation_status · `009` atendimento humano e mídia · `010` users_setor ·
-`014` leads setor+stage · `016` opt-out · `017` rag_chunks · `018` idioma · `019` fila de prazos
+`014` leads setor+stage · `016` opt-out · `017` rag_chunks · `018` idioma ·
+`019` fila de prazos · `020` saúde da operação · `021` ficha mínima · `022` relógio (data)
 
-**Pendentes de aplicar** (escritas depois daquela rodada): `020` saúde da operação ·
-`021` ficha mínima · `022` relógio (data) · `023` ativação do agente.
-
-> ⚠️ **A `023` precisa rodar antes do próximo deploy fazer sentido.** Sem ela o webhook cai
-> numa instância sintética e o comportamento continua o de hoje (produção respondendo
-> normalmente, nada quebra), mas o painel de instâncias fica vazio e o **modo sombra não
-> grava nada**. A migration também converte a credencial que já está em
-> `agent_config['zapi']` numa instância de **produção ligada** — de propósito: aplicar a
-> regra "nasce desligada" retroativamente faria o WhatsApp da empresa emudecer no instante
-> do deploy, sem ninguém ter pedido isso.
+**Falta aplicar: `023` ativação do agente.** Conferido em 27/08: as tabelas
+`zapi_instancias` e `rascunhos_agente` não existem no banco. Sem ela o webhook cai numa
+instância sintética (produção continua respondendo, nada quebra), mas o painel de
+instâncias fica vazio e o **modo sombra não grava nada**.
 
 **Puladas de propósito:**
 
@@ -415,45 +416,136 @@ nenhuma migration tinha rodado ali. Foram aplicadas 12:
   limpeza do Rio. Dado da Shine Rio, que o app não lê mais. `services_catalog` e
   `function_pricing` ficaram criadas e vazias.
 
-**Vercel** — a conta é do cliente (`Imigrar Brasil`), não a nossa. A armadilha que custou
-duas builds:
+### As QUATRO causas empilhadas que impediam o deploy (todas resolvidas)
+
+Cada uma escondia a seguinte, e cada uma tinha uma mensagem de erro diferente. Se o
+deploy voltar a falhar, comece por aqui.
 
 > **1. Root Directory = `imigrar-agent`.** A aplicação está numa subpasta. Com o campo
-> vazio, a Vercel constrói a raiz, não acha o Next.js, e o build morre com `exit 127`. E o
-> `vercel.json` (que registra os **dois crons de follow-up**) também está dentro de
-> `imigrar-agent/`: com Root Directory errado, os crons nunca foram agendados.
+> vazio, a Vercel constrói a raiz e o build morre com `exit 127`. O `vercel.json` (que
+> registra os **dois crons de follow-up**) também está dentro de `imigrar-agent/`: com
+> Root Directory errado, os crons nunca foram agendados.
 >
-> **2. O grafo do middleware não pode usar o alias `@/`.** Três deploys seguidos morreram
-> com *"The Edge Function 'middleware' is referencing unsupported modules"*. O nome engana:
-> não havia módulo incompatível. O middleware é empacotado para o Edge dentro de um
-> namespace próprio (`__vc__ns__/0/imigrar-agent/`), o alias não resolve ali, e o que não
-> resolve vira "externo" — que no Edge é reportado como "não suportado". Corrigir só o
-> arquivo de entrada **empurra o erro para o import seguinte**, o que de fato aconteceu.
-> Hoje o grafo é fechado e relativo, e `tests/middleware-edge.test.ts` falha se alguém
-> reintroduzir um `@/` ou uma dependência de `node_modules` ali. Foi por isso também que a
-> `jose` saiu: ela puxava CompressionStream para dentro do Edge.
+> **2. A `jose` no Edge.** Ela puxa CompressionStream pelo barrel de JWE e o bundler do
+> Edge recusa. O JWT foi reescrito com Web Crypto (HS256 é HMAC-SHA-256 com base64url em
+> volta) e a dependência saiu do projeto.
 >
-> Nada disso aparece no build local, no typecheck ou no lint. E o efeito não é uma tela
-> quebrada: é o deploy inteiro não acontecer.
+> **3. O alias `@/` não resolve no bundle do middleware.** *"The Edge Function 'middleware'
+> is referencing unsupported modules"* — o nome engana: não há módulo incompatível. O
+> middleware é empacotado num namespace próprio (`__vc__ns__/0/imigrar-agent/`), o alias
+> não resolve ali, e o que não resolve vira "externo", que no Edge é reportado como "não
+> suportado". Corrigir só o arquivo de entrada **empurra o erro para o import seguinte** —
+> foi o que aconteceu. Hoje o grafo é fechado e relativo, e `tests/middleware-edge.test.ts`
+> falha se alguém reintroduzir um `@/` ou uma dependência de `node_modules` ali.
+>
+> **4. Framework Preset — esta foi a que derrubava tudo no fim.** O projeto estava
+> configurado como site estático: a Vercel rodava o build, ignorava o resultado e publicava
+> a pasta `public/`. O sintoma era desconcertante — deployment "Ready", `/login` com 404 da
+> **plataforma** e `/api/*` com `MIDDLEWARE_INVOCATION_FAILED`. A pista que fechou o
+> diagnóstico: `/marca/logotipo-original.png` respondia **200** enquanto
+> `/_next/static/...` dava 404. Ou seja, `public/` estava sendo servida como raiz.
+> Correção: **Framework Preset = Next.js**, sem override de Build Command nem de Output
+> Directory.
 
-**Variáveis** — Supabase entrou pela integração nativa (`NEXT_PUBLIC_SUPABASE_URL` e
-`SUPABASE_SERVICE_ROLE_KEY` são as duas que o app usa; as outras sete sobram sem
-atrapalhar). Ainda faltam: `AUTH_SECRET` (**sem ela o login falha alto em produção, de
-propósito**), `NEXT_PUBLIC_APP_URL`, `DEEPSEEK_API_KEY`, `ZAPI_*`,
-`WEBHOOK_VERIFY_TOKEN`, `OPENAI_API_KEY` + embeddings, `CRON_SECRET`, `TEAM_WHATSAPP`.
+Nada disso aparece no build local, no typecheck ou no lint. E o efeito não é uma tela
+quebrada: é o deploy inteiro não acontecer.
 
-**Domínio** — `agente.imigrarbrasil.com.br` aponta para a Vercel (CNAME
-`a2d5ad103604362a.vercel-dns-017.com`), mas responde o 404 **da plataforma**
-(`Code: NOT_FOUND`), não o 404 do Next. Isso é domínio sem deploy atrás: ou não está
-atribuído a este projeto, ou está preso a um branch sem build bem-sucedido. Conferir em
-**Settings → Domains**.
+> ⚠️ **Redeploy reconstrói o commit DAQUELE deployment, não o código atual.** Redeployar um
+> build antigo o traz de volta inteiro, com o código antigo — e ele passa como "Ready".
+> Para publicar o código de agora, use um deployment novo a partir da `main`.
+
+### Variáveis (Vercel)
+
+Já configuradas: `NEXT_PUBLIC_SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (pela integração
+nativa do Supabase), `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL`, `DEEPSEEK_API_KEY`,
+`DEEPSEEK_BASE_URL`.
+
+Faltam: **`ZAPI_INSTANCE_ID` / `ZAPI_TOKEN` / `ZAPI_CLIENT_TOKEN`** e
+**`WEBHOOK_VERIFY_TOKEN`** (sem eles não existe WhatsApp), **`TEAM_WHATSAPP`** (o aviso de
+prazo a confirmar) e `CRON_SECRET`.
+
+Regra do tipo: se vaza e alguém usa contra você, é **Secret**. Nada que comece com
+`NEXT_PUBLIC_` deve ser Secret — essas variáveis são embutidas no JavaScript do navegador.
+
+⚠️ Variável de ambiente **só vale para deploy novo**. Salvar na Vercel não muda o que está
+no ar.
 
 ⚠️ Se as variáveis do Supabase estiverem só em **Production**, os deploys de *preview*
 rodam em memória: painel abre, fila vazia, tudo some no refresh.
 
-**Git** — `main` é a linha do Victor. O trabalho do painel seguiu para
-**`v3-ficha-minima-e-recall`**, onde estão a entrevista v3, a suíte de recuperação do RAG e
-a ativação do agente (`06416f4`).
+### O estado do agente (27/08)
+
+```
+supabase: true    banco no ar, persistente
+deepseek: true    conta com saldo, respondendo de verdade
+rag:      false   DESLIGADO POR DECISÃO — ver abaixo
+audio:    false   idem
+zapi:     false   ← o único que falta para virar operação de verdade
+```
+
+**Decisão de 27/08: só DeepSeek por enquanto, sem OpenAI.** Consequências, para não haver
+surpresa:
+
+- **Sem RAG a Ana não afirma nada sobre imigração.** O prompt manda responder só com base
+  no material oficial; sem material, ela acolhe, diz que não tem a informação e encaminha.
+  Ela continua qualificando, classificando e detectando prazo — que é o que alimenta a
+  fila —, mas não responde "quais documentos preciso para reunião familiar".
+
+  ⚠️ **Atenção ao custo já pago.** A base vetorial JÁ ESTÁ CARREGADA no Supabase de
+  produção: **1.723 trechos** (legislação 844, doutrina 567, cartilha 312), indexados com
+  `text-embedding-3-large` em 1.024 dimensões, ao custo de US$ 0,08. O que falta é só a
+  `OPENAI_API_KEY` na Vercel — ela é necessária para transformar a PERGUNTA em vetor na
+  hora da consulta. Sem ela, os 1.723 trechos ficam parados sem serem usados.
+
+  Ou seja: a decisão "só DeepSeek" não economiza a indexação, que já foi feita. Ela
+  apenas deixa a base ociosa. Ligar custa centavos por mês em embedding de consulta — e
+  a mesma chave liga a transcrição de áudio. Vale reconsiderar.
+- **Sem transcrição, quem manda áudio recebe um pedido para escrever.** Confirmado como
+  desejado em 27/08, e já é o comportamento no código. Cada áudio vira uma linha em
+  `/dashboard/audios` **com o áudio original** para alguém ouvir e retomar.
+- O DeepSeek não tem API de embedding, então RAG exige OpenAI (ou um TEI auto-hospedado —
+  ver `EMBEDDINGS_PROVIDER=tei` no `.env.example`).
+
+**Custo medido, não estimado:** uma conversa real de 3 turnos gastou **US$ 0,01**
+(saldo 5,00 → 4,99). Cerca de US$ 0,003 por turno. O custo é pelo tamanho do prompt, então
+conversa longa fica mais cara por mensagem — e vai subir quando o RAG entrar, porque ele
+injeta trechos das cartilhas no prompt.
+
+### O primeiro atendimento real (27/08, simulador em produção)
+
+Funcionou: espanhol desde a primeira palavra, ficha completa (nome, nacionalidade,
+localização, entrada pelo controle migratório, objetivo, resumo), `QUENTE_PRAZO`,
+`prazo_tipo: multa` e **`prazo_data_limite: null`** — a regra central segurou.
+
+Três achados que valem revisão:
+
+1. **O primeiro turno abriu torto**: a resposta foi *"Espero tu confirmación para pasar el
+   contacto"*, referindo-se a uma confirmação que ninguém tinha pedido.
+2. **Ela afirmou coisa sobre situação migratória sem material**: *"que te hayan sellado el
+   pasaporte en Pacaraima es buena señal: significa que tu entrada quedó registrada de
+   forma regular"*. Provavelmente correto, mas é exatamente o freio que o RAG deveria dar
+   e hoje não existe. Vale o Walter ler as primeiras conversas com esse olho.
+3. **Chave presente ≠ IA funcionando.** O teste anterior pareceu um sucesso e nenhuma das
+   respostas tinha saído do modelo: a conta estava com `Insufficient Balance` e tudo caiu
+   no motor determinístico, sem que nada na tela mudasse. Hoje `lib/agent/saldo.ts`
+   pergunta à conta se ela consegue responder, e a faixa distingue *"a captação está
+   parada"* de *"o agente não está pensando"*.
+
+### Git
+
+`origin/main` está em **`b22c0a6`**, e esse commit foi verificado num worktree limpo:
+typecheck limpo, build compilando, 523 testes passando.
+
+> ⚠️ **`git push origin main` estava respondendo "up-to-date" sem enviar nada.** Cinco
+> commits ficaram presos localmente sem nenhum erro visível. O que funciona é o refspec
+> explícito: `git push origin HEAD:refs/heads/main`. **Confira `git ls-remote origin main`
+> depois de empurrar** — não confie na mensagem de sucesso.
+
+> ⚠️ **Mais de uma sessão trabalhou nesta mesma pasta ao mesmo tempo.** Se duas escreverem
+> no mesmo arquivo, a última a salvar apaga a outra sem aviso. Uma de cada vez, ou dividir
+> por pasta. Em 27/08 havia trabalho não commitado no repositório (ativação do agente,
+> quadro de atendimentos) com **erros de lint que quebram o build** — `next build` trata
+> `no-unused-vars` como erro, não warning. Rode `npm run build` antes de commitar.
 
 ---
 
@@ -467,9 +559,12 @@ a ativação do agente (`06416f4`).
       certo dentro do top-6 e sobrevivem ao corte de relevância.
 - [ ] `OPENAI_API_KEY` nas variáveis da Vercel — sem ela, em produção continuam
       desligados a busca no material oficial E a transcrição de áudio.
+- [x] **DeepSeek ligado e pagando** — US$ 5 de saldo, respondendo de verdade em produção
+- [x] **`AUTH_SECRET` e as variáveis de base** já estão na Vercel
+- [ ] **Z-API — a instância do 4664.** É o único bloqueio para virar operação de verdade:
+      sem ela nenhuma pessoa real consegue escrever para a Ana
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
-- [ ] chaves: DeepSeek, OpenAI, Z-API (a instância do 4664)
-- [ ] `AUTH_SECRET` e as demais variáveis na Vercel
+- [ ] **aplicar a migration `023`** no Supabase de produção (ver §10)
 
 **Feito depois da v1 (26/08, noite)**
 
