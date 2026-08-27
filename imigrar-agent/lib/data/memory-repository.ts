@@ -3,11 +3,12 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
-  ZapiInstancia, RascunhoAgente, RascunhoStatus,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
+import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
 
 let counter = 0;
 const id = (p: string) => `${p}_${(++counter).toString(36)}_${Math.floor(performance.now())}`;
@@ -29,6 +30,7 @@ export class MemoryRepository implements Repository {
   private lembretes: Lembrete[] = [];
   private instancias = new Map<string, ZapiInstancia>();
   private rascunhos: RascunhoAgente[] = [];
+  private chamadas: ChamadaLlm[] = [];
 
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
@@ -288,6 +290,47 @@ export class MemoryRepository implements Repository {
   async resolverEventoOperacao(eventoId: string, quem: string) {
     const e = this.eventos.find((x) => x.id === eventoId);
     if (e) { e.resolvidoEm = now(); e.resolvidoPor = quem; }
+  }
+
+  async ultimaMensagemPorInstancia() {
+    const saida: Record<string, string> = {};
+    for (const [conversationId, msgs] of Array.from(this.messages.entries())) {
+      const conv = this.conversations.get(conversationId);
+      if (!conv?.instanciaId) continue;
+      for (const m of msgs) {
+        if (m.role !== "user") continue;
+        const atual = saida[conv.instanciaId];
+        if (!atual || m.createdAt > atual) saida[conv.instanciaId] = m.createdAt;
+      }
+    }
+    return saida;
+  }
+
+  async registrarChamadaLlm(c: Omit<ChamadaLlm, "id" | "criadoEm">) {
+    this.chamadas.push({ ...c, id: id("llm"), criadoEm: now() });
+  }
+  async listChamadasLlm(opts: { desde?: string; provedor?: string; limit?: number } = {}) {
+    return this.chamadas
+      .filter((c) => (!opts.desde || c.criadoEm >= opts.desde) && (!opts.provedor || c.provedor === opts.provedor))
+      .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
+      .slice(0, opts.limit ?? 5000);
+  }
+
+  async contarConversasSemResposta(minutos: number, agora: Date = new Date()) {
+    const todas: { conversationId: string; role: "user" | "assistant"; createdAt: string }[] = [];
+    for (const [conversationId, msgs] of Array.from(this.messages.entries())) {
+      for (const m of msgs) todas.push({ conversationId, role: m.role, createdAt: m.createdAt });
+    }
+    return conversasSemResposta(todas, { minutos, agora, ignorar: this.conversasComSilencioIntencional() }).length;
+  }
+
+  /** Onde a Ana calar é o comportamento certo: humano assumiu, ou o contato pediu para parar. */
+  private conversasComSilencioIntencional(): Set<string> {
+    const fora = new Set<string>();
+    for (const c of Array.from(this.conversations.values())) {
+      if (c.assumedBy || c.optOutAt) fora.add(c.id);
+    }
+    return fora;
   }
 
   async criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }) {

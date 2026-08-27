@@ -53,8 +53,12 @@ export async function estadoDaIa(): Promise<EstadoDaIa> {
       configurado: true,
       funcionando: Boolean(data.is_available),
       saldo,
+      // O SALDO NÃO ENTRA NO `detalhe`. Este texto vai para a faixa de alarme da
+      // operação, e dinheiro não é saúde operacional: quem lê a faixa está decidindo se
+      // a captação parou, não se a conta precisa de recarga. O valor continua exposto no
+      // campo `saldo`, que só a tela de Integrações lê.
       detalhe: data.is_available
-        ? `IA no ar${saldo ? ` · saldo ${saldo}` : ""}.`
+        ? "A Ana está pensando — as respostas estão saindo do modelo."
         : "A conta do DeepSeek está sem saldo — a Ana está respondendo pelo motor determinístico.",
     };
   } catch {

@@ -39,7 +39,7 @@ const navGroups: NavGroup[] = [
       { href: "/dashboard/documentos", label: "Documentos", icon: "doc" },
       // Um áudio não transcrito é um lead perdido. Fica no menu, e não escondido numa
       // aba, porque essa perda não avisa que aconteceu.
-      { href: "/dashboard/audios", label: "Áudios não ouvidos", icon: "pulse" },
+      { href: "/dashboard/audios", label: "Falhas de transcrição", icon: "pulse" },
     ],
   },
   {
@@ -51,6 +51,9 @@ const navGroups: NavGroup[] = [
       // "podia ter saído?" — e uma pessoa do outro lado esperando alguém decidir.
       { href: "/dashboard/sombra", label: "Modo sombra", icon: "agent" },
       { href: "/dashboard/integracoes", label: "Integrações", icon: "plug" },
+      // Falha de LLM tem tela própria, e não uma aba dentro dos áudios: são dois
+      // problemas com duas causas. Ver o comentário em app/dashboard/falhas-llm/page.tsx.
+      { href: "/dashboard/falhas-llm", label: "Falhas de LLM", icon: "bolt" },
       { href: "/simulate", label: "Simulador", icon: "external" },
     ],
   },

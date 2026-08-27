@@ -8,6 +8,8 @@ import { calcularMetricas } from "@/lib/metricas";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
 import { rotuloPrazo, diasRestantes } from "@/lib/fila/ordenacao";
+import { resumirCustos } from "@/lib/custos/resumo";
+import { cambio, emReais } from "@/lib/custos/cambio";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,29 @@ const PERIODOS = [
 function pct(n: number): string {
   return `${(n * 100).toFixed(0)}%`;
 }
+
+/**
+ * DINHEIRO DE IA É CARO NA TERCEIRA CASA DECIMAL.
+ *
+ * Um atendimento inteiro custa centavos, e arredondar para dois dígitos transformaria
+ * "US$ 0,004 por conversa" em "US$ 0,00" — o número mais importante desta tela virando
+ * zero por causa de formatação. Abaixo de um centavo, quatro casas.
+ */
+function usd(n: number): string {
+  return n > 0 && n < 0.01 ? `US$ ${n.toFixed(4)}` : `US$ ${n.toFixed(2)}`;
+}
+
+function brl(n: number): string {
+  return n > 0 && n < 0.01 ? `R$ ${n.toFixed(4)}` : `R$ ${n.toFixed(2)}`;
+}
+
+const TIPO_LABEL: Record<string, string> = {
+  redacao: "Redação",
+  extracao: "Extração (documentos)",
+  classificacao: "Classificação",
+  transcricao: "Transcrição de áudio",
+  embedding: "Embedding (busca)",
+};
 
 function duracao(min: number | null): string {
   if (min === null) return "—";
@@ -105,21 +130,28 @@ export default async function MetricasPage({
   const agora = new Date();
   const de = new Date(agora.getTime() - periodo.dias * 86_400_000);
 
-  const [leads, reclassificacoes, session] = await Promise.all([
+  const [leads, reclassificacoes, session, chamadas] = await Promise.all([
     carregarLeadsDaFila(),
     getRepository().listReclassificacoes().catch(() => []),
     getSession(),
+    getRepository().listChamadasLlm({ desde: de.toISOString() }).catch(() => []),
   ]);
 
   const m = calcularMetricas(leads, reclassificacoes, de, agora, agora);
   const exporta = session ? podeExportar(session.role) : false;
+
+  // O idioma vem do lead, que é onde ele já está gravado — o custo por idioma não pede
+  // consulta nova, só o cruzamento com as conversas que tiveram chamada no período.
+  const idiomaPorConversa = new Map(leads.map((l) => [l.conversationId, l.idioma]));
+  const custos = resumirCustos(chamadas, idiomaPorConversa, de, agora);
+  const taxa = cambio();
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Métricas"
         title="Quanto tempo o agente economizou"
-        description="Sem receita, sem ticket médio, sem previsão de faturamento — não é o que este time acompanha."
+        description="Sem receita, sem ticket médio, sem previsão de faturamento — não é o que este time acompanha. Custo entra, porque é aqui que ele tem período e denominador: o número que interessa não é o gasto, é quanto custa atender UMA conversa."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex items-center gap-0.5 rounded-xl border border-ib-line bg-white p-1">
@@ -221,6 +253,128 @@ export default async function MetricasPage({
           />
         </div>
       </Card>
+
+      {/* ─────────────────────────────────────────────────────────────────────
+          O CUSTO DA IA.
+          Veio da barra lateral, onde estava como "agente 4.76 USD" — que era o SALDO da
+          conta do DeepSeek, não gasto: não dizia de quando, não incluía a OpenAI, e
+          descia quando alguém recarregava, ou seja, descia quando o custo subia. Aqui
+          ele tem período, denominador e quebra.
+          ───────────────────────────────────────────────────────────────────── */}
+      <Card className="overflow-hidden">
+        <div className="border-b border-ib-line px-5 py-3">
+          <h2 className="text-sm font-semibold text-ib-ink">O que a IA custou</h2>
+          <p className="mt-0.5 text-xs text-ib-slate">
+            Somando os dois provedores, chamada por chamada. Convertido a{" "}
+            <span className="font-mono tabular-nums">R$ {taxa.usdBrl.toFixed(2)}</span> por dólar
+            {taxa.configurado ? "" : " (cotação padrão — defina USD_BRL para a sua)"}.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 divide-y divide-ib-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+          <Numero
+            label="Custo do período"
+            valor={usd(custos.totalUsd)}
+            nota={`${brl(emReais(custos.totalUsd, taxa.usdBrl))} · ${custos.chamadas} chamadas nos últimos ${periodo.dias} dias.`}
+          />
+          <Numero
+            label="Custo médio por conversa"
+            valor={custos.mediaPorConversaUsd === null ? "—" : usd(custos.mediaPorConversaUsd)}
+            nota={
+              custos.mediaPorConversaUsd === null
+                ? "Nenhuma conversa com chamada de IA no período."
+                : `${brl(emReais(custos.mediaPorConversaUsd, taxa.usdBrl))} · é este o número que fecha a precificação com o cliente. Base: ${custos.conversas} conversas.`
+            }
+          />
+          <Numero
+            label="Conversas com IA"
+            valor={String(custos.conversas)}
+            nota="Conversas que consumiram ao menos uma chamada. É o denominador da média."
+          />
+          <Numero
+            label="Sem preço na tabela"
+            valor={String(custos.semPreco)}
+            nota={
+              custos.semPreco > 0
+                ? "Chamadas de um modelo que não está na tabela de preços. Enquanto for maior que zero, o custo acima é um piso, não o total."
+                : "Todo modelo usado no período tem preço conhecido."
+            }
+            tom={custos.semPreco > 0 ? "alerta" : "normal"}
+          />
+        </div>
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <div className="border-b border-ib-line px-5 py-3">
+            <h2 className="text-sm font-semibold text-ib-ink">Custo médio por conversa, por idioma</h2>
+            <p className="mt-0.5 text-xs text-ib-slate">
+              Não custam o mesmo: quem escreve pouco manda áudio, e áudio passa por
+              transcrição. A média geral esconde justamente o público de quem este
+              atendimento existe.
+            </p>
+          </div>
+          {custos.porIdioma.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-ib-slate">Nada no período.</p>
+          ) : (
+            <ul className="divide-y divide-ib-line">
+              {custos.porIdioma.map((l) => (
+                <li key={l.chave} className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-2.5 text-sm">
+                  <span className="text-ib-ink">
+                    {l.chave === "—" ? "idioma não detectado" : nomeDoIdioma(l.chave) ?? l.chave}
+                    <span className="ml-2 text-xs text-ib-slate">{l.conversas} conversas</span>
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-ib-ink">
+                    {usd(l.mediaUsd)}
+                    <span className="ml-2 text-ib-slate">{brl(emReais(l.mediaUsd, taxa.usdBrl))}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-ib-line px-5 py-3">
+            <h2 className="text-sm font-semibold text-ib-ink">Por modelo e por tipo de chamada</h2>
+            <p className="mt-0.5 text-xs text-ib-slate">
+              Sem esta quebra não dá para saber se a separação entre modelo pequeno e
+              modelo grande está funcionando de fato.
+            </p>
+          </div>
+          {custos.porModelo.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-ib-slate">Nada no período.</p>
+          ) : (
+            <div className="grid grid-cols-1 divide-y divide-ib-line sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+              <ul className="divide-y divide-ib-line">
+                {custos.porModelo.map((l) => (
+                  <li key={l.chave} className="px-5 py-2.5 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-mono text-xs text-ib-ink">{l.chave}</span>
+                      <span className="font-mono text-xs tabular-nums text-ib-ink">{usd(l.custoUsd)}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-ib-slate">
+                      {l.chamadas} chamadas
+                      {l.semPreco > 0 ? ` · ${l.semPreco} sem preço na tabela` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <ul className="divide-y divide-ib-line">
+                {custos.porTipo.map((l) => (
+                  <li key={l.tipo} className="px-5 py-2.5 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-ib-ink">{TIPO_LABEL[l.tipo] ?? l.tipo}</span>
+                      <span className="font-mono text-xs tabular-nums text-ib-ink">{usd(l.custoUsd)}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-ib-slate">{l.chamadas} chamadas</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="overflow-hidden">

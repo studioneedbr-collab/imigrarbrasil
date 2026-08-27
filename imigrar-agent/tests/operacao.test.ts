@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { montarMeus, diasParado } from "@/lib/operacao/meus";
 import { dentroDoExpediente, slaHorasDe } from "@/lib/operacao/limites";
+import { itensDeAlarme, type SaudeDaOperacao } from "@/lib/operacao/saude";
+import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 import type { Lembrete } from "@/lib/domain/types";
 
@@ -99,5 +101,139 @@ describe("limites da operação", () => {
     expect(dentroDoExpediente(new Date("2026-08-26T15:00:00Z"))).toBe(true);  // quarta, 12h
     expect(dentroDoExpediente(new Date("2026-08-26T05:00:00Z"))).toBe(false); // quarta, 2h
     expect(dentroDoExpediente(new Date("2026-08-29T15:00:00Z"))).toBe(false); // sábado
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O PAINEL "OPERAÇÃO" DA BARRA LATERAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+const saude = (patch: Partial<SaudeDaOperacao> = {}): SaudeDaOperacao => ({
+  captacaoParada: false,
+  motivo: null,
+  whatsapp: { configurado: true, conectado: true, detalhe: "WhatsApp conectado." },
+  ia: { configurado: true, funcionando: true, saldo: "4.76 USD", detalhe: "A Ana está pensando." },
+  ultimaMensagem: { em: "2026-08-26T14:50:00Z", haMinutos: 14 },
+  silencioNoExpediente: false,
+  falhas24h: { transcricao: 0, llm: 0 },
+  semResposta: 0,
+  lembretesVencidos: 0,
+  conferidoEm: AGORA.toISOString(),
+  ...patch,
+});
+
+describe("o painel de operação só mostra alarme", () => {
+  it("operação saudável não lista item nenhum — nem zerado", () => {
+    // Uma coluna de linhas verdes e zeros vira mobília em três dias, e mobília é a
+    // única coisa que o olho não vê. Lista vazia é o que faz a barra lateral desenhar
+    // a linha única de "tudo certo".
+    expect(itensDeAlarme(saude())).toEqual([]);
+  });
+
+  it("custo não aparece em lugar nenhum da operação", () => {
+    // O saldo continua no objeto (a tela de Integrações o lê), mas dinheiro não entra
+    // no painel de saúde: ninguém deve estar olhando gasto enquanto a captação parou.
+    const itens = itensDeAlarme(saude({ falhas24h: { transcricao: 2, llm: 3 }, semResposta: 1 }));
+    const texto = JSON.stringify(itens);
+    expect(texto).not.toMatch(/USD|R\$|saldo|custo/i);
+  });
+
+  it("a falha de LLM tem contador próprio, e ele linka para a tela de falha de LLM", () => {
+    // O contador apontava para /dashboard/audios?tipo=deepseek_falhou: queda do modelo
+    // levando para a tela de áudio. Quem clicava não encontrava nada com a sua cara.
+    const itens = itensDeAlarme(saude({ falhas24h: { transcricao: 4, llm: 7 } }));
+    const llm = itens.find((i) => i.chave === "llm");
+    const transcricao = itens.find((i) => i.chave === "transcricao");
+    expect(llm?.href).toBe("/dashboard/falhas-llm");
+    expect(llm?.valor).toBe("7");
+    expect(transcricao?.href).toBe("/dashboard/audios");
+    expect(transcricao?.valor).toBe("4");
+  });
+
+  it("o WhatsApp desconectado aparece como indicador compacto, sem repetir a faixa", () => {
+    const itens = itensDeAlarme(
+      saude({
+        whatsapp: { configurado: true, conectado: false, detalhe: "O WhatsApp está desconectado. Nenhuma mensagem está entrando." },
+        captacaoParada: true,
+      }),
+    );
+    const wpp = itens.find((i) => i.chave === "whatsapp");
+    expect(wpp?.valor).toBe("desconectado");
+    // A frase inteira é da faixa vermelha, que é mais visível e tem o botão de reconectar.
+    expect(wpp?.valor).not.toContain("Nenhuma mensagem");
+  });
+
+  it("o vocabulário é conectado/desconectado — nunca 'fora do ar'", () => {
+    const desconectado = itensDeAlarme(
+      saude({ whatsapp: { configurado: true, conectado: false, detalhe: "" } }),
+    );
+    expect(desconectado[0].valor).toBe("desconectado");
+    const semConfig = itensDeAlarme(
+      saude({ whatsapp: { configurado: false, conectado: false, detalhe: "" } }),
+    );
+    expect(semConfig[0].valor).toBe("não configurado");
+    expect(JSON.stringify(desconectado.concat(semConfig))).not.toMatch(/fora do ar|queda/i);
+  });
+
+  it("'última mensagem há 14 min' não aparece sozinha — só passando do limite no expediente", () => {
+    // 14 minutos é normal às 3h e é alarme às 14h de uma terça. Sem essa referência o
+    // número obriga quem lê a fazer a conta de cabeça, toda vez.
+    expect(itensDeAlarme(saude({ ultimaMensagem: { em: "x", haMinutos: 14 } }))).toEqual([]);
+    const alarmando = itensDeAlarme(
+      saude({ silencioNoExpediente: true, ultimaMensagem: { em: "x", haMinutos: 240 } }),
+    );
+    expect(alarmando.find((i) => i.chave === "silencio")?.valor).toBe("há 4h");
+  });
+
+  it("mensagem parada sem resposta vira item; zero não vira", () => {
+    expect(itensDeAlarme(saude({ semResposta: 3 })).find((i) => i.chave === "sem_resposta")?.valor).toBe("3");
+    expect(itensDeAlarme(saude({ semResposta: 0 })).find((i) => i.chave === "sem_resposta")).toBeUndefined();
+  });
+});
+
+describe("mensagem que entrou e não teve resposta", () => {
+  const agora = new Date("2026-08-26T15:00:00Z");
+  const msg = (conversationId: string, role: "user" | "assistant", createdAt: string) =>
+    ({ conversationId, role, createdAt });
+
+  it("conta a conversa cuja última mensagem é do contato e passou do limite", () => {
+    const paradas = conversasSemResposta(
+      [msg("c1", "user", "2026-08-26T14:40:00Z")],
+      { minutos: 10, agora },
+    );
+    expect(paradas.map((p) => p.conversationId)).toEqual(["c1"]);
+    expect(paradas[0].minutos).toBe(20);
+  });
+
+  it("não conta quando nós respondemos depois", () => {
+    const paradas = conversasSemResposta(
+      [msg("c1", "user", "2026-08-26T14:40:00Z"), msg("c1", "assistant", "2026-08-26T14:41:00Z")],
+      { minutos: 10, agora },
+    );
+    expect(paradas).toEqual([]);
+  });
+
+  it("não conta a que acabou de chegar", () => {
+    expect(
+      conversasSemResposta([msg("c1", "user", "2026-08-26T14:57:00Z")], { minutos: 10, agora }),
+    ).toEqual([]);
+  });
+
+  it("conversa assumida por uma pessoa fica de fora — ali o silêncio da Ana é o certo", () => {
+    const paradas = conversasSemResposta([msg("c1", "user", "2026-08-26T10:00:00Z")], {
+      minutos: 10,
+      agora,
+      ignorar: new Set(["c1"]),
+    });
+    expect(paradas).toEqual([]);
+  });
+
+  it("quem espera há mais tempo vem primeiro", () => {
+    const paradas = conversasSemResposta(
+      [msg("nova", "user", "2026-08-26T14:30:00Z"), msg("antiga", "user", "2026-08-26T09:00:00Z")],
+      { minutos: 10, agora },
+    );
+    expect(paradas.map((p) => p.conversationId)).toEqual(["antiga", "nova"]);
   });
 });

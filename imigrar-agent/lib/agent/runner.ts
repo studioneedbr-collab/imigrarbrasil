@@ -54,7 +54,7 @@ export async function runAgent(params: {
       try {
         const { getRepository } = await import("@/lib/data");
         await getRepository().registrarEventoOperacao({
-          tipo: "deepseek_falhou",
+          tipo: "llm_falhou",
           conversationId: params.conversationId,
           detalhe: motivo.slice(0, 500),
         });

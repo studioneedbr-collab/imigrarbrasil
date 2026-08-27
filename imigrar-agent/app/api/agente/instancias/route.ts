@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * formulário e nunca mais volta — a tela mostra "configurado" e um campo em branco para
  * substituir, do mesmo jeito que a tela de integrações já fazia.
  */
-function paraOPainel(i: ZapiInstancia, conectada: boolean | null) {
+function paraOPainel(i: ZapiInstancia, conectada: boolean | null, ultimaMensagem: string | null = null) {
   return {
     id: i.id,
     nome: i.nome,
@@ -32,6 +32,9 @@ function paraOPainel(i: ZapiInstancia, conectada: boolean | null) {
     respostaFixa: i.respostaFixa,
     slaMinutos: i.slaMinutos,
     conectada,
+    // "Conectada" e "está chegando mensagem" são coisas diferentes: a instância pode
+    // estar conectada e o número, morto. Quem opera precisa das duas.
+    ultimaMensagem,
     criadoEm: i.criadoEm,
   };
 }
@@ -45,12 +48,15 @@ export async function GET(req: NextRequest) {
   // A conexão real de cada instância custa uma ida à Z-API. Só é conferida quando a tela
   // pede (`?conexao=1`): a lista aparece em lugares onde ninguém quer esperar rede.
   const querConexao = req.nextUrl.searchParams.get("conexao") === "1";
-  const conexoes = querConexao
-    ? await Promise.all(instancias.map((i) => conexaoDaInstancia(i).catch(() => false)))
-    : instancias.map(() => null);
+  const [conexoes, ultimas] = await Promise.all([
+    querConexao
+      ? Promise.all(instancias.map((i) => conexaoDaInstancia(i).catch(() => false)))
+      : Promise.resolve(instancias.map(() => null)),
+    getRepository().ultimaMensagemPorInstancia().catch(() => ({}) as Record<string, string>),
+  ]);
 
   return NextResponse.json({
-    instancias: instancias.map((i, n) => paraOPainel(i, conexoes[n])),
+    instancias: instancias.map((i, n) => paraOPainel(i, conexoes[n], ultimas[i.id] ?? null)),
   });
 }
 

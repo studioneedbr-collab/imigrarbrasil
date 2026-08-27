@@ -1,6 +1,7 @@
 import { env, useDeepseek } from "@/lib/env";
 import { NOME_DO_IDIOMA } from "@/lib/agent/idioma";
 import type { Conversation, Message } from "@/lib/domain/types";
+import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 
 // Follow-up gerado pelo DeepSeek com o CONTEXTO da conversa — nunca genérico.
 // Retoma exatamente de onde parou (serviço/assunto + nome, quando houver).
@@ -51,6 +52,7 @@ export async function generateFollowupMessage(
     .map((m) => `${m.role === "user" ? "Pessoa" : "Ana"}: ${m.content}`)
     .join("\n");
 
+  const inicio = Date.now();
   try {
     const res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
       method: "POST",
@@ -68,10 +70,34 @@ export async function generateFollowupMessage(
         temperature: 0.5,
       }),
     });
-    if (!res.ok) return FALLBACK;
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    if (!res.ok) {
+      await registrarChamada({
+        provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+        conversationId: conversation.id, duracaoMs: Date.now() - inicio,
+        ok: false, erro: `HTTP ${res.status}`,
+      });
+      return FALLBACK;
+    }
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: UsoDeTokens;
+    };
+    const { entrada, saida } = tokensDe(data.usage);
+    // O follow-up é escrito sem ninguém por perto, uma vez por conversa parada. É barato
+    // por chamada e some da conta se não for medido — e é exatamente esse tipo de gasto
+    // que vira surpresa no fim do mês.
+    await registrarChamada({
+      provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+      conversationId: conversation.id, tokensEntrada: entrada, tokensSaida: saida,
+      duracaoMs: Date.now() - inicio, ok: true,
+    });
     return (data.choices?.[0]?.message?.content ?? "").trim() || FALLBACK;
-  } catch {
+  } catch (err) {
+    await registrarChamada({
+      provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+      conversationId: conversation.id, duracaoMs: Date.now() - inicio,
+      ok: false, erro: err instanceof Error ? err.message : "rede",
+    });
     return FALLBACK;
   }
 }

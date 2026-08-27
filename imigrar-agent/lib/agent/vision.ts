@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import type { MediaKind } from "@/lib/domain/types";
+import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 
 // LEITURA DE DOCUMENTOS recebidos no WhatsApp (foto do ponto, contracheque, currículo).
 //
@@ -64,7 +65,12 @@ interface ChatChoice {
  * não dá para ler — que é o caminho PADRÃO enquanto não houver um modelo de visão
  * configurado. O atendimento nunca pode parar por causa da leitura de um anexo.
  */
-export async function readDocument(input: { url: string; name: string }): Promise<string | null> {
+export async function readDocument(input: {
+  url: string;
+  name: string;
+  /** De qual atendimento veio. Sem isto o custo da leitura não entra no custo da conversa. */
+  conversationId?: string | null;
+}): Promise<string | null> {
   if (!VISION_MODEL || !env.deepseekKey) return null;
   // Só https: uma URL forjada (file:, host interno) não deve ser buscada pelo servidor.
   if (!/^https:\/\//i.test(input.url)) return null;
@@ -85,6 +91,7 @@ export async function readDocument(input: { url: string; name: string }): Promis
     if (!IMAGE_MIMES.has(mime)) return null; // PDF, áudio e afins não passam por visão
 
     const dataUrl = `data:${mime};base64,${buf.toString("base64")}`;
+    const inicio = Date.now();
     const resp = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.deepseekKey}` },
@@ -105,9 +112,23 @@ export async function readDocument(input: { url: string; name: string }): Promis
     });
     if (!resp.ok) {
       console.error("[vision] leitura falhou:", resp.status, await resp.text().catch(() => ""));
+      await registrarChamada({
+        provedor: "deepseek", modelo: VISION_MODEL, tipo: "extracao",
+        conversationId: input.conversationId, duracaoMs: Date.now() - inicio,
+        ok: false, erro: `HTTP ${resp.status}`,
+      });
       return null;
     }
-    const json = (await resp.json()) as { choices?: ChatChoice[] };
+    const json = (await resp.json()) as { choices?: ChatChoice[]; usage?: UsoDeTokens };
+    const { entrada, saida } = tokensDe(json.usage);
+    // Imagem consome MUITO token de entrada. É a chamada mais cara por unidade deste
+    // sistema, e a que menos parece cara — some numa linha do atendimento como qualquer
+    // outra. Medida à parte (tipo `extracao`), ela aparece na quebra por tipo de chamada.
+    await registrarChamada({
+      provedor: "deepseek", modelo: VISION_MODEL, tipo: "extracao",
+      conversationId: input.conversationId, tokensEntrada: entrada, tokensSaida: saida,
+      duracaoMs: Date.now() - inicio, ok: true,
+    });
     const texto = (json.choices?.[0]?.message?.content ?? "").trim();
     return texto || null;
   } catch (err) {

@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
       let transcrito = false;
       let idiomaDoAudio: string | undefined;
       if (kind === "audio") {
-        const t = await transcreverAudio({ url: media.url, mime: media.mime });
+        const t = await transcreverAudio({ url: media.url, mime: media.mime, conversationId: conv.id });
         if (t) {
           lido = t.texto;
           transcrito = true;
@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
           });
         }
       } else {
-        lido = await readDocument({ url: media.url, name: media.name });
+        lido = await readDocument({ url: media.url, name: media.name, conversationId: conv.id });
       }
 
       const conteudo = transcrito

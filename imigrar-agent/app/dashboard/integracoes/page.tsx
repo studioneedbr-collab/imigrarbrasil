@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, PageHeader, SectionTitle, Icon, btnPrimary } from "@/components/dashboard/ui";
 import Instancias from "@/components/agente/instancias";
+import Provedores from "@/components/integracoes/provedores";
 
 type ConfigData = {
   instanceId: string;
@@ -78,32 +79,6 @@ export default function IntegracoesPage() {
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
-
-  // Status da IA (DeepSeek): conexão + saldo.
-  const [ai, setAi] = useState<{
-    configured: boolean;
-    connected: boolean;
-    model?: string;
-    balance?: { currency: string; total: string; granted: string; toppedUp: string } | null;
-    detail?: string;
-  } | null>(null);
-  const [aiLoading, setAiLoading] = useState(true);
-
-  async function loadAi() {
-    setAiLoading(true);
-    try {
-      const res = await fetch("/api/integrations/deepseek", { cache: "no-store" });
-      setAi((await res.json()) as typeof ai);
-    } catch {
-      setAi({ configured: false, connected: false, detail: "Falha ao consultar a IA." });
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadAi();
-  }, []);
 
   // Brevo (envio de e-mail das propostas).
   const [brevo, setBrevo] = useState<{ senderEmail: string; senderName: string; apiKeySet: boolean; configured: boolean } | null>(null);
@@ -270,107 +245,20 @@ export default function IntegracoesPage() {
       <PageHeader
         eyebrow="Agente"
         title="Integrações"
-        description="Conecte o WhatsApp via Z-API para que o agente atenda no número real da Imigrar Brasil."
+        description="Tudo de que o atendimento depende para funcionar: o WhatsApp por onde a pessoa escreve, e os provedores de IA que escutam, leem e respondem. Nenhuma credencial é exibida aqui — nem em parte."
       />
 
-      {/* AS INSTÂNCIAS vêm primeiro: é aqui que se decide quem responde e por qual
-          número. O cartão de credencial única, mais abaixo, é o caminho anterior — ele
-          continua valendo enquanto não houver instância cadastrada. */}
+      {/* ─────────────────────────────────────────────────────────────────────
+          SEÇÃO 1 — WHATSAPP (Z-API).
+          Vem primeiro porque é a única que, parada, faz o negócio parar: sem ela
+          nenhuma mensagem entra. As instâncias antes das credenciais soltas: é nelas
+          que se decide quem responde e por qual número. O cartão de credencial única,
+          mais abaixo, é o caminho anterior e continua valendo enquanto não houver
+          instância cadastrada.
+          ───────────────────────────────────────────────────────────────────── */}
       <Instancias />
 
-      {/* IA — DeepSeek (status + saldo) */}
-      <Card className="p-5 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <span
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${
-                ai?.connected ? "bg-ib-success/8 ring-ib-success/20" : "bg-slate-50 ring-slate-200"
-              } ring-4`}
-            >
-              <Icon name="bolt" className={`h-5 w-5 ${ai?.connected ? "text-[#15803D]" : "text-ib-slate"}`} />
-            </span>
-            <div>
-              <p className={`text-base font-semibold ${ai?.connected ? "text-[#15803D]" : "text-ib-slate"}`}>
-                Inteligência (DeepSeek) — {aiLoading ? "verificando…" : ai?.connected ? "Conectada" : "Desconectada"}
-              </p>
-              <p className="mt-0.5 text-sm text-ib-slate">
-                {aiLoading ? "Consultando a IA…" : ai?.detail ?? "IA não configurada."}
-                {ai?.model ? ` · modelo ${ai.model}` : ""}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-5">
-            <div className="text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ib-slate">Saldo</p>
-              <p className="text-xl font-semibold tabular-nums text-ib-ink">
-                {ai?.balance ? `${ai.balance.currency === "USD" ? "US$" : ai.balance.currency} ${ai.balance.total}` : "—"}
-              </p>
-            </div>
-            <button type="button" onClick={loadAi} disabled={aiLoading} className={btnPrimary}>
-              <Icon name="pulse" className="h-4 w-4" />
-              {aiLoading ? "…" : "Atualizar"}
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Brevo — e-mail das propostas */}
-      <Card>
-        <SectionTitle>
-          E-mail (Brevo){" "}
-          {brevo?.configured ? (
-            <span className="ml-2 rounded-full bg-ib-success/8 px-2 py-0.5 text-[11px] font-medium text-[#15803D]">conectado</span>
-          ) : (
-            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-ib-slate">não configurado</span>
-          )}
-        </SectionTitle>
-        <div className="space-y-4 p-5 sm:p-6">
-          <p className="text-sm text-ib-slate">
-            Conecte sua conta Brevo para o agente e a equipe enviarem as propostas por e-mail (com o PDF em anexo), direto da tela de Propostas.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="API Key (Brevo)" hint={brevo?.apiKeySet ? "definida" : "não definida"}>
-              <input
-                type="password"
-                value={brevoApiKey}
-                onChange={(e) => setBrevoApiKey(e.target.value)}
-                placeholder={brevo?.apiKeySet ? "•••••••• (digite para substituir)" : "xkeysib-..."}
-                className={inputClass}
-                autoComplete="off"
-              />
-            </Field>
-            <Field label="E-mail remetente">
-              <input
-                type="email"
-                value={brevoSenderEmail}
-                onChange={(e) => setBrevoSenderEmail(e.target.value)}
-                placeholder="comercial@shinerio.com"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Nome do remetente">
-              <input
-                value={brevoSenderName}
-                onChange={(e) => setBrevoSenderName(e.target.value)}
-                placeholder="Imigrar Brasil"
-                className={inputClass}
-              />
-            </Field>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 border-t border-ib-line pt-4">
-            <button type="button" onClick={saveBrevo} disabled={brevoSaving} className={btnPrimary}>
-              <Icon name="check" className="h-4 w-4" />
-              {brevoSaving ? "Salvando…" : "Salvar"}
-            </button>
-            <p className="text-xs text-ib-slate">
-              A API Key fica salva no servidor e nunca é reenviada ao navegador — digite de novo para trocar.
-            </p>
-          </div>
-          <FeedbackNote feedback={brevoFeedback} />
-        </div>
-      </Card>
-
-      {/* Status card */}
+      {/* A conexão do número único, para quem ainda não migrou para instâncias. */}
       <Card className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
@@ -396,7 +284,7 @@ export default function IntegracoesPage() {
         </div>
       </Card>
 
-      {/* Config card */}
+      {/* As credenciais do número único. */}
       <Card>
         <SectionTitle>Credenciais Z-API</SectionTitle>
         <div className="space-y-4 p-5 sm:p-6">
@@ -453,6 +341,70 @@ export default function IntegracoesPage() {
             </p>
           </div>
           <FeedbackNote feedback={feedback} />
+        </div>
+      </Card>
+
+      {/* ─────────────────────────────────────────────────────────────────────
+          SEÇÕES 2 e 3 — PROVEDORES DE LLM, e TRANSCRIÇÃO E EMBEDDINGS.
+          Estavam ausentes desta tela enquanto rodavam em produção. Ver o comentário
+          em components/integracoes/provedores.tsx.
+          ───────────────────────────────────────────────────────────────────── */}
+      <Provedores />
+
+      {/* Brevo — e-mail das propostas */}
+      <Card>
+        <SectionTitle>
+          E-mail (Brevo){" "}
+          {brevo?.configured ? (
+            <span className="ml-2 rounded-full bg-ib-success/8 px-2 py-0.5 text-[11px] font-medium text-[#15803D]">conectado</span>
+          ) : (
+            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-ib-slate">não configurado</span>
+          )}
+        </SectionTitle>
+        <div className="space-y-4 p-5 sm:p-6">
+          <p className="text-sm text-ib-slate">
+            Usado só para encaminhar por e-mail os anexos que chegam para o RH. Não faz parte
+            do atendimento: se estiver fora, nenhuma conversa é afetada.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="API Key (Brevo)" hint={brevo?.apiKeySet ? "definida" : "não definida"}>
+              <input
+                type="password"
+                value={brevoApiKey}
+                onChange={(e) => setBrevoApiKey(e.target.value)}
+                placeholder={brevo?.apiKeySet ? "•••••••• (digite para substituir)" : "xkeysib-..."}
+                className={inputClass}
+                autoComplete="off"
+              />
+            </Field>
+            <Field label="E-mail remetente">
+              <input
+                type="email"
+                value={brevoSenderEmail}
+                onChange={(e) => setBrevoSenderEmail(e.target.value)}
+                placeholder="contato@imigrarbrasil.com.br"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Nome do remetente">
+              <input
+                value={brevoSenderName}
+                onChange={(e) => setBrevoSenderName(e.target.value)}
+                placeholder="Imigrar Brasil"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-ib-line pt-4">
+            <button type="button" onClick={saveBrevo} disabled={brevoSaving} className={btnPrimary}>
+              <Icon name="check" className="h-4 w-4" />
+              {brevoSaving ? "Salvando…" : "Salvar"}
+            </button>
+            <p className="text-xs text-ib-slate">
+              A API Key fica salva no servidor e nunca é reenviada ao navegador — digite de novo para trocar.
+            </p>
+          </div>
+          <FeedbackNote feedback={brevoFeedback} />
         </div>
       </Card>
 

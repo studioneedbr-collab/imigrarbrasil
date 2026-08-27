@@ -13,6 +13,7 @@
 // pessoa escrever. Nunca lança para dentro do fluxo da conversa.
 
 import { env } from "@/lib/env";
+import { registrarChamada } from "@/lib/custos/registro";
 
 const MODELO = process.env.OPENAI_TRANSCRIBE_MODEL ?? "whisper-1";
 
@@ -53,6 +54,8 @@ function nomeDoArquivo(mime: string): string {
 export async function transcreverAudio(input: {
   url: string;
   mime?: string;
+  /** De qual atendimento veio. Sem isto o custo da transcrição não entra no da conversa. */
+  conversationId?: string | null;
 }): Promise<Transcricao | null> {
   if (!env.openaiKey) return null;
   // Só https: uma URL forjada (file:, host interno) não deve ser buscada pelo servidor.
@@ -79,6 +82,7 @@ export async function transcreverAudio(input: {
     // atendimento sem precisar de uma segunda chamada só para detectar.
     form.append("response_format", "verbose_json");
 
+    const inicio = Date.now();
     const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: { Authorization: `Bearer ${env.openaiKey}` },
@@ -87,10 +91,24 @@ export async function transcreverAudio(input: {
     });
     if (!resp.ok) {
       console.error("[audio] transcrição falhou:", resp.status, await resp.text().catch(() => ""));
+      await registrarChamada({
+        provedor: "openai", modelo: MODELO, tipo: "transcricao",
+        conversationId: input.conversationId, duracaoMs: Date.now() - inicio,
+        ok: false, erro: `HTTP ${resp.status}`,
+      });
       return null;
     }
     const json = (await resp.json()) as { text?: string; language?: string; duration?: number };
     const texto = (json.text ?? "").trim();
+    // Cobrado por tempo de áudio, e é por isso que `verbose_json` importa aqui além do
+    // idioma: sem a duração, o custo da transcrição não pode ser calculado — e entraria
+    // na conta como zero, que é a mentira que este módulo existe para não contar.
+    await registrarChamada({
+      provedor: "openai", modelo: MODELO, tipo: "transcricao",
+      conversationId: input.conversationId, segundos: json.duration ?? null,
+      duracaoMs: Date.now() - inicio, ok: Boolean(texto),
+      erro: texto ? null : "transcrição vazia",
+    });
     if (!texto) return null;
     return { texto, idioma: normalizarIdioma(json.language), duracao: json.duration };
   } catch (err) {

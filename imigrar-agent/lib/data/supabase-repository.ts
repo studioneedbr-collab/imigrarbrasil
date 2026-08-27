@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado } from "@/lib/domain/types";
+import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
@@ -458,6 +459,103 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.db.from("eventos_operacao")
       .update({ resolvido_em: new Date().toISOString(), resolvido_por: quem }).eq("id", id);
     if (error) throw error;
+  }
+
+  async ultimaMensagemPorInstancia() {
+    // Duas consultas curtas em vez de um join: as mensagens recentes, e a instância de
+    // cada conversa que apareceu nelas. Uma instância sem mensagem recente simplesmente
+    // não aparece no mapa — e a tela mostra "nenhuma nas últimas 500", que é a verdade.
+    const { data } = await this.db
+      .from("messages")
+      .select("conversation_id, created_at")
+      .eq("role", "user")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const linhas = (data as Record<string, any>[] | null) ?? [];
+    if (!linhas.length) return {};
+
+    const ids = Array.from(new Set(linhas.map((m) => m.conversation_id)));
+    const { data: convs } = await this.db
+      .from("conversations")
+      .select("id, instancia_id")
+      .in("id", ids);
+    const instanciaDe = new Map(
+      ((convs as Record<string, any>[] | null) ?? []).map((c) => [c.id as string, c.instancia_id as string | null]),
+    );
+
+    const saida: Record<string, string> = {};
+    for (const m of linhas) {
+      const inst = instanciaDe.get(m.conversation_id);
+      if (!inst) continue;
+      const atual = saida[inst];
+      if (!atual || m.created_at > atual) saida[inst] = m.created_at;
+    }
+    return saida;
+  }
+
+  async registrarChamadaLlm(c: Omit<ChamadaLlm, "id" | "criadoEm">) {
+    // NUNCA lança: contabilizar o custo de uma chamada não pode derrubar o atendimento
+    // que a fez. Um custo perdido é um número; uma conversa perdida é uma pessoa.
+    const { error } = await this.db.from("chamadas_llm").insert({
+      provedor: c.provedor, modelo: c.modelo, tipo: c.tipo,
+      conversation_id: c.conversationId ?? null,
+      tokens_entrada: c.tokensEntrada, tokens_saida: c.tokensSaida,
+      segundos: c.segundos ?? null, custo_usd: c.custoUsd,
+      preco_conhecido: c.precoConhecido, duracao_ms: c.duracaoMs ?? null,
+      ok: c.ok, erro: c.erro ?? null,
+    });
+    if (error) console.error("[chamadas_llm]", error.message);
+  }
+
+  async listChamadasLlm(opts: { desde?: string; provedor?: string; limit?: number } = {}) {
+    let q = this.db.from("chamadas_llm").select("*").order("criado_em", { ascending: false });
+    if (opts.desde) q = q.gte("criado_em", opts.desde);
+    if (opts.provedor) q = q.eq("provedor", opts.provedor);
+    const { data } = await q.limit(opts.limit ?? 5000);
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
+      id: r.id, provedor: r.provedor, modelo: r.modelo, tipo: r.tipo,
+      conversationId: r.conversation_id,
+      tokensEntrada: r.tokens_entrada ?? 0, tokensSaida: r.tokens_saida ?? 0,
+      segundos: r.segundos === null ? null : Number(r.segundos),
+      custoUsd: Number(r.custo_usd ?? 0), precoConhecido: r.preco_conhecido !== false,
+      duracaoMs: r.duracao_ms, ok: r.ok !== false, erro: r.erro, criadoEm: r.criado_em,
+    })) as ChamadaLlm[];
+  }
+
+  async contarConversasSemResposta(minutos: number, agora: Date = new Date()) {
+    // A REGRA NÃO É REESCRITA EM SQL. Ela mora em lib/operacao/sem-resposta.ts, testada,
+    // e os dois repositórios a chamam — senão a versão do Postgres e a da memória
+    // divergem no primeiro ajuste, e só uma delas está sob teste.
+    //
+    // A janela é o que segura o custo: uma mensagem parada há mais de um dia não é mais
+    // "entrou e travou agora", é trabalho atrasado, e esse já aparece na fila.
+    const desde = new Date(agora.getTime() - 24 * 3600_000).toISOString();
+    const { data } = await this.db
+      .from("messages")
+      .select("conversation_id, role, created_at")
+      .gte("created_at", desde)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    const mensagens = ((data as Record<string, any>[] | null) ?? []).map((m) => ({
+      conversationId: m.conversation_id as string,
+      role: m.role as "user" | "assistant",
+      createdAt: m.created_at as string,
+    }));
+    if (!mensagens.length) return 0;
+
+    const ids = Array.from(new Set(mensagens.map((m) => m.conversationId)));
+    const { data: convs } = await this.db
+      .from("conversations")
+      .select("id, assumed_by, opt_out_at")
+      .in("id", ids);
+    const ignorar = new Set(
+      ((convs as Record<string, any>[] | null) ?? [])
+        .filter((c) => c.assumed_by || c.opt_out_at)
+        .map((c) => c.id as string),
+    );
+
+    return conversasSemResposta(mensagens, { minutos, agora, ignorar }).length;
   }
 
   async criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }) {

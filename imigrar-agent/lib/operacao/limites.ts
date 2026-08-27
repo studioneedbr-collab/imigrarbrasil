@@ -21,6 +21,19 @@ import { EXPEDIENTE as JANELA, agoraEmBrasilia } from "@/lib/agent/expediente";
 export const HORAS_SEM_MENSAGEM_ALARME = 3;
 
 /**
+ * Quantos minutos uma mensagem do contato pode ficar SEM RESPOSTA antes de virar alarme.
+ *
+ * Dez minutos porque a Ana responde em segundos: passou de dez, não é demora — é
+ * mensagem que entrou e não saiu resposta (exceção no meio do webhook, envio recusado
+ * pela Z-API, agente que devolveu vazio). O limite é curto de propósito, porque o que
+ * está sendo medido não é lentidão, é ausência.
+ *
+ * Conversas com atendimento humano assumido ficam de fora da conta — ver
+ * `lib/operacao/sem-resposta.ts`. Lá o silêncio da Ana é o comportamento certo.
+ */
+export const MINUTOS_SEM_RESPOSTA_ALARME = 10;
+
+/**
  * A JANELA DO EXPEDIENTE VEM DE UM LUGAR SÓ.
  *
  * Eu tinha escrito 8h–20h aqui enquanto o agente usa 8h–18h (lib/agent/expediente.ts) —

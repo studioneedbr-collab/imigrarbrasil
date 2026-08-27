@@ -339,8 +339,14 @@ export interface AccessLogEntry {
  * `transcricao_falhou` é o mais caro: quem manda áudio aqui é quem não escreve bem em
  * português, quem está com pressa e quem está com medo. O áudio guardado junto é o que
  * permite alguém OUVIR, em vez de só saber que falhou.
+ *
+ * `llm_falhou` chamava-se `deepseek_falhou`. O nome do fornecedor virou o nome do
+ * problema, e isso custou duas coisas: uma falha da OpenAI (transcrição, embedding) não
+ * tinha onde ser gravada, e a contagem de quedas do modelo ficou pendurada na tela de
+ * áudios — quem clicava caía numa lista de transcrição. São dois problemas diferentes,
+ * com duas causas diferentes, e agora com dois nomes e duas telas.
  */
-export type TipoEventoOperacao = "transcricao_falhou" | "deepseek_falhou" | "documento_falhou";
+export type TipoEventoOperacao = "transcricao_falhou" | "llm_falhou" | "documento_falhou";
 
 export interface EventoOperacao {
   id: string;
@@ -354,6 +360,57 @@ export interface EventoOperacao {
   criadoEm: string;
   /** Preenchido na leitura, para a tela não precisar de outra consulta. */
   contato?: { nome?: string | null; whatsappNumber?: string | null } | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O CUSTO DA IA
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PARA QUE A CHAMADA FOI FEITA. É esta quebra que responde a pergunta que importa:
+ * a separação entre modelo pequeno e modelo grande está de fato acontecendo?
+ *
+ * Sem ela, "usamos o modelo barato para classificar" é uma intenção declarada, não um
+ * fato observado — e as duas coisas custam valores muito diferentes no fim do mês.
+ */
+export type TipoChamadaLlm =
+  | "redacao"
+  | "extracao"
+  | "classificacao"
+  | "transcricao"
+  | "embedding";
+
+export const TIPOS_DE_CHAMADA: TipoChamadaLlm[] = [
+  "redacao",
+  "extracao",
+  "classificacao",
+  "transcricao",
+  "embedding",
+];
+
+/** Uma chamada a provedor de IA, com o que ela custou. Uma linha por chamada. */
+export interface ChamadaLlm {
+  id: string;
+  /** "deepseek", "openai". É o fornecedor, e só ele — o problema tem nome próprio. */
+  provedor: string;
+  modelo: string;
+  tipo: TipoChamadaLlm;
+  /** Nulo quando a chamada não pertence a um atendimento (busca no painel, teste). */
+  conversationId?: string | null;
+  tokensEntrada: number;
+  tokensSaida: number;
+  /** Segundos de áudio — transcrição é cobrada por tempo, não por token. */
+  segundos?: number | null;
+  custoUsd: number;
+  /**
+   * Falso quando o modelo não está na tabela de preços. É a diferença entre "custou
+   * zero" e "não sei quanto custou", e a tela precisa poder dizer qual dos dois é.
+   */
+  precoConhecido: boolean;
+  duracaoMs?: number | null;
+  ok: boolean;
+  erro?: string | null;
+  criadoEm: string;
 }
 
 /**

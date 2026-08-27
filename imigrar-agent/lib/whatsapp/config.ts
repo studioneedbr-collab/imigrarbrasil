@@ -90,6 +90,41 @@ export function configDaInstancia(inst: ZapiInstancia): ZapiResolvedConfig {
 }
 
 /** Conexão real de UMA instância — o mesmo `/status` da Z-API, por credencial. */
+/**
+ * PEDIR À Z-API QUE RECONECTE ESTA INSTÂNCIA.
+ *
+ * O que isto faz de verdade é reiniciar a sessão do lado da Z-API. Resolve o caso comum
+ * — sessão travada, instância que perdeu o socket — e NÃO resolve o outro: se o aparelho
+ * foi desvinculado, ninguém reconecta por API, alguém precisa ler o QR Code no painel da
+ * Z-API. A tela diz as duas coisas, porque prometer religar e não religar é pior do que
+ * não ter o botão.
+ */
+export async function reconectarInstancia(
+  inst: ZapiInstancia,
+): Promise<{ ok: boolean; detalhe: string }> {
+  const cfg = configDaInstancia(inst);
+  if (!cfg.configured) return { ok: false, detalhe: "Instância sem credencial configurada." };
+  try {
+    const headers: Record<string, string> = {};
+    if (cfg.clientToken) headers["Client-Token"] = cfg.clientToken;
+    const res = await fetch(`${cfg.baseUrl}/instances/${cfg.instanceId}/token/${cfg.token}/restart`, {
+      headers, cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as { value?: boolean; error?: string; message?: string };
+    if (!res.ok) {
+      return { ok: false, detalhe: data.error ?? data.message ?? `A Z-API respondeu ${res.status}.` };
+    }
+    return {
+      ok: true,
+      detalhe:
+        "Pedido de reconexão enviado. Se em um minuto continuar desconectada, o aparelho foi desvinculado — é preciso ler o QR Code no painel da Z-API.",
+    };
+  } catch (err) {
+    console.error("[whatsapp/reconectar]", err instanceof Error ? err.message : err);
+    return { ok: false, detalhe: "Não foi possível falar com a Z-API." };
+  }
+}
+
 export async function conexaoDaInstancia(inst: ZapiInstancia): Promise<boolean> {
   const cfg = configDaInstancia(inst);
   if (!cfg.configured) return false;

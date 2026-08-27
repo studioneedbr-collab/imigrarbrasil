@@ -32,6 +32,7 @@ interface Instancia {
   respostaFixa: string | null;
   slaMinutos: number;
   conectada: boolean | null;
+  ultimaMensagem: string | null;
   criadoEm: string;
 }
 
@@ -54,6 +55,7 @@ export default function Instancias() {
   const [lista, setLista] = useState<Instancia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
   const [nova, setNova] = useState({ nome: "", instanceId: "", token: "", clientToken: "" });
   const [confirmar, setConfirmar] = useState<{ inst: Instancia; ligar: boolean } | null>(null);
@@ -117,6 +119,26 @@ export default function Instancias() {
     await carregar();
   }
 
+  async function reconectar(inst: Instancia) {
+    setOcupado(true);
+    setErro(null);
+    setAviso(null);
+    try {
+      const res = await fetch(`/api/agente/instancias/${inst.id}/reconectar`, { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; detalhe?: string; error?: string };
+      if (!res.ok || !data.ok) {
+        setErro(data.detalhe ?? data.error ?? "Não consegui pedir a reconexão.");
+        return;
+      }
+      // O texto vem do servidor porque ele diz o que este botão NÃO resolve: aparelho
+      // desvinculado só volta com alguém lendo o QR Code no painel da Z-API.
+      setAviso(data.detalhe ?? "Pedido de reconexão enviado.");
+      await carregar();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function aplicarAtivacao() {
     if (!confirmar) return;
     setOcupado(true);
@@ -161,6 +183,12 @@ export default function Instancias() {
           </p>
         ) : null}
 
+        {aviso ? (
+          <p className="rounded-xl border border-ib-mar/20 bg-ib-bruma px-3 py-2 text-sm text-ib-mar">
+            {aviso}
+          </p>
+        ) : null}
+
         {carregando ? <p className="text-sm text-ib-slate">Carregando…</p> : null}
 
         {lista.map((inst) => (
@@ -193,11 +221,29 @@ export default function Instancias() {
                     <span className={`h-1.5 w-1.5 rounded-full ${inst.ativo ? "bg-ib-success" : "bg-ib-slate/50"}`} />
                     {inst.ativo ? "Agente ligado" : "Agente desligado"}
                   </span>
-                  {inst.conectada === false ? (
-                    <span className="text-xs font-medium text-ib-danger">WhatsApp desconectado</span>
-                  ) : null}
+                  {/* VOCABULÁRIO ÚNICO: conexão do WhatsApp é conectado/desconectado, e
+                      o agente é ligado/desligado. Eram quatro termos para dois conceitos
+                      ("fora do ar", "captação parada", "quedas do agente", "ligado"), e
+                      ninguém sabia quais deles eram sinônimos. */}
+                  {inst.conectada === null ? null : (
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                        inst.conectada ? "text-[#15803D]" : "text-ib-danger"
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${inst.conectada ? "bg-ib-success" : "bg-ib-danger"}`}
+                      />
+                      {inst.conectada ? "WhatsApp conectado" : "WhatsApp desconectado"}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 font-mono text-xs text-ib-slate">{inst.instanceId}</p>
+                <p className="mt-0.5 text-xs text-ib-slate">
+                  {inst.ultimaMensagem
+                    ? `Última mensagem recebida em ${fmtDate(inst.ultimaMensagem)}.`
+                    : "Nenhuma mensagem recebida por esta instância."}
+                </p>
                 {inst.ativo && inst.ativadoPor ? (
                   <p className="mt-0.5 text-xs text-ib-slate">
                     Ligada por {inst.ativadoPor}
@@ -206,20 +252,30 @@ export default function Instancias() {
                 ) : null}
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setMotivo("");
-                  setConfirmar({ inst, ligar: !inst.ativo });
-                }}
-                className={`shrink-0 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
-                  inst.ativo
-                    ? "border border-ib-danger/40 text-ib-danger hover:bg-ib-danger/10"
-                    : "bg-ib-mar text-white hover:bg-ib-carimbo"
-                }`}
-              >
-                {inst.ativo ? "Desligar" : "Ligar"}
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => reconectar(inst)}
+                  disabled={ocupado}
+                  className="rounded-lg border border-ib-line px-3.5 py-2 text-sm font-semibold text-ib-slate transition hover:bg-ib-papel hover:text-ib-ink disabled:opacity-50"
+                >
+                  Reconectar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMotivo("");
+                    setConfirmar({ inst, ligar: !inst.ativo });
+                  }}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
+                    inst.ativo
+                      ? "border border-ib-danger/40 text-ib-danger hover:bg-ib-danger/10"
+                      : "bg-ib-mar text-white hover:bg-ib-carimbo"
+                  }`}
+                >
+                  {inst.ativo ? "Desligar" : "Ligar"}
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">

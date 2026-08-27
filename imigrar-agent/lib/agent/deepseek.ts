@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 import { AGENT_TOOLS, executeTool } from "@/lib/agent/tools";
 import type { AgentTurn, AgentRunResult, ToolCallTrace } from "@/lib/agent/runner";
 
@@ -34,29 +35,59 @@ interface OpenAIMessage {
 async function chatCompletion(
   messages: OpenAIMessage[],
   tools: typeof OPENAI_TOOLS = OPENAI_TOOLS,
+  conversationId?: string,
 ): Promise<OpenAIMessage> {
-  const res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.deepseekKey}`,
-    },
-    body: JSON.stringify({
-      model: env.deepseekModel,
-      messages,
-      tools,
-      tool_choice: "auto",
-      max_tokens: 1024,
-      temperature: 0.4,
-    }),
-  });
+  // CADA ITERAÇÃO É UMA CHAMADA COBRADA. Uma resposta que usou três tools custou quatro
+  // chamadas, e é assim que ela precisa aparecer no custo por conversa — contabilizar só
+  // a última faria uma conversa cara parecer barata exatamente quando ela mais trabalha.
+  const inicio = Date.now();
+  const contabilizar = (uso: UsoDeTokens | undefined, ok: boolean, erro?: string) => {
+    const { entrada, saida } = tokensDe(uso);
+    void registrarChamada({
+      provedor: "deepseek",
+      modelo: env.deepseekModel,
+      tipo: "redacao",
+      conversationId,
+      tokensEntrada: entrada,
+      tokensSaida: saida,
+      duracaoMs: Date.now() - inicio,
+      ok,
+      erro,
+    });
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.deepseekKey}`,
+      },
+      body: JSON.stringify({
+        model: env.deepseekModel,
+        messages,
+        tools,
+        tool_choice: "auto",
+        max_tokens: 1024,
+        temperature: 0.4,
+      }),
+    });
+  } catch (err) {
+    contabilizar(undefined, false, err instanceof Error ? err.message : "rede");
+    throw err;
+  }
   if (!res.ok) {
-    throw new Error(`DeepSeek chat failed: ${res.status} ${await res.text()}`);
+    const corpo = await res.text();
+    contabilizar(undefined, false, `HTTP ${res.status}`);
+    throw new Error(`DeepSeek chat failed: ${res.status} ${corpo}`);
   }
   const data = (await res.json()) as {
     choices?: { message?: OpenAIMessage }[];
+    usage?: UsoDeTokens;
   };
   const msg = data.choices?.[0]?.message;
+  contabilizar(data.usage, Boolean(msg), msg ? undefined : "resposta sem choices/message");
   if (!msg) throw new Error("DeepSeek: resposta sem choices/message");
   return msg;
 }
@@ -88,7 +119,7 @@ export async function runDeepseek({
   ];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const msg = await chatCompletion(messages, tools);
+    const msg = await chatCompletion(messages, tools, conversationId);
 
     const calls = msg.tool_calls ?? [];
     if (calls.length === 0) {

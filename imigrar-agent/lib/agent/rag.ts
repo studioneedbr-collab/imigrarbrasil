@@ -16,6 +16,7 @@
 
 import { createServerClient } from "@/lib/supabase/client";
 import { embeddingsConfig, useSupabase } from "@/lib/env";
+import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 
 /** Uma linha do `buscar_chunks` (migration 017). */
 export interface ChunkRecuperado {
@@ -118,6 +119,7 @@ export async function embeddingDaConsulta(texto: string): Promise<number[] | nul
   try {
     if (c.provider === "openai") {
       if (!c.openaiKey) return null;
+      const inicio = Date.now();
       const res = await fetch("https://api.openai.com/v1/embeddings", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.openaiKey}` },
@@ -126,9 +128,22 @@ export async function embeddingDaConsulta(texto: string): Promise<number[] | nul
       });
       if (!res.ok) {
         console.error("[rag] embedding falhou:", res.status, await res.text().catch(() => ""));
+        await registrarChamada({
+          provedor: "openai", modelo: c.model, tipo: "embedding",
+          duracaoMs: Date.now() - inicio, ok: false, erro: `HTTP ${res.status}`,
+        });
         return null;
       }
-      const json = (await res.json()) as { data?: { embedding?: number[] }[] };
+      const json = (await res.json()) as { data?: { embedding?: number[] }[]; usage?: UsoDeTokens };
+      // SEM `conversationId`, e de propósito: o vetor é da CONSULTA, e a mesma consulta
+      // serve o atendimento e a busca que alguém do time faz no painel. Amarrar isso a
+      // uma conversa inflaria o custo por atendimento com trabalho que não é atendimento
+      // (ver a média por conversa em lib/custos/resumo.ts). O gasto entra no total.
+      const { entrada } = tokensDe(json.usage);
+      await registrarChamada({
+        provedor: "openai", modelo: c.model, tipo: "embedding",
+        tokensEntrada: entrada, duracaoMs: Date.now() - inicio, ok: true,
+      });
       const vetor = json.data?.[0]?.embedding;
       return Array.isArray(vetor) ? lembrar(chave, vetor) : null;
     }

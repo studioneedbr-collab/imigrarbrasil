@@ -2,7 +2,7 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
-  ZapiInstancia, RascunhoAgente, RascunhoStatus,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm,
 } from "@/lib/domain/types";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
@@ -129,6 +129,30 @@ export interface Repository {
     limit?: number;
   }): Promise<EventoOperacao[]>;
   resolverEventoOperacao(id: string, quem: string): Promise<void>;
+
+  /**
+   * O CUSTO DA IA, chamada por chamada.
+   *
+   * `registrarChamadaLlm` nunca lança, pela mesma razão que `registrarEventoOperacao`:
+   * ele roda dentro do atendimento, e uma falha ao contabilizar não pode derrubar a
+   * conversa que estava sendo contabilizada.
+   */
+  registrarChamadaLlm(c: Omit<ChamadaLlm, "id" | "criadoEm">): Promise<void>;
+  listChamadasLlm(opts?: { desde?: string; provedor?: string; limit?: number }): Promise<ChamadaLlm[]>;
+
+  /**
+   * Conversas cuja última mensagem é do contato e já passou de `minutos` sem resposta —
+   * mensagem que entrou e nunca saiu resposta. Conversas assumidas por uma pessoa ficam
+   * de fora: ali o silêncio da Ana é o comportamento certo.
+   */
+  contarConversasSemResposta(minutos: number, agora?: Date): Promise<number>;
+
+  /**
+   * Quando cada instância recebeu a última mensagem de contato. A tela de Integrações
+   * mostra por instância porque "o WhatsApp está conectado" e "está chegando mensagem
+   * neste número" são coisas diferentes — e a segunda é a que interessa.
+   */
+  ultimaMensagemPorInstancia(): Promise<Record<string, string>>;
 
   /** Retornos agendados. A nota é o que faz o lembrete servir para alguma coisa. */
   criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }): Promise<Lembrete>;
