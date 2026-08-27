@@ -760,7 +760,10 @@ export class SupabaseRepository implements Repository {
         .from("leads")
         .select(colunas, contar ? { count: "exact", head: true } : undefined)
         .not("conversations.ambiente", "eq", "teste")
+        // Os dois prefixos de ensaio — ver lib/domain/ambiente.ts. `fb:` são os resíduos
+        // da suíte de testes que um dia rodou contra este banco.
         .not("conversations.whatsapp_number", "like", "sim:%")
+        .not("conversations.whatsapp_number", "like", "fb:%")
         .not("classificacao", "in", `(${FILTRADAS.join(",")})`)
         .not("atendimento_status", "in", `(${ENCERRADOS.join(",")})`);
 

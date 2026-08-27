@@ -74,6 +74,10 @@ describe("a fila paginada", () => {
   it("ensaio, conversa filtrada e caso encerrado não entram — nem no total", async () => {
     await criarLead("5595000030001");
     await criarLead("sim:um-ensaio");
+    // `fb:` é a suíte do motor determinístico. Ela um dia rodou contra o banco de
+    // produção e deixou dezenas de conversas lá, marcadas como `producao` — cinco delas
+    // com lead, sentadas na fila de trabalho como se fossem casos de gente.
+    await criarLead("fb:um-teste");
     await criarLead("5595000030002", { classificacao: "CURIOSO" });
     await criarLead("5595000030003", { atendimentoStatus: "fechado" });
     await criarLead("5595000030004", { atendimentoStatus: "perdido" });

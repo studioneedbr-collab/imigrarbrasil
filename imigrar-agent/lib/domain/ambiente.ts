@@ -15,12 +15,29 @@
 
 import type { AmbienteInstancia } from "@/lib/domain/types";
 
-/** Prefixo dos números criados pelo simulador. Contato real nunca começa assim. */
+/**
+ * Os prefixos que NÃO são telefone de gente.
+ *
+ * `sim:` é o simulador do painel. `fb:` é a suíte de testes do motor determinístico — e
+ * ele está aqui por um motivo constrangedor e concreto: uma execução da suíte com o
+ * `.env.local` carregado no shell trocou o repositório de memória pelo Supabase de
+ * PRODUÇÃO e escreveu dezenas de conversas lá dentro (é o acidente que
+ * tests/ambiente-de-teste.test.ts existe para impedir de novo). A trava foi posta; os
+ * dados ficaram. Eles nasceram com `ambiente = 'producao'`, então apareciam na fila de
+ * trabalho como casos de gente.
+ *
+ * Ler o prefixo resolve os dois sem precisar de UPDATE em banco de produção — e continua
+ * valendo para o que vier depois, porque quem escreve teste não lembra de marcar ambiente.
+ */
+export const PREFIXOS_DE_ENSAIO = ["sim:", "fb:"] as const;
+
+/** Mantido para quem já importava daqui. */
 export const PREFIXO_SIMULADOR = "sim:";
 
-/** Esta conversa é ensaio (simulador)? */
+/** Esta conversa é ensaio (simulador ou suíte de testes)? */
 export function ehEnsaio(whatsappNumber?: string | null): boolean {
-  return (whatsappNumber ?? "").startsWith(PREFIXO_SIMULADOR);
+  const n = whatsappNumber ?? "";
+  return PREFIXOS_DE_ENSAIO.some((p) => n.startsWith(p));
 }
 
 /**

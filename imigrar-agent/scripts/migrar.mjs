@@ -75,6 +75,14 @@ const baselineAte = (() => {
   const i = process.argv.indexOf("--baseline");
   return i >= 0 ? process.argv[i + 1] : null;
 })();
+// `--ate 025_parecer_e_telefone.sql` para a aplicação naquele arquivo, mesmo que exista
+// coisa depois. É o freio para a pasta que tem migration de trabalho EM ANDAMENTO: uma
+// migration existe em disco assim que alguém começa a escrevê-la, e o deploy do banco não
+// pode arrastar junto o schema de uma feature que ainda não foi entregue.
+const aplicarAte = (() => {
+  const i = process.argv.indexOf("--ate");
+  return i >= 0 ? process.argv[i + 1] : null;
+})();
 
 const cliente = new pg.Client({
   connectionString: conexao,
@@ -124,7 +132,15 @@ try {
     process.exit(0);
   }
 
-  const pendentes = arquivos.filter((f) => !jaAplicadas.has(f));
+  if (aplicarAte && !arquivos.includes(aplicarAte)) {
+    console.error(`\n${aplicarAte} não existe em supabase/migrations.\n`);
+    process.exit(1);
+  }
+  const limite = aplicarAte ? arquivos.indexOf(aplicarAte) : arquivos.length - 1;
+  const pendentes = arquivos
+    .slice(0, limite + 1)
+    .filter((f) => !jaAplicadas.has(f));
+  const seguradas = arquivos.slice(limite + 1).filter((f) => !jaAplicadas.has(f));
 
   // A TRAVA. Registro vazio num banco que já tem tabelas significa uma coisa só: este
   // banco foi migrado à mão, antes deste script existir. Rodar a 001 aqui recriaria
@@ -156,12 +172,22 @@ try {
   }
 
   if (!pendentes.length) {
-    console.log(`Banco em dia — ${arquivos.length} migrations, nenhuma pendente.`);
+    console.log(
+      seguradas.length
+        ? `Nada a aplicar até ${aplicarAte}. ${seguradas.length} migration(s) depois dela seguem pendentes: ${seguradas.join(", ")}`
+        : `Banco em dia — ${arquivos.length} migrations, nenhuma pendente.`,
+    );
     process.exit(0);
   }
 
   console.log(`${pendentes.length} pendente(s) de ${arquivos.length}:`);
   for (const f of pendentes) console.log(`  · ${f}`);
+  // O que ficou de fora aparece SEMPRE. Um limite silencioso vira, na semana seguinte,
+  // alguém jurando que rodou tudo — que é o mesmo defeito que este script veio corrigir.
+  if (seguradas.length) {
+    console.log(`\nseguradas por --ate ${aplicarAte} (NÃO aplicadas):`);
+    for (const f of seguradas) console.log(`  · ${f}`);
+  }
 
   if (soConferir) {
     console.log("\n--conferir: nada foi aplicado.");
