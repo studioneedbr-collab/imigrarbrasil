@@ -525,9 +525,15 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
     return data ? this.mapLead(data) : null;
   }
-  async listLeads() {
-    const { data } = await this.db.from("leads").select("*").order("created_at", { ascending: false });
+  async listLeads(opcoes: { limite?: number } = {}) {
+    let q = this.db.from("leads").select("*").order("created_at", { ascending: false });
+    if (opcoes.limite && opcoes.limite > 0) q = q.limit(opcoes.limite);
+    const { data } = await q;
     return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapLead(r));
+  }
+  async contarLeads() {
+    const { count } = await this.db.from("leads").select("id", { count: "exact", head: true });
+    return count ?? 0;
   }
   async deleteLead(id: string) {
     const { error } = await this.db.from("leads").delete().eq("id", id);

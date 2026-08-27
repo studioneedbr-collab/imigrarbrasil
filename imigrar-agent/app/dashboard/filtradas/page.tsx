@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Card, PageHeader } from "@/components/dashboard/ui";
 import { ChipIdioma } from "@/components/fila/linha";
 import BotaoResgatar from "./_resgatar";
+import { AvisoDeCorte, Paginacao } from "@/components/dashboard/paginacao";
 import { carregarFila } from "@/lib/fila/carregar";
+import { TETO_DE_CARGA, avaliarCorte, paginaDaBusca, paginar } from "@/lib/fila/paginacao";
 import { CLASSIFICACAO_AJUDA, CLASSIFICACAO_LABEL, desde } from "@/lib/domain/rotulos";
 import { CLASSIFICACOES_FILTRADAS } from "@/lib/domain/types";
 
@@ -20,12 +22,22 @@ export const dynamic = "force-dynamic";
  * negócio em silêncio. A taxa de resgate, alimentada por esta tela, é o único jeito de
  * perceber isso cedo.
  */
-export default async function FiltradasPage() {
+export default async function FiltradasPage({
+  searchParams,
+}: {
+  searchParams?: { p?: string };
+}) {
   const agora = new Date();
-  const { fila } = await carregarFila(agora);
+  const { fila, leads, total } = await carregarFila(agora, { limite: TETO_DE_CARGA });
+  const corte = avaliarCorte(leads.length, total);
+  // Uma página por CLASSIFICAÇÃO seria três paginações concorrendo pelo mesmo `?p=`.
+  // Aqui a paginação é do conjunto, e cada bloco desenha a fatia que lhe coube.
+  const pagina = paginar(fila.filtradas, paginaDaBusca(searchParams?.p));
 
   return (
     <div className="space-y-6">
+      <AvisoDeCorte corte={corte} />
+
       <PageHeader
         eyebrow="Auditoria"
         title="Conversas filtradas"
@@ -45,7 +57,7 @@ export default async function FiltradasPage() {
         </Card>
       ) : (
         CLASSIFICACOES_FILTRADAS.map((classificacao) => {
-          const leads = fila.filtradas.filter((l) => l.classificacao === classificacao);
+          const leads = pagina.itens.filter((l) => l.classificacao === classificacao);
           if (leads.length === 0) return null;
           return (
             <Card key={classificacao} className="overflow-hidden">
@@ -100,6 +112,12 @@ export default async function FiltradasPage() {
           );
         })
       )}
+
+      {fila.filtradas.length > 0 ? (
+        <Card className="overflow-hidden">
+          <Paginacao pagina={pagina} base="/dashboard/filtradas" rotulo="conversas" />
+        </Card>
+      ) : null}
     </div>
   );
 }

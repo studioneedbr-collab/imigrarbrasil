@@ -67,7 +67,15 @@ export interface Repository {
   upsertLead(conversationId: string, patch: Partial<Lead>): Promise<Lead>;
   getLead(id: string): Promise<Lead | null>;
   getLeadByConversation(conversationId: string): Promise<Lead | null>;
-  listLeads(): Promise<Lead[]>;
+  /**
+   * `limite` existe para a fila não trazer o banco inteiro a cada request. A ordenação
+   * dela roda em memória sobre todos os leads (a regra dos três blocos não cabe num
+   * `order by`), então o teto é o que segura o custo sem reescrever a regra em SQL.
+   * Quem corta AVISA na tela — ver lib/fila/paginacao.ts.
+   */
+  listLeads(opcoes?: { limite?: number }): Promise<Lead[]>;
+  /** Quantos leads existem ao todo. É o denominador do aviso de corte. */
+  contarLeads(): Promise<number>;
   deleteLead(id: string): Promise<void>;
 
   /**

@@ -2,7 +2,9 @@ import Link from "next/link";
 import AutoRefresh from "@/components/dashboard/auto-refresh";
 import { Card, Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import { LinhaDaFila } from "@/components/fila/linha";
+import { AvisoDeCorte, Paginacao } from "@/components/dashboard/paginacao";
 import { carregarFila } from "@/lib/fila/carregar";
+import { TETO_DE_CARGA, avaliarCorte, paginaDaBusca, paginar } from "@/lib/fila/paginacao";
 import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 
@@ -70,9 +72,19 @@ function Vazio({ children }: { children: React.ReactNode }) {
   return <p className="px-5 py-6 text-sm leading-relaxed text-ib-slate">{children}</p>;
 }
 
-export default async function FilaPage() {
+export default async function FilaPage({
+  searchParams,
+}: {
+  searchParams?: { p?: string };
+}) {
   const agora = new Date();
-  const { fila } = await carregarFila(agora);
+  const { fila, total } = await carregarFila(agora, { limite: TETO_DE_CARGA });
+  const corte = avaliarCorte(fila.aConfirmar.length + fila.correndo.length + fila.normal.length + fila.filtradas.length, total);
+
+  // SÓ O BLOCO 3 PAGINA. Os dois de prazo são pequenos por natureza e são exatamente o
+  // que não pode sumir atrás de um botão: quem tem defesa a protocolar não vai para a
+  // página 2.
+  const pagina = paginar(fila.normal, paginaDaBusca(searchParams?.p));
 
   const vencidos = fila.correndo.filter((i) => i.faixa === "vencido").length;
   const criticos = fila.correndo.filter((i) => i.faixa === "critico").length;
@@ -86,6 +98,8 @@ export default async function FilaPage() {
     <div className="space-y-6">
       <AutoRefresh seconds={30} />
 
+      <AvisoDeCorte corte={corte} />
+
       <PageHeader
         eyebrow="Fila de trabalho"
         title="O que vence primeiro"
@@ -95,6 +109,10 @@ export default async function FilaPage() {
         description={descricao}
         actions={
           <>
+            <Link href="/dashboard/atendimentos" className={btnGhost}>
+              <Icon name="check" className="h-4 w-4" />
+              Quadro
+            </Link>
             <Link href="/dashboard/filtradas" className={btnGhost}>
               <Icon name="search" className="h-4 w-4" />
               Filtradas ({fila.filtradas.length})
@@ -183,11 +201,14 @@ export default async function FilaPage() {
             e conferir por amostragem o que o agente descartou.
           </Vazio>
         ) : (
-          <ul className="divide-y divide-ib-line">
-            {fila.normal.map((lead) => (
-              <LinhaDaFila key={lead.id} lead={lead} agora={agora} />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-ib-line">
+              {pagina.itens.map((lead) => (
+                <LinhaDaFila key={lead.id} lead={lead} agora={agora} />
+              ))}
+            </ul>
+            <Paginacao pagina={pagina} base="/dashboard" rotulo="atendimentos" />
+          </>
         )}
       </Bloco>
 

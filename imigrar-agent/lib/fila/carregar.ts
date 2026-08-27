@@ -11,16 +11,34 @@
 import { getRepository } from "@/lib/data";
 import { montarFila, type Fila, type LeadDaFila } from "@/lib/fila/ordenacao";
 
-export async function carregarLeadsDaFila(): Promise<LeadDaFila[]> {
+export interface CargaDaFila {
+  leads: LeadDaFila[];
+  /** Quantos existem no banco. Só difere de `leads.length` quando o teto cortou. */
+  total: number;
+}
+
+/**
+ * `limite` é o TETO DE CARGA — ver lib/fila/paginacao.ts. As telas de trabalho (Fila,
+ * Filtradas, Kanban) passam o teto; as que precisam do universo inteiro para estar
+ * corretas — Métricas e a exportação — não passam nada e continuam vendo tudo. Capar
+ * métrica seria transformar "quantos casos entraram" numa resposta errada e silenciosa.
+ */
+export async function carregarCargaDaFila(
+  opcoes: { limite?: number } = {},
+): Promise<CargaDaFila> {
   const repo = getRepository();
-  const [leads, usuarios] = await Promise.all([repo.listLeads(), repo.listUsers().catch(() => [])]);
+  const [leads, usuarios, total] = await Promise.all([
+    repo.listLeads(opcoes.limite ? { limite: opcoes.limite } : undefined),
+    repo.listUsers().catch(() => []),
+    opcoes.limite ? repo.contarLeads().catch(() => 0) : Promise.resolve(0),
+  ]);
   const nomePorId = new Map(usuarios.map((u) => [u.id, u.name || u.email]));
 
   const mensagensPorConversa = await repo.listMessagesForConversations(
     leads.map((l) => l.conversationId),
   );
 
-  return leads.map((lead) => {
+  const enriquecidos = leads.map((lead) => {
     const msgs = mensagensPorConversa.get(lead.conversationId) ?? [];
     const ultima = msgs.length ? msgs[msgs.length - 1] : null;
     return {
@@ -32,9 +50,21 @@ export async function carregarLeadsDaFila(): Promise<LeadDaFila[]> {
       responsavelNome: lead.responsavelId ? nomePorId.get(lead.responsavelId) ?? null : null,
     };
   });
+
+  return { leads: enriquecidos, total: opcoes.limite ? total : enriquecidos.length };
 }
 
-export async function carregarFila(agora: Date = new Date()): Promise<{ fila: Fila; leads: LeadDaFila[] }> {
-  const leads = await carregarLeadsDaFila();
-  return { fila: montarFila(leads, agora), leads };
+/** Atalho para quem só quer a lista — Métricas e "Meus atendimentos" usam assim. */
+export async function carregarLeadsDaFila(
+  opcoes: { limite?: number } = {},
+): Promise<LeadDaFila[]> {
+  return (await carregarCargaDaFila(opcoes)).leads;
+}
+
+export async function carregarFila(
+  agora: Date = new Date(),
+  opcoes: { limite?: number } = {},
+): Promise<{ fila: Fila; leads: LeadDaFila[]; total: number }> {
+  const { leads, total } = await carregarCargaDaFila(opcoes);
+  return { fila: montarFila(leads, agora), leads, total };
 }

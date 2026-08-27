@@ -26,6 +26,7 @@ const navGroups: NavGroup[] = [
     links: [
       { href: "/dashboard", label: "Fila", icon: "bolt" },
       { href: "/dashboard/meus", label: "Meus atendimentos", icon: "check" },
+  { href: "/dashboard/atendimentos", label: "Quadro", icon: "activity" },
     ],
   },
   {

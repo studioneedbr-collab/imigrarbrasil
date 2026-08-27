@@ -315,7 +315,14 @@ export class MemoryRepository implements Repository {
     return apagados;
   }
   async getLeadByConversation(conversationId: string) { return this.leads.get(conversationId) ?? null; }
-  async listLeads() { return Array.from(this.leads.values()); }
+  async listLeads(opcoes: { limite?: number } = {}) {
+    // Mesma ordem do Supabase (mais recente primeiro), para o teto cortar a mesma ponta.
+    const todos = Array.from(this.leads.values()).sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    );
+    return opcoes.limite && opcoes.limite > 0 ? todos.slice(0, opcoes.limite) : todos;
+  }
+  async contarLeads() { return this.leads.size; }
   async deleteLead(id: string) {
     for (const [k, v] of Array.from(this.leads.entries())) {
       if (v.id === id) { this.leads.delete(k); break; }
