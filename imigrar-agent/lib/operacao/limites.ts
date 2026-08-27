@@ -7,6 +7,8 @@
 // Todos são conservadores de propósito: é melhor o painel incomodar uma vez à toa do
 // que deixar passar um dia inteiro de captação parada.
 
+import { EXPEDIENTE as JANELA, agoraEmBrasilia } from "@/lib/agent/expediente";
+
 /**
  * Quanto tempo sem NENHUMA mensagem, dentro do expediente, antes de tratar como
  * operação parada.
@@ -18,8 +20,17 @@
  */
 export const HORAS_SEM_MENSAGEM_ALARME = 3;
 
-/** Janela do expediente, em Brasília. */
-export const EXPEDIENTE = { inicio: 8, fim: 20 };
+/**
+ * A JANELA DO EXPEDIENTE VEM DE UM LUGAR SÓ.
+ *
+ * Eu tinha escrito 8h–20h aqui enquanto o agente usa 8h–18h (lib/agent/expediente.ts) —
+ * duas definições de "horário de atendimento" no mesmo produto, que iam divergir no
+ * primeiro ajuste. Pior: o alarme de silêncio dispararia entre 18h e 20h todo dia, numa
+ * faixa em que a Ana já está dizendo à pessoa que o time só volta amanhã.
+ *
+ * A fonte da verdade é a do agente: é a janela em que existe gente no escritório.
+ */
+export { EXPEDIENTE } from "@/lib/agent/expediente";
 
 /**
  * A partir de quantos dias sem movimento um atendimento conta como PARADO.
@@ -50,16 +61,9 @@ export function slaHorasDe(classificacao: string | null | undefined): number {
   return (classificacao && SLA_HORAS[classificacao]) || SLA_HORAS_PADRAO;
 }
 
-/** Está dentro do expediente em Brasília? Sábado e domingo não contam. */
+/** Está dentro do expediente em Brasília? Mesma janela e mesma conta que o agente faz. */
 export function dentroDoExpediente(agora: Date = new Date()): boolean {
-  const partes = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    hour: "numeric",
-    hour12: false,
-    weekday: "short",
-  }).formatToParts(agora);
-  const hora = Number(partes.find((p) => p.type === "hour")?.value ?? "0");
-  const dia = partes.find((p) => p.type === "weekday")?.value ?? "";
-  if (dia === "Sat" || dia === "Sun") return false;
-  return hora >= EXPEDIENTE.inicio && hora < EXPEDIENTE.fim;
+  const { diaSemana, hora } = agoraEmBrasilia(agora);
+  const diaUtil = diaSemana >= 1 && diaSemana <= 5;
+  return diaUtil && hora >= JANELA.inicio && hora < JANELA.fim;
 }
