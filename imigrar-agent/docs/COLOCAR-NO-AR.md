@@ -20,8 +20,23 @@ sem perceber.
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
    - `service_role` secret → `SUPABASE_SERVICE_ROLE_KEY`
      (é a chave que ignora RLS. Nunca vai para o navegador — só para variável de servidor.)
-3. **SQL Editor** → rodar os arquivos de `supabase/migrations/` **em ordem numérica**,
-   do `001` até o último. Um por vez, conferindo que cada um termina sem erro.
+3. **As migrations.** O jeito certo é `npm run migrar`: ele lê `supabase/migrations/`,
+   aplica na ordem só o que ainda falta, grava cada uma em `schema_migrations` e envolve
+   cada arquivo numa transação — se a metade de baixo falhar, a de cima volta atrás.
+   Precisa de `DATABASE_URL` no `.env.local` (ver `.env.example`); a service_role NÃO
+   serve, porque ela fala com o PostgREST e PostgREST não executa DDL.
+
+   - Num banco que já foi migrado à mão, primeiro marque onde ele está — isto NÃO executa
+     nada, só registra: `npm run migrar -- --baseline 023_ativacao_do_agente.sql`.
+     Sem esse passo o script se recusa a rodar, porque aplicar a `002` de novo duplicaria
+     o catálogo de serviços.
+   - `npm run migrar -- --conferir` lista o que falta sem aplicar.
+   - Este passo é o que a gente já esqueceu uma vez: a `024` não rodou, o código que
+     depende dela subiu assim mesmo, e a tela de custo ficou vazia contra uma tabela que
+     não existe — sem quebrar nada na cara de ninguém, que é o pior jeito de falhar.
+
+   Se preferir à mão, é o **SQL Editor** rodando os arquivos **em ordem numérica**, do
+   `001` até o último, um por vez, conferindo que cada um termina sem erro.
    - `SETUP_COMPLETO.sql` é um consolidado antigo, da base que originou este código. Ignore: use as
      migrations numeradas.
    - A `017_rag_chunks.sql` cria a extensão `vector` e a função `buscar_chunks`. Se a
