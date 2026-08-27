@@ -216,6 +216,27 @@ tudo.
 saber em que língua responder **antes** de abrir a conversa. Por isso o código do idioma é a
 primeira coisa em cada linha da fila.
 
+**A entrevista v3** (`knowledge.ts` + `lead-capture.ts` + `transfer-gate.ts`): uma conversa
+real foi transferida em dez mensagens com a ficha quase vazia — sem o nome da pessoa, sem
+saber quando começavam as aulas dela, e com uma orientação de visto consular que
+contradizia o que a própria Ana tinha dito duas mensagens antes. As correções:
+
+- **Ordem obrigatória de abertura**: nome, nacionalidade e localização antes de mencionar
+  qualquer via. Perguntar "você tem CRNM?" a quem está na Bolívia é pergunta sem sentido.
+- **Entrevista por ramo** (A a F, na seção `qualificacao` da base): quem está no exterior,
+  quem está aqui com documento, quem está sem, refúgio, reunião familiar e naturalização
+  têm conjuntos de perguntas diferentes. Não existe lista única.
+- **Mercosul**: nacionais de Argentina, Bolívia, Chile, Colômbia, Equador, Paraguai, Peru e
+  Uruguai NUNCA são mandados a consulado por presunção. Sem material oficial, encaminha.
+- **O relógio do caso** (`relogio_do_caso`): todo caso tem algo correndo — aulas, contrato,
+  passaporte, CRNM. É campo próprio, de texto, e de propósito NÃO liga
+  `tem_prazo_correndo`: aquele é prazo processual e joga o caso no topo da fila.
+- **Teste de intenção** (`intencao`): a pergunta que separa quem quer contratar de quem só
+  quer saber. "Posso pedir para o time te orientar?" não separa nada.
+- **Ficha mínima**: nome, nacionalidade, localização, objetivo, relógio e intenção. Sem
+  eles não há transferência — **exceto** em caso urgente, que vai na hora com o que tiver.
+  A trava é determinística, no `transfer-gate`, porque o prompt sozinho não segura.
+
 **Antiban do WhatsApp**: a Ana é reativa (nunca dispara para lista), tem opt-out
 determinístico, janela de envio 8h–20h em dia útil para mensagens iniciadas pelo sistema,
 sem rajada nos crons, e ritmo humano no envio.
@@ -309,6 +330,11 @@ rodam em memória: painel abre, fila vazia, tudo some no refresh.
 
 **Bloqueado esperando terceiros**
 
+- [ ] **A base vetorial está VAZIA** — `rag_chunks` tem 0 linhas e não há chave de
+      embeddings no ambiente. A ingestão nunca rodou contra o Supabase real. Enquanto for
+      assim, a Ana atende sem material oficial: diz que não tem a informação e encaminha.
+      É seguro e é metade do serviço não acontecendo. Ver `imigrar-agent/tests/rag-recall/`
+      (`npm run test:rag`), que falha visivelmente enquanto isso não for resolvido.
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
 - [ ] chaves: DeepSeek, OpenAI, Z-API (a instância do 4664)
 - [ ] `AUTH_SECRET` e as demais variáveis na Vercel
@@ -341,7 +367,9 @@ de descobrir, em três semanas, que metade não era necessária.
 
 - a Ana **não** cota, não fala honorários, não pede documento;
 - a heurística **nunca** rebaixa uma classificação;
-- data de prazo **só** por humano, com nome;
+- data de prazo **só** por humano, com nome — e a data do relógio do caso
+  (`relogio_data`) também: o agente escreve o texto, nunca a data;
+- relógio apertado sobe o lead na fila NORMAL e nada mais — não vira prazo processual;
 - exportação **sempre** com escopo e sempre logada.
 
 ---
