@@ -400,6 +400,10 @@ export async function POST(req: NextRequest) {
       chaveGeral,
       instancia,
       conversaAssumidaPor: conv.assumedBy,
+      // `conv` foi lido ANTES de gravar a mensagem desta rodada, então o status aqui é o
+      // do turno anterior — que é exatamente o que se quer: quem encaminhou foi a Ana,
+      // numa mensagem passada, e é a partir dali que ela se cala.
+      conversaJaEncaminhada: conv.status === "transferred",
     });
     // Por onde a resposta sai: o MESMO número por onde ela entrou. Responder pela config
     // padrão mandaria a mensagem de um cliente de produção pelo WhatsApp de teste.

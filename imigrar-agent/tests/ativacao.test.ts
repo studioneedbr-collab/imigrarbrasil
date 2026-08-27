@@ -161,3 +161,64 @@ describe("o relógio do SLA conta só expediente", () => {
     expect(slaHumanoEstourado(null, 30, new Date())).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENCAMINHOU, CALOU.
+//
+// Numa conversa real a Ana disse "ya pasé tu caso al equipo jurídico" e seguiu
+// conversando por mais duas mensagens. Do lado de lá isso é ambíguo do pior jeito: a
+// pessoa não sabe mais se está falando com a Ana ou com o advogado, e o detalhe do caso
+// que ela contar dali em diante vai para quem não é advogado.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("nível 3 — o agente se cala depois de encaminhar", () => {
+  it("conversa já encaminhada não recebe mais resposta do agente", () => {
+    const d = decidirAtendimento({
+      chaveGeral: ligada,
+      instancia: producao(),
+      conversaJaEncaminhada: true,
+    });
+    expect(d.acao).toBe("silencio");
+    expect(d.nivel).toBe("conversa");
+  });
+
+  it("mas o relógio de primeira resposta humana continua correndo", () => {
+    // Calar não pode virar buraco: a conversa entra na fila esperando gente, com SLA.
+    const d = decidirAtendimento({
+      chaveGeral: ligada,
+      instancia: producao(),
+      conversaJaEncaminhada: true,
+    });
+    expect(d.aguardaHumano).toBe(true);
+  });
+
+  it("em instância de teste o silêncio vale, mas a fila de trabalho não", () => {
+    const d = decidirAtendimento({
+      chaveGeral: ligada,
+      instancia: teste({ ativo: true }),
+      conversaJaEncaminhada: true,
+    });
+    expect(d.acao).toBe("silencio");
+    expect(d.aguardaHumano).toBe(false);
+  });
+
+  it("conversa devolvida ao agente volta a ser atendida", () => {
+    // `releaseConversation` põe o status em 'active' — é assim que um humano devolve.
+    const d = decidirAtendimento({
+      chaveGeral: ligada,
+      instancia: producao(),
+      conversaJaEncaminhada: false,
+    });
+    expect(d.acao).toBe("responder");
+  });
+
+  it("o silêncio do encaminhamento não depende do modo de desligado da instância", () => {
+    // `resposta_fixa` é o comportamento de "o agente está desligado". Aqui ele está
+    // ligado e escolheu se calar — mandar o aviso automático seria falar por cima do time.
+    const d = decidirAtendimento({
+      chaveGeral: ligada,
+      instancia: producao({ modoDesligado: "resposta_fixa" }),
+      conversaJaEncaminhada: true,
+    });
+    expect(d.acao).toBe("silencio");
+  });
+});

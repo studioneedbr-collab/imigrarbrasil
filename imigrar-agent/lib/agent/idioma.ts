@@ -129,8 +129,8 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
   try {
     const repo = getRepository();
     const conv = await repo.getConversation(conversationId);
-    if (!conv || conv.idioma === idioma) return;
-    await repo.updateConversation(conversationId, { idioma });
+    if (!conv) return;
+    if (conv.idioma !== idioma) await repo.updateConversation(conversationId, { idioma });
 
     // O IDIOMA TAMBÉM VAI PARA O LEAD, e não só para a conversa.
     //
@@ -139,8 +139,20 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
     // painel — justo o dado que existe para o time saber, antes de abrir, se consegue
     // atender aquela pessoa. Apareceu na primeira conversa real: `conversations.idioma`
     // gravado como "es", `leads.idioma` null.
+    //
+    // A SINCRONIA DO LEAD É INDEPENDENTE DA DA CONVERSA, e é isso que estava errado.
+    //
+    // Antes havia um `return` quando a conversa JÁ tinha aquele idioma, e o lead nem era
+    // olhado. Só que a ordem dos acontecimentos, no primeiro turno, é: o idioma é gravado
+    // na conversa (ainda não há lead nenhum) e o lead nasce depois, na captura de dados.
+    // A partir do segundo turno o atalho disparava — a conversa já tinha "es" — e o lead
+    // ficava com `idioma` null PARA SEMPRE. Foi assim que quase todo card do painel ficou
+    // mostrando "??" num atendimento em que o idioma é a primeira coisa que se detecta.
+    //
+    // `upsertLead` cria o lead se ele ainda não existir: uma conversa que só tem idioma
+    // detectado já merece uma linha, porque idioma é o dado que diz se dá para atender.
     const lead = await repo.getLeadByConversation(conversationId);
-    if (lead && lead.idioma !== idioma) {
+    if (lead?.idioma !== idioma) {
       await repo.upsertLead(conversationId, { idioma });
     }
   } catch (err) {

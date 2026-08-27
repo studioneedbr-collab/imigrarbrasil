@@ -269,9 +269,9 @@ const OFERECER_TIME: Record<Fala, string> = {
 };
 
 const ENCAMINHOU: Record<Fala, string> = {
-  pt: "Já deixei o seu caso com o nosso time jurídico — eles falam com você. Continuo por aqui se quiser me contar mais algum detalhe.",
-  es: "Ya dejé tu caso con nuestro equipo jurídico — ellos hablan contigo. Sigo por aquí si quieres contarme algún detalle más.",
-  en: "I've passed your case to our legal team — they'll be in touch. I'm still here if you want to tell me anything else.",
+  pt: "Já deixei o seu caso com o nosso time jurídico — a partir daqui são eles que falam com você. Pode mandar por aqui mesmo o que mais quiser contar, que eles leem tudo. Cuide-se.",
+  es: "Ya dejé tu caso con nuestro equipo jurídico — de aquí en adelante son ellos quienes hablan contigo. Puedes escribir por aquí mismo lo que quieras contar, que ellos lo leen todo. Cuídate.",
+  en: "I've passed your case to our legal team — from here on it's them you'll be speaking with. Feel free to write anything else here; they read it all. Take care.",
 };
 
 const CONFIDENCIAL: Record<Fala, string> = {
