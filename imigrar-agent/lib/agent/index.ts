@@ -115,9 +115,21 @@ export async function processMessage({
   return respondToConversation(conversationId);
 }
 
-// Roda o agente sobre o histórico ATUAL da conversa e responde. Não adiciona a
-// mensagem do usuário — usado pelo webhook depois de AGRUPAR as mensagens do lote.
-export async function respondToConversation(conversationId: string): Promise<ProcessResult> {
+/**
+ * Roda o agente sobre o histórico ATUAL da conversa e responde. Não adiciona a
+ * mensagem do usuário — usado pelo webhook depois de AGRUPAR as mensagens do lote.
+ *
+ * MODO SOMBRA (`sombra: true`): o agente pensa igual, mas a resposta NÃO entra no
+ * histórico da conversa e o status do ciclo de vida não muda. É a diferença entre gravar
+ * um rascunho e mentir para o próprio agente: uma mensagem "assistant" gravada sem ter
+ * sido enviada faz o turno seguinte acreditar que a pessoa já leu aquilo, e a partir daí
+ * toda a conversa está apoiada numa coisa que não aconteceu. O rascunho é gravado pelo
+ * chamador, em `rascunhos_agente`.
+ */
+export async function respondToConversation(
+  conversationId: string,
+  opts: { sombra?: boolean } = {},
+): Promise<ProcessResult> {
   const repo = getRepository();
 
   // LEAD ENVIOU MENSAGEM: reabre se estava inativa (retomando do histórico, nunca do zero),
@@ -335,7 +347,7 @@ export async function respondToConversation(conversationId: string): Promise<Pro
     buttons = undefined;
   }
 
-  await repo.addMessage(conversationId, "assistant", reply);
+  if (!opts.sombra) await repo.addMessage(conversationId, "assistant", reply);
 
   // CHAMAR A TOOL NÃO É TER ENCAMINHADO. O portão de lib/agent/transfer-gate.ts recusa o
   // encaminhamento quando a conversa ainda não tem caso nenhum, e devolve `ok: false`.
@@ -359,8 +371,12 @@ export async function respondToConversation(conversationId: string): Promise<Pro
   // try/catch: sem a migration 008 o CHECK antigo rejeitaria 'waiting';
   // isso não pode impedir a Ana de responder.
   try {
-    await repo.updateConversationStatus(conversationId, status);
-    await repo.updateLastMessageAt(conversationId);
+    // Em sombra nada disto acontece: a Ana não respondeu, então a conversa não passou a
+    // "aguardando o cliente" e o relógio de última mensagem não se move.
+    if (!opts.sombra) {
+      await repo.updateConversationStatus(conversationId, status);
+      await repo.updateLastMessageAt(conversationId);
+    }
   } catch (err) {
     console.error("[agent] status (resposta) falhou:", err instanceof Error ? err.message : err);
   }

@@ -50,7 +50,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         input.responsavelId ?? auth.session.sub,
         auth.session.email,
       );
-      await registrarAcesso(auth.session, "assumiu_atendimento", { tipo: "lead", id: params.id }, req);
+      // NÍVEL 3 — ASSUMIR O ATENDIMENTO CALA O AGENTE NAQUELA CONVERSA.
+      //
+      // Sem isto, humano e agente respondem juntos na mesma thread: a pessoa pega o caso
+      // na fila, liga, e enquanto ela escreve a Ana já respondeu outra coisa. Assumir o
+      // lead e assumir a conversa eram dois gestos separados, e o segundo era esquecido
+      // exatamente quando o caso era urgente o bastante para alguém correr para ele.
+      await repo
+        .assumeConversation(lead.conversationId, auth.session.email)
+        .catch((e) => console.error("[atendimento] não calei o agente na conversa:", e instanceof Error ? e.message : e));
+      await registrarAcesso(
+        auth.session,
+        "assumiu_atendimento",
+        { tipo: "lead", id: params.id, detalhe: `agente calado na conversa ${lead.conversationId}` },
+        req,
+      );
       return NextResponse.json({ ok: true, lead });
     }
 

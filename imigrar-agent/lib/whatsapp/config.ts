@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { getRepository } from "@/lib/data";
+import type { ZapiInstancia } from "@/lib/domain/types";
 
 export interface ZapiResolvedConfig {
   instanceId: string;
@@ -63,6 +64,40 @@ export async function getZapiConnected(): Promise<boolean> {
     const res = await fetch(`${cfg.baseUrl}/instances/${cfg.instanceId}/token/${cfg.token}/status`, {
       headers,
       cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as { connected?: boolean };
+    return Boolean(data.connected);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * As credenciais de UMA instância, no formato que o envio espera.
+ *
+ * Com mais de uma instância cadastrada, `getZapiConfig()` deixa de ser a resposta certa
+ * para "por onde eu mando": a resposta é a instância por onde a mensagem CHEGOU. Quem
+ * responde por outro canal manda a mensagem do cliente de produção pelo número de teste.
+ */
+export function configDaInstancia(inst: ZapiInstancia): ZapiResolvedConfig {
+  return {
+    instanceId: inst.instanceId,
+    token: inst.token,
+    clientToken: inst.clientToken ?? "",
+    baseUrl: normalizeBaseUrl(inst.baseUrl),
+    configured: Boolean(inst.instanceId && inst.token),
+  };
+}
+
+/** Conexão real de UMA instância — o mesmo `/status` da Z-API, por credencial. */
+export async function conexaoDaInstancia(inst: ZapiInstancia): Promise<boolean> {
+  const cfg = configDaInstancia(inst);
+  if (!cfg.configured) return false;
+  try {
+    const headers: Record<string, string> = {};
+    if (cfg.clientToken) headers["Client-Token"] = cfg.clientToken;
+    const res = await fetch(`${cfg.baseUrl}/instances/${cfg.instanceId}/token/${cfg.token}/status`, {
+      headers, cache: "no-store",
     });
     const data = (await res.json().catch(() => ({}))) as { connected?: boolean };
     return Boolean(data.connected);

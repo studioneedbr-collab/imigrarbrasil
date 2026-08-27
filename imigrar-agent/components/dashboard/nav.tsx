@@ -46,6 +46,10 @@ const navGroups: NavGroup[] = [
     section: "Agente",
     links: [
       { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear" },
+      // A fila de sombra. Fica no menu, e não escondida dentro das conversas, porque na
+      // fase de testes ela é o trabalho: cada rascunho ali é uma resposta esperando um
+      // "podia ter saído?" — e uma pessoa do outro lado esperando alguém decidir.
+      { href: "/dashboard/sombra", label: "Modo sombra", icon: "agent" },
       { href: "/dashboard/integracoes", label: "Integrações", icon: "plug" },
       { href: "/simulate", label: "Simulador", icon: "external" },
     ],

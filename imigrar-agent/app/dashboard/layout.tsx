@@ -5,6 +5,7 @@ import FloatingChat from "@/components/dashboard/floating-chat";
 import NewMessageAlerts from "@/components/dashboard/new-message-alerts";
 import { Marca, FaixaMrz } from "@/components/marca";
 import FaixaAlerta from "@/components/operacao/faixa-alerta";
+import ChaveGeral from "@/components/agente/chave-geral";
 import SaudeRail from "@/components/operacao/saude-rail";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Topbar />
           {/* Antes de qualquer conteúdo: se a captação parou, nada mais importa. */}
           <FaixaAlerta />
+          {/* A chave geral fica SEMPRE visível, ligada ou desligada. Um botão que só
+              aparece quando algo está errado é um botão que ninguém sabe que existe. */}
+          <ChaveGeral />
           {children}
         </div>
       </main>

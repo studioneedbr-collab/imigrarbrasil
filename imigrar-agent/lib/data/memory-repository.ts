@@ -3,6 +3,7 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
@@ -26,6 +27,8 @@ export class MemoryRepository implements Repository {
   private acessos: AccessLogEntry[] = [];
   private eventos: EventoOperacao[] = [];
   private lembretes: Lembrete[] = [];
+  private instancias = new Map<string, ZapiInstancia>();
+  private rascunhos: RascunhoAgente[] = [];
 
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
@@ -35,6 +38,10 @@ export class MemoryRepository implements Repository {
       status: "active", leadScore: 0, createdAt: now(), updatedAt: now(),
       estadoAtual: "S0", lastMessageAt: now(), followupSentAt: null, reopenedAt: null,
       assumedBy: null, assumedAt: null,
+      // `producao` por padrão: quem cria uma conversa por um caminho que não conhece
+      // instância (simulador, teste, seed) está falando da operação real. Quem sabe que
+      // é teste marca explicitamente — ver `registrarInstanciaDaConversa` no webhook.
+      instanciaId: null, ambiente: "producao", aguardandoHumanoDesde: null,
     };
     this.conversations.set(conv.id, conv);
     this.byNumber.set(whatsappNumber, conv.id);
@@ -71,7 +78,8 @@ export class MemoryRepository implements Repository {
   // setor NÃO assume a conversa — a Ana segue atendendo até alguém entrar de fato.
   async assumeConversation(id: string, who: string) {
     const c = this.conversations.get(id);
-    if (c) this.conversations.set(id, { ...c, assumedBy: who, assumedAt: now(), status: "transferred", updatedAt: now() });
+    // Assumir fecha o relógio da primeira resposta humana: tem gente na conversa agora.
+    if (c) this.conversations.set(id, { ...c, assumedBy: who, assumedAt: now(), status: "transferred", aguardandoHumanoDesde: null, updatedAt: now() });
   }
   async releaseConversation(id: string) {
     const c = this.conversations.get(id);
@@ -417,4 +425,100 @@ export class MemoryRepository implements Repository {
     }
   }
 
+  /* ---------------------------------------------------------------- */
+  /* ATIVAÇÃO — instâncias e modo sombra                               */
+  /* ---------------------------------------------------------------- */
+
+  async listInstancias() {
+    return Array.from(this.instancias.values()).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
+  }
+  async getInstancia(iid: string) { return this.instancias.get(iid) ?? null; }
+  async getInstanciaPorInstanceId(instanceId: string) {
+    return Array.from(this.instancias.values()).find((i) => i.instanceId === instanceId) ?? null;
+  }
+  async criarInstancia(dados: { nome: string; instanceId: string; token: string; clientToken?: string | null; baseUrl?: string }) {
+    // A MESMA TRAVA DO BANCO, AQUI. `ambiente` e `ativo` são escritos por este método e
+    // não vêm de fora: teste e desligada, sempre. O trigger da migration 023 faz o mesmo
+    // no Supabase — as duas implementações precisam concordar, e há teste para isso.
+    const inst: ZapiInstancia = {
+      id: id("inst"), nome: dados.nome, ambiente: "teste",
+      instanceId: dados.instanceId, token: dados.token,
+      clientToken: dados.clientToken ?? null,
+      baseUrl: dados.baseUrl || "https://api.z-api.io",
+      ativo: false, ativadoPor: null, ativadoEm: null,
+      modoDesligado: "sombra", respostaFixa: null, slaMinutos: 30,
+      criadoEm: now(), atualizadoEm: now(),
+    };
+    this.instancias.set(inst.id, inst);
+    return inst;
+  }
+  async atualizarInstancia(iid: string, patch: Partial<ZapiInstancia>) {
+    const atual = this.instancias.get(iid);
+    if (!atual) throw new Error("instancia_nao_encontrada");
+    // `ativo` fora do patch: quem liga é definirAtivacaoInstancia, que exige o autor.
+    const aceito = { ...patch };
+    delete aceito.ativo;
+    delete aceito.ativadoPor;
+    delete aceito.ativadoEm;
+    const novo: ZapiInstancia = { ...atual, ...aceito, id: atual.id, atualizadoEm: now() };
+    // Silêncio total é privilégio de teste — a mesma regra do check do banco.
+    if (novo.modoDesligado === "silencio" && novo.ambiente === "producao") {
+      throw new Error("silencio_so_em_teste");
+    }
+    this.instancias.set(iid, novo);
+    return novo;
+  }
+  async definirAtivacaoInstancia(iid: string, ativo: boolean, autor: string) {
+    const atual = this.instancias.get(iid);
+    if (!atual) throw new Error("instancia_nao_encontrada");
+    const novo: ZapiInstancia = {
+      ...atual, ativo,
+      ativadoPor: ativo ? autor : null,
+      ativadoEm: ativo ? now() : null,
+      atualizadoEm: now(),
+    };
+    this.instancias.set(iid, novo);
+    return novo;
+  }
+  async excluirInstancia(iid: string) { this.instancias.delete(iid); }
+
+  async criarRascunho(r: { conversationId: string; messageId?: string | null; texto: string; botoes?: Array<{ id: string; label: string }> | null }) {
+    const rasc: RascunhoAgente = {
+      id: id("rasc"), conversationId: r.conversationId, messageId: r.messageId ?? null,
+      texto: r.texto, botoes: r.botoes ?? null, status: "pendente",
+      textoEnviado: null, motivo: null, decididoPor: null, decididoEm: null, criadoEm: now(),
+    };
+    this.rascunhos.push(rasc);
+    return rasc;
+  }
+  async listRascunhos(opts: { conversationId?: string; status?: RascunhoStatus; limit?: number } = {}) {
+    return this.rascunhos
+      .filter((r) => (!opts.conversationId || r.conversationId === opts.conversationId)
+        && (!opts.status || r.status === opts.status))
+      .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
+      .slice(0, opts.limit ?? 200)
+      .map((r) => {
+        const c = this.conversations.get(r.conversationId);
+        return { ...r, contato: c ? { nome: c.contactName, whatsappNumber: c.whatsappNumber } : null };
+      });
+  }
+  async getRascunho(rid: string) { return this.rascunhos.find((r) => r.id === rid) ?? null; }
+  async decidirRascunho(
+    rid: string,
+    decisao: { status: "enviado" | "descartado"; textoEnviado?: string | null; motivo?: string | null },
+    autor: string,
+  ) {
+    const i = this.rascunhos.findIndex((r) => r.id === rid);
+    // Só decide o que ainda está pendente — trava contra o clique duplo.
+    if (i < 0 || this.rascunhos[i].status !== "pendente") return null;
+    const novo: RascunhoAgente = {
+      ...this.rascunhos[i],
+      status: decisao.status,
+      textoEnviado: decisao.textoEnviado ?? null,
+      motivo: decisao.motivo ?? null,
+      decididoPor: autor, decididoEm: now(),
+    };
+    this.rascunhos[i] = novo;
+    return novo;
+  }
 }

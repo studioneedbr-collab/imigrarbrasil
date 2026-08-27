@@ -19,9 +19,10 @@
 //    vendas que originou este código. Lead parado é lead esfriando: o que está há três
 //    dias sem resposta precisa aparecer acima do que chegou agora.
 
-import type { Classificacao, Lead } from "@/lib/domain/types";
+import type { AmbienteInstancia, Classificacao, Lead } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { diaEmBrasilia } from "@/lib/dashboard/periodo";
+import { slaHumanoEstourado } from "@/lib/agent/expediente";
 
 /** O lead como a fila o lê: o registro + quando foi o último contato daquela conversa. */
 export interface LeadDaFila extends Lead {
@@ -33,6 +34,23 @@ export interface LeadDaFila extends Lead {
    * esperando uma ação nossa e a outra metade está legitimamente esperando a pessoa.
    */
   ultimaMensagemDe?: "user" | "assistant" | null;
+  /**
+   * Onde a conversa aconteceu. Teste NÃO entra na fila de trabalho: um ensaio no meio da
+   * fila é indistinguível de um caso, e alguém vai gastar uma ligação com ele.
+   */
+  ambiente?: AmbienteInstancia;
+  /**
+   * O relógio da primeira resposta humana. Preenchido quando a mensagem chegou com o
+   * agente desligado e ninguém respondeu ainda.
+   */
+  aguardandoHumanoDesde?: string | null;
+  /** SLA da instância por onde a conversa entrou, em minutos de expediente. */
+  slaMinutos?: number | null;
+}
+
+/** O SLA da primeira resposta humana estourou neste caso? */
+export function esperandoHumanoDemais(l: LeadDaFila, agora: Date = new Date()): boolean {
+  return slaHumanoEstourado(l.aguardandoHumanoDesde, l.slaMinutos ?? 30, agora);
 }
 
 /**
@@ -149,6 +167,11 @@ export function montarFila(leads: LeadDaFila[], agora: Date = new Date()): Fila 
   const filtradas: LeadDaFila[] = [];
 
   for (const lead of leads) {
+    // CONVERSA DE TESTE NÃO ENTRA NA FILA DE TRABALHO. Nem em `filtradas`: aquela aba
+    // existe para auditar o que o agente descartou, e um ensaio ali é ruído que faz a
+    // amostragem mentir. Ensaio se olha na tela de sombra, não na fila do time.
+    if (lead.ambiente === "teste") continue;
+
     if (eFiltrada(lead.classificacao)) {
       filtradas.push(lead);
       continue;
@@ -181,7 +204,19 @@ export function montarFila(leads: LeadDaFila[], agora: Date = new Date()): Fila 
   // Bloco 3: primeiro quem tem relógio apertado (o mais próximo de vencer no topo, e o
   // que já passou acima de todos); depois a ordem de sempre — judicial primeiro, e
   // dentro de cada grupo o mais parado no alto.
+  //
+  // E ACIMA DE TUDO ISSO: quem chegou com o agente desligado e ainda não teve resposta
+  // humana NENHUMA, com o SLA estourado. É o caso em que a promessa do modo desligado
+  // ("alguém responde") já foi quebrada — e a única coisa que impede "desligado" de
+  // virar "ignorado" é este caso subir até alguém pegá-lo.
   normal.sort((a, b) => {
+    const ea = esperandoHumanoDemais(a, agora);
+    const eb = esperandoHumanoDemais(b, agora);
+    if (ea !== eb) return ea ? -1 : 1;
+    if (ea && eb) {
+      // Entre dois estourados, quem espera há mais tempo primeiro.
+      return Date.parse(a.aguardandoHumanoDesde!) - Date.parse(b.aguardandoHumanoDesde!);
+    }
     const ra = relogioApertado(a, agora) ? diasDoRelogio(a, agora)! : null;
     const rb = relogioApertado(b, agora) ? diasDoRelogio(b, agora)! : null;
     if (ra !== null && rb !== null) return ra - rb || ultimaAtividade(a) - ultimaAtividade(b);

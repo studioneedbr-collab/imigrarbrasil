@@ -73,3 +73,61 @@ export function proximoAtendimento(now: Date): JanelaAtendimento {
     quando: `na ${DIAS[alvo]} a partir das ${EXPEDIENTE.inicio}h`,
   };
 }
+
+/**
+ * MINUTOS DE EXPEDIENTE entre dois instantes — o relógio do SLA de primeira resposta.
+ *
+ * Tempo corrido não serve aqui. Uma mensagem que chega às 17h55 de sexta com SLA de 30
+ * minutos estouraria às 18h25 de sexta, quando não tem ninguém no escritório para
+ * responder — e na segunda de manhã o painel mostraria um SLA "estourado há 62 horas"
+ * que não diz nada sobre a qualidade do atendimento. Contando só expediente, ela vence
+ * às 8h30 de segunda: o tempo em que alguém REALMENTE poderia ter respondido.
+ *
+ * Caminha dia a dia sobre o calendário de Brasília. O laço tem teto de um ano — uma
+ * conversa esquecida há mais de um ano não precisa de precisão de minuto.
+ */
+export function minutosDeExpedienteEntre(de: Date, ate: Date): number {
+  const inicio = de.getTime();
+  const fim = ate.getTime();
+  if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim <= inicio) return 0;
+
+  const DIA_MS = 86_400_000;
+  let total = 0;
+  // Anda de dia em dia a partir do início, e para cada dia calcula a interseção entre
+  // [de, ate] e a janela de expediente daquele dia.
+  for (let d = 0; d <= 366; d++) {
+    const instante = new Date(inicio + d * DIA_MS);
+    if (instante.getTime() - DIA_MS > fim) break;
+    const { diaSemana } = agoraEmBrasilia(instante);
+    if (diaSemana === 0 || diaSemana === 6) continue;
+
+    // Meia-noite de Brasília daquele dia, em tempo absoluto: pega a hora/minuto locais
+    // do instante e subtrai. Não depende de o servidor estar em Brasília (na Vercel é UTC).
+    const { hora, minuto } = agoraEmBrasilia(instante);
+    const meiaNoite = instante.getTime() - (hora * 60 + minuto) * 60_000 - (instante.getSeconds() * 1000 + instante.getMilliseconds());
+    const abre = meiaNoite + EXPEDIENTE.inicio * 3_600_000;
+    const fecha = meiaNoite + EXPEDIENTE.fim * 3_600_000;
+
+    const dentro = Math.min(fim, fecha) - Math.max(inicio, abre);
+    if (dentro > 0) total += dentro;
+  }
+  return Math.floor(total / 60_000);
+}
+
+/**
+ * O SLA da primeira resposta humana estourou?
+ *
+ * `desde` é `aguardandoHumanoDesde` da conversa: o instante em que a mensagem chegou com
+ * o agente desligado e ninguém respondeu. Enquanto isso estiver preenchido e o SLA
+ * estourado, o caso sobe na fila.
+ */
+export function slaHumanoEstourado(
+  desde: string | null | undefined,
+  slaMinutos: number,
+  agora: Date = new Date(),
+): boolean {
+  if (!desde) return false;
+  const t = Date.parse(desde);
+  if (!Number.isFinite(t)) return false;
+  return minutosDeExpedienteEntre(new Date(t), agora) >= slaMinutos;
+}

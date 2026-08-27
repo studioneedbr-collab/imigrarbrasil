@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete } from "@/lib/domain/types";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
@@ -23,6 +23,28 @@ const mapConversation = (r: DbConversation): Conversation => ({
   optOutAt: (r as unknown as Record<string, any>).opt_out_at ?? null,
   noFollowupAt: (r as unknown as Record<string, any>).no_followup_at ?? null,
   idioma: (r as unknown as Record<string, any>).idioma ?? null,
+  instanciaId: (r as unknown as Record<string, any>).instancia_id ?? null,
+  // `producao` como padrão de leitura: linhas anteriores à migration 023 não têm a
+  // coluna preenchida, e tratá-las como teste as apagaria das métricas.
+  ambiente: ((r as unknown as Record<string, any>).ambiente as AmbienteInstancia) ?? "producao",
+  aguardandoHumanoDesde: (r as unknown as Record<string, any>).aguardando_humano_desde ?? null,
+});
+
+const mapInstancia = (r: Record<string, any>): ZapiInstancia => ({
+  id: r.id, nome: r.nome, ambiente: r.ambiente as AmbienteInstancia,
+  instanceId: r.instance_id, token: r.token, clientToken: r.client_token ?? null,
+  baseUrl: r.base_url, ativo: Boolean(r.ativo),
+  ativadoPor: r.ativado_por ?? null, ativadoEm: r.ativado_em ?? null,
+  modoDesligado: r.modo_desligado as ModoDesligado, respostaFixa: r.resposta_fixa ?? null,
+  slaMinutos: r.sla_minutos ?? 30, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+});
+
+const mapRascunho = (r: Record<string, any>): RascunhoAgente => ({
+  id: r.id, conversationId: r.conversation_id, messageId: r.message_id ?? null,
+  texto: r.texto, botoes: r.botoes ?? null, status: r.status as RascunhoStatus,
+  textoEnviado: r.texto_enviado ?? null, motivo: r.motivo ?? null,
+  decididoPor: r.decidido_por ?? null, decididoEm: r.decidido_em ?? null,
+  criadoEm: r.criado_em,
 });
 const mapCliente = (r: Record<string, any>): Cliente => ({
   id: r.id, nome: r.nome, cpf: r.cpf, empresa: r.empresa, email: r.email,
@@ -87,6 +109,9 @@ export class SupabaseRepository implements Repository {
     if (patch.optOutAt !== undefined) dbPatch.opt_out_at = patch.optOutAt;
     if (patch.noFollowupAt !== undefined) dbPatch.no_followup_at = patch.noFollowupAt;
     if (patch.idioma !== undefined) dbPatch.idioma = patch.idioma;
+    if (patch.instanciaId !== undefined) dbPatch.instancia_id = patch.instanciaId;
+    if (patch.ambiente !== undefined) dbPatch.ambiente = patch.ambiente;
+    if (patch.aguardandoHumanoDesde !== undefined) dbPatch.aguardando_humano_desde = patch.aguardandoHumanoDesde;
     const { data, error } = await this.db.from("conversations").update(dbPatch).eq("id", id).select("*").single();
     if (error) throw error;
     return mapConversation(data as DbConversation);
@@ -109,8 +134,10 @@ export class SupabaseRepository implements Repository {
   // Atendimento humano: só estes dois métodos mexem em assumed_by. Encaminhar para um
   // setor (tool transferir_para_humano) NÃO assume a conversa — a Ana segue atendendo.
   async assumeConversation(id: string, who: string) {
+    // Assumir FECHA o relógio da primeira resposta humana: a partir daqui tem gente na
+    // conversa, e deixar o SLA correndo faria o caso subir na fila para sempre.
     await this.db.from("conversations")
-      .update({ assumed_by: who, assumed_at: new Date().toISOString(), status: "transferred", updated_at: new Date().toISOString() })
+      .update({ assumed_by: who, assumed_at: new Date().toISOString(), status: "transferred", aguardando_humano_desde: null, updated_at: new Date().toISOString() })
       .eq("id", id);
   }
   async releaseConversation(id: string) {
@@ -563,6 +590,122 @@ export class SupabaseRepository implements Repository {
   }
   async setConfig(key: string, value: unknown) {
     await this.db.from("agent_config").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* ATIVAÇÃO — instâncias                                             */
+  /* ---------------------------------------------------------------- */
+
+  async listInstancias() {
+    const { data } = await this.db.from("zapi_instancias").select("*").order("criado_em", { ascending: true });
+    return ((data as Record<string, any>[] | null) ?? []).map(mapInstancia);
+  }
+  async getInstancia(id: string) {
+    const { data } = await this.db.from("zapi_instancias").select("*").eq("id", id).maybeSingle();
+    return data ? mapInstancia(data as Record<string, any>) : null;
+  }
+  async getInstanciaPorInstanceId(instanceId: string) {
+    const { data } = await this.db.from("zapi_instancias").select("*").eq("instance_id", instanceId).maybeSingle();
+    return data ? mapInstancia(data as Record<string, any>) : null;
+  }
+  async criarInstancia(dados: { nome: string; instanceId: string; token: string; clientToken?: string | null; baseUrl?: string }) {
+    // Note que `ambiente` e `ativo` NÃO são enviados. Mesmo que fossem, o trigger
+    // zapi_instancia_nasce_desligada os reescreveria — a trava é do banco, não daqui.
+    const { data, error } = await this.db.from("zapi_instancias").insert({
+      nome: dados.nome, instance_id: dados.instanceId, token: dados.token,
+      client_token: dados.clientToken ?? null,
+      base_url: dados.baseUrl || "https://api.z-api.io",
+    }).select("*").single();
+    if (error) throw error;
+    return mapInstancia(data as Record<string, any>);
+  }
+  async atualizarInstancia(id: string, patch: Record<string, any>) {
+    const db: Record<string, any> = { atualizado_em: new Date().toISOString() };
+    if (patch.nome !== undefined) db.nome = patch.nome;
+    if (patch.instanceId !== undefined) db.instance_id = patch.instanceId;
+    if (patch.token !== undefined) db.token = patch.token;
+    if (patch.clientToken !== undefined) db.client_token = patch.clientToken;
+    if (patch.baseUrl !== undefined) db.base_url = patch.baseUrl;
+    if (patch.ambiente !== undefined) db.ambiente = patch.ambiente;
+    if (patch.modoDesligado !== undefined) db.modo_desligado = patch.modoDesligado;
+    if (patch.respostaFixa !== undefined) db.resposta_fixa = patch.respostaFixa;
+    if (patch.slaMinutos !== undefined) db.sla_minutos = patch.slaMinutos;
+    // `ativo` não aparece nesta lista de propósito: quem liga é definirAtivacaoInstancia,
+    // que exige o autor. Um "salvar configurações" não pode ligar produção de raspão.
+    const { data, error } = await this.db.from("zapi_instancias").update(db).eq("id", id).select("*").single();
+    if (error) throw error;
+    return mapInstancia(data as Record<string, any>);
+  }
+  async definirAtivacaoInstancia(id: string, ativo: boolean, autor: string) {
+    const { data, error } = await this.db.from("zapi_instancias").update({
+      ativo,
+      ativado_por: ativo ? autor : null,
+      ativado_em: ativo ? new Date().toISOString() : null,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", id).select("*").single();
+    if (error) throw error;
+    return mapInstancia(data as Record<string, any>);
+  }
+  async excluirInstancia(id: string) {
+    const { error } = await this.db.from("zapi_instancias").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* MODO SOMBRA — rascunhos                                           */
+  /* ---------------------------------------------------------------- */
+
+  async criarRascunho(r: { conversationId: string; messageId?: string | null; texto: string; botoes?: Array<{ id: string; label: string }> | null }) {
+    // NUNCA lança: isto roda dentro do atendimento. Se a gravação do rascunho falhar, o
+    // que não pode acontecer é a mensagem do cliente se perder junto — ela já está salva.
+    const { data, error } = await this.db.from("rascunhos_agente").insert({
+      conversation_id: r.conversationId, message_id: r.messageId ?? null,
+      texto: r.texto, botoes: r.botoes ?? null,
+    }).select("*").single();
+    if (error) { console.error("[rascunhos_agente]", error.message); return null; }
+    return mapRascunho(data as Record<string, any>);
+  }
+
+  async listRascunhos(opts: { conversationId?: string; status?: RascunhoStatus; limit?: number } = {}) {
+    let q = this.db.from("rascunhos_agente").select("*").order("criado_em", { ascending: false });
+    if (opts.conversationId) q = q.eq("conversation_id", opts.conversationId);
+    if (opts.status) q = q.eq("status", opts.status);
+    const { data } = await q.limit(opts.limit ?? 200);
+    const linhas = ((data as Record<string, any>[] | null) ?? []).map(mapRascunho);
+
+    // O contato numa consulta só, não uma por rascunho — a fila de sombra é uma lista.
+    const ids = Array.from(new Set(linhas.map((l) => l.conversationId)));
+    if (!ids.length) return linhas;
+    const { data: convs } = await this.db.from("conversations")
+      .select("id, contact_name, whatsapp_number").in("id", ids);
+    const contatos = new Map<string, { nome?: string | null; whatsappNumber?: string | null }>();
+    for (const c of ((convs as Record<string, any>[] | null) ?? [])) {
+      contatos.set(c.id, { nome: c.contact_name, whatsappNumber: c.whatsapp_number });
+    }
+    return linhas.map((l) => ({ ...l, contato: contatos.get(l.conversationId) ?? null }));
+  }
+
+  async getRascunho(id: string) {
+    const { data } = await this.db.from("rascunhos_agente").select("*").eq("id", id).maybeSingle();
+    return data ? mapRascunho(data as Record<string, any>) : null;
+  }
+
+  async decidirRascunho(
+    id: string,
+    decisao: { status: "enviado" | "descartado"; textoEnviado?: string | null; motivo?: string | null },
+    autor: string,
+  ) {
+    // O `.eq("status","pendente")` é a trava contra o clique duplo: se outro atendente
+    // já decidiu, o UPDATE não casa com nenhuma linha e a rota não envia nada.
+    const { data, error } = await this.db.from("rascunhos_agente").update({
+      status: decisao.status,
+      texto_enviado: decisao.textoEnviado ?? null,
+      motivo: decisao.motivo ?? null,
+      decidido_por: autor,
+      decidido_em: new Date().toISOString(),
+    }).eq("id", id).eq("status", "pendente").select("*").maybeSingle();
+    if (error) throw error;
+    return data ? mapRascunho(data as Record<string, any>) : null;
   }
   async upsertCliente(patch: Partial<Cliente> & { id?: string }): Promise<Cliente> {
     let existing: Record<string, any> | null = null;

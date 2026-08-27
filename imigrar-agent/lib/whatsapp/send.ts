@@ -1,5 +1,14 @@
 import { getZapiConfig, type ZapiResolvedConfig } from "./config";
 
+// POR ONDE ESTA MENSAGEM SAI.
+//
+// Todo envio aceita uma configuração explícita. Com mais de uma instância Z-API
+// cadastrada, "a config do sistema" deixou de ser uma resposta: a mensagem tem de sair
+// pelo mesmo número por onde a conversa entrou. Sem o parâmetro, cai na config única de
+// sempre — que continua correta para quem tem uma instância só.
+type Canal = ZapiResolvedConfig | undefined;
+const resolverCanal = async (canal: Canal): Promise<ZapiResolvedConfig> => canal ?? (await getZapiConfig());
+
 // Envio via Z-API. Endpoint base: {baseUrl}/instances/{id}/token/{token}/...
 // As credenciais vêm de getZapiConfig() (painel → banco, com ENV de fallback).
 const zapiUrl = (cfg: ZapiResolvedConfig, path: string) =>
@@ -28,8 +37,8 @@ function toWhatsappFormat(text: string): string {
     .replace(/[—–]/g, "-"); // qualquer travessão/en-dash restante vira hífen simples
 }
 
-export async function sendMessage(to: string, text: string): Promise<void> {
-  const cfg = await getZapiConfig();
+export async function sendMessage(to: string, text: string, canal?: Canal): Promise<void> {
+  const cfg = await resolverCanal(canal);
   if (!cfg.configured) {
     // Em dev mostra a mensagem inteira; em produção só o tamanho — o texto
     // contém dados do cliente e não deve ir para os logs (LGPD).
@@ -58,8 +67,9 @@ export async function sendButtons(
   to: string,
   message: string,
   buttons: { id: string; label: string }[],
+  canal?: Canal,
 ): Promise<void> {
-  const cfg = await getZapiConfig();
+  const cfg = await resolverCanal(canal);
   const opts = buttons.slice(0, 3);
   const msg = toWhatsappFormat(message);
   if (!cfg.configured) {
@@ -78,11 +88,11 @@ export async function sendButtons(
     console.error("[whatsapp] send-button-list erro, fallback texto:", e instanceof Error ? e.message : e);
   }
   // Fallback: lista numerada em texto.
-  await sendMessage(to, `${message}\n\n${opts.map((b, i) => `${i + 1}. ${b.label}`).join("\n")}`);
+  await sendMessage(to, `${message}\n\n${opts.map((b, i) => `${i + 1}. ${b.label}`).join("\n")}`, canal);
 }
 
-export async function sendDocument(to: string, link: string, filename: string): Promise<void> {
-  const cfg = await getZapiConfig();
+export async function sendDocument(to: string, link: string, filename: string, canal?: Canal): Promise<void> {
+  const cfg = await resolverCanal(canal);
   if (!cfg.configured) {
     console.log(`[whatsapp:sim] -> ${to}: [doc] ${filename}`);
     return;

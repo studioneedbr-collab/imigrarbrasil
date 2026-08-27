@@ -10,6 +10,9 @@ import { readDocument, mediaKindFor } from "@/lib/agent/vision";
 import { transcreverAudio, transcricaoConfigurada } from "@/lib/agent/audio";
 import { registrarIdioma } from "@/lib/agent/idioma";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
+import { decidirAtendimento, mensagemAgenteDesligado } from "@/lib/agent/ativacao";
+import { lerChaveGeral, resolverInstancia } from "@/lib/agent/estado";
+import { configDaInstancia } from "@/lib/whatsapp/config";
 
 // Agrupamento: no WhatsApp o cliente costuma mandar a frase quebrada em várias
 // mensagens. Esperamos este intervalo; se chegar outra nesse meio, esta requisição
@@ -38,6 +41,9 @@ function escapeHtml(s: string): string {
 // varia um pouco (isFromMe/fromMe, message.conversation/text.message).
 interface ZApiWebhookBody {
   phone?: string;
+  // POR ONDE ESTA MENSAGEM ENTROU. É o campo que liga a mensagem à instância cadastrada
+  // no painel — e, por ela, ao ambiente (teste/produção) e ao estado de ativação.
+  instanceId?: string;
   messageId?: string;
   senderName?: string;
   chatName?: string;
@@ -140,26 +146,35 @@ export async function POST(req: NextRequest) {
   //   (a) query ?token=<WEBHOOK_VERIFY_TOKEN>  — a Z-API sempre envia a URL configurada; OU
   //   (b) header Client-Token igual ao da conta Z-API.
   // Configure a URL do webhook na Z-API como .../api/webhook/whatsapp?token=<segredo>.
-  const { clientToken } = await getZapiConfig();
-  const incomingToken = req.headers.get("client-token") ?? "";
-  const secret = env.webhookVerifyToken;
-  if (secret) {
-    const qToken = req.nextUrl.searchParams.get("token") ?? "";
-    const okQuery = qToken.length > 0 && safeEqual(qToken, secret);
-    const okHeader = clientToken.length > 0 && incomingToken.length > 0 && safeEqual(incomingToken, clientToken);
-    if (!okQuery && !okHeader) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
-  } else if (clientToken && incomingToken && !safeEqual(incomingToken, clientToken)) {
-    return new NextResponse("Invalid client token", { status: 401 });
-  }
-
+  // O corpo é lido ANTES da conferência do Client-Token porque é ele que diz de qual
+  // instância a mensagem veio — e cada instância tem o seu token. Ler não é agir: nada
+  // do payload é usado antes de a requisição provar que é legítima.
   let body: ZApiWebhookBody;
   try {
     body = (await req.json()) as ZApiWebhookBody;
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
+
+  const secret = env.webhookVerifyToken;
+  const qToken = req.nextUrl.searchParams.get("token") ?? "";
+  const incomingToken = req.headers.get("client-token") ?? "";
+  const okQuery = Boolean(secret) && qToken.length > 0 && safeEqual(qToken, secret);
+
+  // A instância só é procurada quando o token da URL NÃO bastou. Isso mantém o caminho
+  // normal (a Z-API sempre manda a URL configurada, com o token) sem nenhuma ida ao banco
+  // antes da autenticação — quem não sabe o segredo não faz o webhook consultar nada.
+  let instancia = okQuery ? null : await resolverInstancia(body.instanceId).catch(() => null);
+  if (!okQuery) {
+    const clientToken = instancia?.clientToken || (await getZapiConfig()).clientToken;
+    const okHeader = clientToken.length > 0 && incomingToken.length > 0 && safeEqual(incomingToken, clientToken);
+    if (secret) {
+      if (!okHeader) return new NextResponse("Unauthorized", { status: 401 });
+    } else if (clientToken && incomingToken && !safeEqual(incomingToken, clientToken)) {
+      return new NextResponse("Invalid client token", { status: 401 });
+    }
+  }
+  if (!instancia) instancia = await resolverInstancia(body.instanceId).catch(() => null);
 
   // DIAGNÓSTICO (só fora de produção): estrutura do payload da Z-API para depurar.
   if (process.env.NODE_ENV !== "production") {
@@ -199,6 +214,19 @@ export async function POST(req: NextRequest) {
     }
     const name = body.senderName ?? body.chatName;
     const conv = await repo.getOrCreateConversation(phone, name);
+
+    // ONDE ESTA CONVERSA ACONTECEU. Gravado uma vez, na primeira mensagem, e nunca
+    // reescrito: promover a instância de teste a produção amanhã não transforma
+    // retroativamente os ensaios de hoje em atendimento real — e é este campo que decide
+    // se a conversa entra nas métricas e na fila de trabalho.
+    if (instancia && !conv.instanciaId) {
+      await repo
+        .updateConversation(conv.id, {
+          instanciaId: instancia.id || null,
+          ambiente: instancia.ambiente,
+        })
+        .catch((e) => console.error("[webhook] não gravei a instância da conversa:", e instanceof Error ? e.message : e));
+    }
 
     if (media) {
       // ANEXO: antes a URL era descartada (só ficava "📎 Documento recebido: imagem.jpg"),
@@ -339,7 +367,7 @@ export async function POST(req: NextRequest) {
         // para quem pediu silêncio é exatamente o comportamento que gera a denúncia.
         if (!conv.optOutAt) {
           await repo.addMessage(conv.id, "assistant", MENSAGEM_DESPEDIDA);
-          await sendMessage(phone, MENSAGEM_DESPEDIDA).catch((e) =>
+          await sendMessage(phone, MENSAGEM_DESPEDIDA, instancia ? configDaInstancia(instancia) : undefined).catch((e) =>
             console.error("[webhook] falha ao enviar despedida:", e instanceof Error ? e.message : e),
           );
         }
@@ -359,15 +387,82 @@ export async function POST(req: NextRequest) {
       console.log("[webhook:diag] contato bloqueado voltou a escrever — opt-out liberado");
     }
 
-    // SILÊNCIO SÓ QUANDO TEM GENTE DE VERDADE NA CONVERSA. Antes bastava o status
-    // 'transferred' — que a própria Shayene grava ao encaminhar pro setor — e o cliente
-    // ficava falando sozinho esperando um humano que nunca abriu o chat. Agora ela só
-    // se cala quando alguém ASSUMIU a conversa no painel (assumedBy preenchido).
-    if (conv.assumedBy) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // A DECISÃO DE ATENDER — os três níveis de ativação, num lugar só.
+    //
+    // Repare no que já aconteceu ANTES desta linha: a mensagem foi recebida, o anexo foi
+    // lido, tudo foi gravado e já aparece no painel. Nenhum caminho daqui para baixo
+    // apaga nada. Desligado nunca significa ignorar — significa que o que VOLTA para o
+    // cliente é outro.
+    // ─────────────────────────────────────────────────────────────────────────
+    const chaveGeral = await lerChaveGeral();
+    const decisao = decidirAtendimento({
+      chaveGeral,
+      instancia,
+      conversaAssumidaPor: conv.assumedBy,
+    });
+    // Por onde a resposta sai: o MESMO número por onde ela entrou. Responder pela config
+    // padrão mandaria a mensagem de um cliente de produção pelo WhatsApp de teste.
+    const canal = instancia ? configDaInstancia(instancia) : undefined;
+
+    if (decisao.acao !== "responder") {
       await repo.updateLastMessageAt(conv.id).catch(() => {});
-      console.log("[webhook:diag] conversa assumida por um atendente — Shayene em silêncio");
+
+      // O RELÓGIO DA PRIMEIRA RESPOSTA HUMANA começa aqui, e é o que impede o agente
+      // desligado de virar um buraco: a conversa entra na fila esperando gente, com SLA
+      // correndo, e sobe quando o prazo estoura. Só abre uma vez — se já estava aberto,
+      // reabrir zeraria o relógio a cada mensagem nova de quem está sendo ignorado.
+      if (decisao.aguardaHumano && !conv.aguardandoHumanoDesde) {
+        await repo
+          .updateConversation(conv.id, { aguardandoHumanoDesde: new Date().toISOString() })
+          .catch((e) => console.error("[webhook] não abri o relógio de resposta humana:", e instanceof Error ? e.message : e));
+      }
+
+      if (decisao.acao === "resposta_fixa") {
+        const aviso = mensagemAgenteDesligado(new Date(), instancia?.respostaFixa);
+        // Gravada como mensagem da casa porque foi isso que a pessoa recebeu. Quem abrir
+        // a conversa no painel precisa ver exatamente o que ela leu.
+        await repo.addMessage(conv.id, "assistant", aviso).catch(() => {});
+        await sendMessage(phone, aviso, canal).catch((e) =>
+          console.error("[webhook] falha ao enviar o aviso de agente desligado:", e instanceof Error ? e.message : e),
+        );
+      }
+
+      if (decisao.acao === "sombra") {
+        // Espera o lote fechar igual ao caminho normal — um rascunho montado sobre meia
+        // frase avalia a Ana pelo que ela não teve chance de ler.
+        await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
+        const msgs = await repo.listMessages(conv.id);
+        const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+        if (body.messageId && lastUser?.whatsappMessageId && lastUser.whatsappMessageId !== body.messageId) {
+          console.log("[webhook:diag] sombra: cedeu (chegou msg mais nova)");
+          return NextResponse.json({ ok: true });
+        }
+        try {
+          const { reply, buttons } = await respondToConversation(conv.id, { sombra: true });
+          await repo.criarRascunho({
+            conversationId: conv.id,
+            messageId: lastUser?.id ?? null,
+            texto: reply,
+            botoes: buttons ?? null,
+          });
+          console.log("[webhook:diag] modo sombra: rascunho gravado, nada enviado");
+        } catch (err) {
+          console.error("[webhook] modo sombra falhou:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      console.log(`[webhook:diag] agente não respondeu (${decisao.acao}/${decisao.nivel}): ${decisao.motivo}`);
       return NextResponse.json({ ok: true });
     }
+
+    // O RELÓGIO DA PRIMEIRA RESPOSTA HUMANA NÃO É FECHADO AQUI, de propósito.
+    //
+    // A Ana voltar a responder não desfaz o fato de que esta conversa chegou enquanto o
+    // agente estava desligado e ninguém do time olhou para ela. Quem fecha aquele relógio
+    // é um humano — respondendo, assumindo, ou decidindo um rascunho de sombra. Fechá-lo
+    // aqui faria o caso sumir da fila no momento em que o agente fosse religado, que é
+    // exatamente quando alguém ainda precisa conferir o que aconteceu no período parado.
 
     // Espera curta e verifica se esta ainda é a última mensagem do cliente. Se outra
     // chegou nesse meio, cede — a requisição da mensagem mais nova responde ao lote.
@@ -383,9 +478,9 @@ export async function POST(req: NextRequest) {
     const { reply, toolCalls, buttons } = await respondToConversation(conv.id);
     console.log("[webhook:diag] reply len", reply.length, "tools", toolCalls.length, "botoes", buttons?.length ?? 0);
     if (buttons && buttons.length) {
-      await sendButtons(phone, reply, buttons);
+      await sendButtons(phone, reply, buttons, canal);
     } else {
-      await sendMessage(phone, reply);
+      await sendMessage(phone, reply, canal);
     }
     console.log("[webhook:diag] enviado ok");
 
@@ -394,7 +489,7 @@ export async function POST(req: NextRequest) {
     if (proposta) {
       const r = proposta.result as { view_url?: string; filename?: string } | undefined;
       if (r?.view_url) {
-        await sendDocument(phone, r.view_url, r.filename ?? "proposta-imigrar-brasil.pdf").catch((e) =>
+        await sendDocument(phone, r.view_url, r.filename ?? "proposta-imigrar-brasil.pdf", canal).catch((e) =>
           console.error("[webhook] falha ao enviar PDF:", e instanceof Error ? e.message : e),
         );
       }

@@ -70,7 +70,15 @@ export function calcularMetricas(
   ate: Date,
   agora: Date = new Date(),
 ): Metricas {
-  const leads = todosOsLeads.filter((l) => noPeriodo(l.createdAt, de, ate));
+  // CONVERSA DE TESTE NÃO ENTRA NAS MÉTRICAS.
+  //
+  // Filtrado aqui, na entrada, e não em cada cálculo: todo número desta tela nasce de
+  // `todosOsLeads`, e um filtro por cálculo seria esquecido no próximo número que
+  // alguém acrescentasse. Sem isto, a primeira semana de testes envenena a taxa de
+  // resgate, a de reclassificação e o tempo até o humano — justamente os três números
+  // que existem para dizer se o agente pode ser confiado com gente de verdade.
+  const reais = todosOsLeads.filter((l) => l.ambiente !== "teste");
+  const leads = reais.filter((l) => noPeriodo(l.createdAt, de, ate));
 
   const filtradas = leads.filter((l) => eFiltrada(l.classificacao));
   const qualificados = leads.filter((l) => l.classificacao && !eFiltrada(l.classificacao));
@@ -85,7 +93,7 @@ export function calcularMetricas(
 
   // RESGATE. A base é tudo que o agente filtrou no período — inclusive o que já voltou.
   // Usar só o que continua filtrado faria a taxa cair justamente quando o resgate sobe.
-  const resgatadosNoPeriodo = todosOsLeads.filter((l) => noPeriodo(l.resgatadoEm, de, ate));
+  const resgatadosNoPeriodo = reais.filter((l) => noPeriodo(l.resgatadoEm, de, ate));
   const baseResgate = filtradas.length + resgatadosNoPeriodo.length;
 
   // RECLASSIFICAÇÃO. Base = leads que a IA classificou; numerador = os que um humano
@@ -134,6 +142,6 @@ export function calcularMetricas(
       quentePrazoMin: media(temposPrazo),
       semAssumir: leads.filter((l) => !l.assumidoEm && l.atendimentoStatus === "novo").length,
     },
-    prazosPerdidos: prazosPerdidos(todosOsLeads, agora),
+    prazosPerdidos: prazosPerdidos(reais, agora),
   };
 }

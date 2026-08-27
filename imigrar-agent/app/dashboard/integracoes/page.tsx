@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, PageHeader, SectionTitle, Icon, btnPrimary } from "@/components/dashboard/ui";
+import Instancias from "@/components/agente/instancias";
 
 type ConfigData = {
   instanceId: string;
@@ -271,6 +272,11 @@ export default function IntegracoesPage() {
         title="Integrações"
         description="Conecte o WhatsApp via Z-API para que o agente atenda no número real da Imigrar Brasil."
       />
+
+      {/* AS INSTÂNCIAS vêm primeiro: é aqui que se decide quem responde e por qual
+          número. O cartão de credencial única, mais abaixo, é o caminho anterior — ele
+          continua valendo enquanto não houver instância cadastrada. */}
+      <Instancias />
 
       {/* IA — DeepSeek (status + saldo) */}
       <Card className="p-5 sm:p-6">

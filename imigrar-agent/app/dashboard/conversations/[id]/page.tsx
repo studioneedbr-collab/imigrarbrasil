@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, Lead, Message, TransferTicket, Urgency } from "@/lib/domain/types";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
+import RascunhoSombra, { type RascunhoView } from "@/components/agente/rascunho-sombra";
 
 const SETORES = [
   "Comercial",
@@ -31,6 +32,8 @@ type DetailResponse = {
   messages: Message[];
   lead: Lead | null;
   transferTickets?: TransferTicket[];
+  /** Modo sombra: respostas montadas e não enviadas, esperando decisão. */
+  rascunhos?: RascunhoView[];
 };
 
 function buildSummary(lead: Lead): string {
@@ -303,6 +306,7 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const messages = data.messages ?? [];
   const lead = data.lead ?? null;
   const transferTickets = data.transferTickets ?? [];
+  const rascunhos = data.rascunhos ?? [];
   const transferTicket = transferTickets[0] ?? null;
   const title = conversation.contactName ?? conversation.whatsappNumber;
 
@@ -415,6 +419,17 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                 </p>
               </div>
             ) : null}
+            {conversation.ambiente === "teste" ? (
+              // ONDE ESTA CONVERSA ACONTECEU. Sem isto, um ensaio e um caso de verdade
+              // são visualmente idênticos — e alguém vai tratar um dos dois errado.
+              <div className="flex items-start gap-2.5 rounded-xl border border-ib-line bg-ib-papel px-4 py-2.5 text-xs text-ib-slate">
+                <Icon name="pulse" className="mt-px h-3.5 w-3.5 shrink-0" />
+                <p>
+                  Conversa de <strong className="text-ib-ink">teste</strong>. Não entra nas
+                  métricas nem na fila de trabalho.
+                </p>
+              </div>
+            ) : null}
             {messages.length === 0 ? (
               <p className="rounded-xl border border-dashed border-ib-line bg-white p-6 text-center text-sm text-ib-slate">
                 Nenhuma mensagem nesta conversa ainda.
@@ -476,6 +491,25 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                 );
               })
             )}
+
+            {/* MODO SOMBRA: a resposta que a Ana montou aparece EXATAMENTE onde ela teria
+                ido, no fim da conversa — e com as três saídas. Fora do lugar (numa aba,
+                num painel lateral) ela vira uma lista de textos sem contexto, e o
+                contexto é justamente o que se está avaliando. */}
+            {rascunhos.map((r) => (
+              <div key={r.id} className="pt-1">
+                <RascunhoSombra
+                  rascunho={r}
+                  onDecidido={() =>
+                    setData((atual) =>
+                      atual
+                        ? { ...atual, rascunhos: (atual.rascunhos ?? []).filter((x) => x.id !== r.id) }
+                        : atual,
+                    )
+                  }
+                />
+              </div>
+            ))}
             <div ref={bottomRef} />
           </div>
 

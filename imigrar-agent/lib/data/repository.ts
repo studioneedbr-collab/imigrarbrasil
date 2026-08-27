@@ -2,6 +2,7 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus,
 } from "@/lib/domain/types";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
@@ -151,6 +152,57 @@ export interface Repository {
 
   getConfig<T = unknown>(key: string): Promise<T | null>;
   setConfig(key: string, value: unknown): Promise<void>;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ATIVAÇÃO DO AGENTE — ver lib/agent/ativacao.ts para as regras.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  listInstancias(): Promise<ZapiInstancia[]>;
+  getInstancia(id: string): Promise<ZapiInstancia | null>;
+  /** Resolve a instância pelo `instanceId` que a Z-API manda no payload do webhook. */
+  getInstanciaPorInstanceId(instanceId: string): Promise<ZapiInstancia | null>;
+  /**
+   * Cadastra uma instância. AMBIENTE E ATIVAÇÃO NÃO ENTRAM AQUI de propósito: ela nasce
+   * em teste e desligada, sempre. Promover e ativar são dois gestos deliberados depois,
+   * cada um com o seu registro de auditoria. O banco reforça com um trigger.
+   */
+  criarInstancia(dados: {
+    nome: string; instanceId: string; token: string;
+    clientToken?: string | null; baseUrl?: string;
+  }): Promise<ZapiInstancia>;
+  /** Credenciais, nome, modo de desligado, SLA e ambiente. NÃO liga nem desliga. */
+  atualizarInstancia(
+    id: string,
+    patch: Partial<Pick<ZapiInstancia,
+      "nome" | "instanceId" | "token" | "clientToken" | "baseUrl" |
+      "ambiente" | "modoDesligado" | "respostaFixa" | "slaMinutos">>,
+  ): Promise<ZapiInstancia>;
+  /**
+   * NÍVEL 2 — o único caminho que mexe em `ativo`, e ele exige saber quem foi. Ligar uma
+   * instância NUNCA toca em nenhuma outra: é uma linha, um UPDATE, um id.
+   */
+  definirAtivacaoInstancia(id: string, ativo: boolean, autor: string): Promise<ZapiInstancia>;
+  excluirInstancia(id: string): Promise<void>;
+
+  /** Modo sombra: grava a resposta que o agente teria dado. Nunca lança. */
+  criarRascunho(r: {
+    conversationId: string; messageId?: string | null; texto: string;
+    botoes?: Array<{ id: string; label: string }> | null;
+  }): Promise<RascunhoAgente | null>;
+  listRascunhos(opts?: {
+    conversationId?: string; status?: RascunhoStatus; limit?: number;
+  }): Promise<RascunhoAgente[]>;
+  getRascunho(id: string): Promise<RascunhoAgente | null>;
+  /**
+   * A decisão sobre um rascunho. `textoEnviado` diferente de `texto` = a pessoa editou —
+   * e é esse par que vira dado de treinamento. Só decide rascunho PENDENTE: devolve null
+   * se outro atendente chegou antes (dois cliques em "enviar" não mandam duas mensagens).
+   */
+  decidirRascunho(
+    id: string,
+    decisao: { status: "enviado" | "descartado"; textoEnviado?: string | null; motivo?: string | null },
+    autor: string,
+  ): Promise<RascunhoAgente | null>;
 
   upsertCliente(patch: Partial<Cliente> & { id?: string }): Promise<Cliente>;
   getCliente(id: string): Promise<Cliente | null>;

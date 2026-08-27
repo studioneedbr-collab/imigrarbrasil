@@ -51,6 +51,16 @@ export interface Conversation {
   // português, e o atendente humano que abre o painel e precisa saber em que língua
   // responder antes de escrever.
   idioma?: string | null;
+  // ONDE ESTA CONVERSA ACONTECEU. Gravado na criação, a partir da instância Z-API que
+  // recebeu a mensagem, e nunca reescrito depois: se a instância for promovida de teste
+  // a produção amanhã, o que já aconteceu continua tendo acontecido em teste.
+  instanciaId?: string | null;
+  ambiente?: AmbienteInstancia;
+  // O RELÓGIO DA PRIMEIRA RESPOSTA HUMANA. Preenchido quando uma mensagem chega com o
+  // agente desligado: ninguém respondeu ainda e o SLA está correndo. Zerado no instante
+  // em que um humano responde ou assume. É isto que impede o "desligado" de virar
+  // "ignorado" — a conversa entra na fila de trabalho e sobe se ninguém a pegar.
+  aguardandoHumanoDesde?: string | null;
 }
 
 export type MediaKind = "image" | "document" | "audio";
@@ -360,4 +370,104 @@ export interface Lembrete {
   feitoEm?: string | null;
   feitoPor?: string | null;
   criadoEm: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A ATIVAÇÃO DO AGENTE
+//
+// Ligar e desligar a Ana não é um booleano. São três níveis independentes, e a
+// independência é o ponto: quem liga a instância de teste não pode, com o mesmo gesto,
+// ligar a de produção; quem assume UMA conversa não cala o agente nas outras; e a chave
+// geral existe justamente para o dia em que nada disso está sendo suficiente.
+//
+//   NÍVEL 1  chave geral      — vale para tudo, sempre visível, desligar exige motivo
+//   NÍVEL 2  instância Z-API  — ambiente próprio (teste/produção) e ativação própria
+//   NÍVEL 3  conversa         — um humano assumiu; ver `assumedBy` em Conversation
+//
+// E o que mais importa não é o botão: é o COMPORTAMENTO COM O AGENTE DESLIGADO.
+// Desligado nunca significa ignorar. A mensagem continua chegando, sendo gravada e
+// aparecendo no painel — o que muda é o que sai de volta. Ver `ModoDesligado`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Onde a instância vive. Não é rótulo: separa o que conta como operação real do que é
+ * ensaio. Conversa de teste não entra nas métricas nem na fila de trabalho — senão a
+ * primeira semana de testes envenena o histórico de um jeito que ninguém desfaz depois.
+ */
+export type AmbienteInstancia = "teste" | "producao";
+
+/**
+ * O que acontece com a mensagem que chega enquanto o agente está desligado.
+ *
+ * silencio       nada volta para o cliente. SÓ para instância de teste — em produção
+ *                seria abandonar uma pessoa que escreveu pedindo ajuda.
+ * resposta_fixa  uma frase avisando que um humano vai responder, e quando.
+ * sombra         o agente processa normal e GRAVA a resposta que teria dado, sem enviar.
+ *                É o modo que vale mais que o botão durante os testes: dá para avaliar
+ *                a Ana contra conversa real, sem risco nenhum.
+ */
+export type ModoDesligado = "silencio" | "resposta_fixa" | "sombra";
+
+/** Uma instância da Z-API: credenciais, ambiente e ativação próprios. */
+export interface ZapiInstancia {
+  id: string;
+  nome: string;
+  ambiente: AmbienteInstancia;
+  instanceId: string;
+  token: string;
+  clientToken?: string | null;
+  baseUrl: string;
+  /** NÍVEL 2. Instância nova nasce SEMPRE desligada — o banco força isso num trigger. */
+  ativo: boolean;
+  ativadoPor?: string | null;
+  ativadoEm?: string | null;
+  modoDesligado: ModoDesligado;
+  /** Texto do modo `resposta_fixa`. Vazio cai no padrão de MENSAGEM_AGENTE_DESLIGADO. */
+  respostaFixa?: string | null;
+  /** Minutos de expediente até a conversa sem resposta humana subir na fila. */
+  slaMinutos: number;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
+/**
+ * NÍVEL 1 — a chave geral. Guardada em `agent_config` sob a chave "chave_geral".
+ *
+ * `motivo` é obrigatório ao desligar, e não por burocracia: o painel mostra a frase na
+ * faixa vermelha do topo, e quem chega às 9h precisa saber se o agente está parado
+ * porque houve um incidente ontem ou porque alguém esqueceu de religar.
+ */
+export interface ChaveGeral {
+  ligada: boolean;
+  autor: string | null;
+  em: string | null;
+  motivo: string | null;
+}
+
+export type RascunhoStatus = "pendente" | "enviado" | "descartado";
+
+/**
+ * MODO SOMBRA — a resposta que a Ana teria dado, gravada e não enviada.
+ *
+ * Cada descarte e cada edição é dado de treinamento: `texto` é o que ela escreveu,
+ * `textoEnviado` é o que a pessoa de fato mandou. O par (um diferente do outro) é o que
+ * mostra ONDE ela erra — some se só o texto final for guardado.
+ */
+export interface RascunhoAgente {
+  id: string;
+  conversationId: string;
+  /** A mensagem do cliente que provocou este rascunho. */
+  messageId?: string | null;
+  texto: string;
+  botoes?: Array<{ id: string; label: string }> | null;
+  status: RascunhoStatus;
+  /** O que saiu de fato. Diferente de `texto` = a pessoa editou antes de enviar. */
+  textoEnviado?: string | null;
+  /** Por que foi descartado. É a parte do dado que explica o resto. */
+  motivo?: string | null;
+  decididoPor?: string | null;
+  decididoEm?: string | null;
+  criadoEm: string;
+  /** Preenchido na leitura, para a fila de sombra não precisar de outra consulta. */
+  contato?: { nome?: string | null; whatsappNumber?: string | null } | null;
 }
