@@ -55,19 +55,26 @@ export const CASOS: CasoRecall[] = [
   },
   {
     consulta: "quantos dias posso ficar no Brasil com documento de identidade",
-    esperados: ["0b8cc4f7f6920d66", "8b605f730b3c0238"],
+    esperados: ["0b8cc4f7f6920d66", "8b605f730b3c0238", "6e089abe26d0ef09"],
     trecho: "prazo de estada de 90 dias no Brasil",
     responde:
-      "90 dias de estada para quem entra pela dispensa do Mercosul com documento de identidade do país de origem; o conceito de 'prazo de estada' está no chunk irmão.",
+      "90 dias de estada — pela dispensa do Mercosul com documento de identidade do país de origem, ou pelo prazo de estada do visto de visita, prorrogável por mais 90 e limitado a 180 no ano migratório.",
+    // O terceiro id entrou depois de a busca real contrariar o caso: ela trouxe em
+    // primeiro lugar "Qual o prazo de estada?", que responde a pergunta melhor do que os
+    // dois que eu tinha escrito. Três chunks respondem esta pergunta por caminhos
+    // diferentes e qualquer um deles serve — o caso é que estava estreito demais.
   },
   {
     consulta: "venezuelano autorização de residência",
-    esperados: ["190bdb29a7d6fdb8"],
-    trecho: "autorizações de residência por razões de política migratória, como é o caso de pessoas venezuelanas",
+    esperados: ["0d41b1aad29d5dc6", "190bdb29a7d6fdb8"],
+    trecho: "Venezuela, Suriname e Guiana",
     responde:
-      "Que existe residência por política migratória para pessoas venezuelanas, com Portaria Interministerial própria.",
-    lacuna:
-      "LACUNA REAL. Não há nenhum chunk dedicado à residência de pessoas venezuelanas: a única menção útil está de passagem dentro de 'O que é a prova de meios de vida?', cujo título — que é a âncora de recuperação das cartilhas em Q&A — não tem nada a ver com a pergunta. As demais 22 ocorrências de 'Venezuela' no acervo são doutrina sobre o bloco e a suspensão do país no Mercosul.",
+      "Quem é nacional de país fronteiriço onde o Acordo do Mercosul não vigora — Venezuela, Suriname, Guiana e Guiana Francesa — pede residência por interesse de política migratória nacional (Portaria Interministerial 19/2021). E que obtê-la implica RENUNCIAR ao pedido de refúgio, que é a parte que muda a vida de quem escolhe errado.",
+    // A auditoria por busca léxica deu esta pergunta como lacuna do acervo. Estava
+    // errado, e a busca vetorial provou: o chunk certo existe e é bom. Ele não foi achado
+    // antes porque a cartilha nunca escreve "venezuelano" — chama de "política migratória
+    // nacional" e lista os países no corpo. É o caso que mais justifica o RAG ser vetorial
+    // e não por palavra-chave: gentílico nenhum aparece em lugar nenhum do acervo.
   },
   {
     consulta: "haitiano visto acolhida humanitária",

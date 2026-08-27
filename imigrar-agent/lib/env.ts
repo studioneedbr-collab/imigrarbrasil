@@ -63,8 +63,33 @@ export const embeddingsConfig = {
   openaiKey: process.env.OPENAI_API_KEY ?? "",
 };
 
-export const useSupabase = Boolean(env.supabaseUrl && env.supabaseServiceKey);
-export const useDeepseek = Boolean(env.deepseekKey);
+/**
+ * DENTRO DE TESTE, NUNCA O BANCO DE VERDADE.
+ *
+ * Isto não é zelo abstrato: aconteceu. Bastou uma execução de `vitest` com o `.env.local`
+ * carregado no ambiente para a suíte inteira trocar o repositório de memória pelo
+ * Supabase e escrever 43 leads, 83 conversas e 343 mensagens no banco de produção — com
+ * a service role, que passa por cima de qualquer RLS. Os testes não sabem que são
+ * testes; quem sabe é o processo, e é aqui que ele avisa.
+ *
+ * `VITEST` é setado pelo próprio runner, então a proteção vale mesmo quando alguém roda
+ * o binário direto, com env exportada na mão, ou dentro de um script de CI.
+ */
+//
+// A EXCEÇÃO, explícita e nomeada: a suíte de recuperação (`npm run test:rag`) existe
+// justamente para falar com a base real, e é a única. Ela liga esta porta pelo próprio
+// config (vitest.rag.config.ts), não pelo ambiente de quem roda — assim ninguém liga sem
+// querer, e ninguém precisa lembrar de exportar variável nenhuma.
+const testeComServicosReais = Boolean(process.env.SERVICOS_REAIS_NO_TESTE);
+const emTeste =
+  (Boolean(process.env.VITEST) || process.env.NODE_ENV === "test") && !testeComServicosReais;
+
+export const useSupabase = !emTeste && Boolean(env.supabaseUrl && env.supabaseServiceKey);
+// Mesma proteção, outro motivo: uma suíte que encontra a chave do DeepSeek deixa de
+// exercitar o motor determinístico que ela foi escrita para testar (ver o comentário no
+// topo de tests/fallback.test.ts) E passa a fazer chamadas pagas de verdade a cada
+// execução. As duas coisas em silêncio.
+export const useDeepseek = !emTeste && Boolean(env.deepseekKey);
 // O agente "conduz" (LLM real com tools) quando o DeepSeek está configurado; senão
 // roda o engine determinístico. Não há outro provedor.
 export const useSmartAgent = useDeepseek;
