@@ -93,6 +93,38 @@ export function faixaDoPrazo(dias: number): FaixaPrazo {
   return "acompanhamento";
 }
 
+/**
+ * O RELÓGIO DO CASO, quando tem data — e por que ele NÃO é um quarto bloco.
+ *
+ * "As aulas começam em março" é tranquilo em novembro e é emergência em fevereiro. Sem
+ * data, ninguém vê a virada: a frase na ficha continua idêntica enquanto a coisa que ela
+ * descreve muda de natureza. Com data, o lead sobe dentro do BLOCO 3 quando entra na
+ * janela — e para aí.
+ *
+ * Não vira bloco de prazo, não liga `temPrazoCorrendo` e não usa a cor do prazo, porque
+ * não é a mesma coisa: perder o início das aulas custa um semestre, perder um prazo de
+ * defesa custa o caso. Misturar os dois é como o bloco de prazos deixa de ser levado a
+ * sério — e aí o que se perde é o prazo de verdade.
+ */
+export const RELOGIO_APERTADO_DIAS = 30;
+
+/** Dias até a data do relógio. Mesma contagem de calendário, em Brasília, do prazo. */
+export function diasDoRelogio(l: Pick<Lead, "relogioData">, agora: Date = new Date()): number | null {
+  if (!l.relogioData) return null;
+  const d = diasRestantes(l.relogioData, agora);
+  return Number.isFinite(d) ? d : null;
+}
+
+/** Está dentro da janela? Vencido também conta: ninguém percebeu passar. */
+export function relogioApertado(
+  l: Pick<Lead, "relogioData">,
+  agora: Date = new Date(),
+  janela: number = RELOGIO_APERTADO_DIAS,
+): boolean {
+  const d = diasDoRelogio(l, agora);
+  return d !== null && d <= janela;
+}
+
 /** Prioridade dentro do bloco 3. Não classificado fica por último, mas nunca some. */
 const ORDEM_NORMAL: Classificacao[] = [
   "QUENTE_JUDICIAL",
@@ -146,12 +178,20 @@ export function montarFila(leads: LeadDaFila[], agora: Date = new Date()): Fila 
       Date.parse(a.lead.createdAt) - Date.parse(b.lead.createdAt),
   );
 
-  // Bloco 3: judicial primeiro, e dentro de cada grupo o mais parado no topo.
-  normal.sort(
-    (a, b) =>
+  // Bloco 3: primeiro quem tem relógio apertado (o mais próximo de vencer no topo, e o
+  // que já passou acima de todos); depois a ordem de sempre — judicial primeiro, e
+  // dentro de cada grupo o mais parado no alto.
+  normal.sort((a, b) => {
+    const ra = relogioApertado(a, agora) ? diasDoRelogio(a, agora)! : null;
+    const rb = relogioApertado(b, agora) ? diasDoRelogio(b, agora)! : null;
+    if (ra !== null && rb !== null) return ra - rb || ultimaAtividade(a) - ultimaAtividade(b);
+    if (ra !== null) return -1;
+    if (rb !== null) return 1;
+    return (
       pesoNormal(a.classificacao) - pesoNormal(b.classificacao) ||
-      ultimaAtividade(a) - ultimaAtividade(b),
-  );
+      ultimaAtividade(a) - ultimaAtividade(b)
+    );
+  });
 
   filtradas.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
@@ -177,4 +217,18 @@ export function rotuloPrazo(dias: number): string {
   if (dias === 0) return "vence hoje";
   if (dias === 1) return "vence amanhã";
   return `faltam ${dias} dias`;
+}
+
+/**
+ * Rótulo do relógio do caso. Deliberadamente diferente do `rotuloPrazo`: quem varre a
+ * fila precisa distinguir num relance "as aulas começam em 12 dias" de "faltam 12 dias
+ * para protocolar a defesa". Mesma tipografia para as duas coisas seria o começo de as
+ * duas serem tratadas igual.
+ */
+export function rotuloRelogio(dias: number): string {
+  if (dias < -1) return `passou há ${Math.abs(dias)} dias`;
+  if (dias === -1) return "passou ontem";
+  if (dias === 0) return "é hoje";
+  if (dias === 1) return "é amanhã";
+  return `em ${dias} dias`;
 }

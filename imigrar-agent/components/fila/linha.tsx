@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import { CLASSIFICACAO_LABEL, PRAZO_TIPO_LABEL, desde } from "@/lib/domain/rotulos";
-import { rotuloPrazo, type FaixaPrazo, type LeadDaFila } from "@/lib/fila/ordenacao";
+import {
+  diasDoRelogio,
+  relogioApertado,
+  rotuloPrazo,
+  rotuloRelogio,
+  type FaixaPrazo,
+  type LeadDaFila,
+} from "@/lib/fila/ordenacao";
 import { slaHorasDe } from "@/lib/operacao/limites";
 
 /**
@@ -72,6 +79,29 @@ function SlaEstourado({ lead, agora }: { lead: LeadDaFila; agora: Date }) {
   );
 }
 
+/**
+ * O RELÓGIO DO CASO — o que corre contra o caso sem ser prazo processual: o início das
+ * aulas, o contrato, o passaporte que vence.
+ *
+ * Aparece só quando a data já está dentro da janela, e NUNCA com a cor do prazo. Essa
+ * cor pertence a multa, indeferimento e notificação de saída, e emprestá-la aqui faria
+ * a fila inteira parecer urgente — que é o mesmo que nada parecer.
+ */
+function ChipRelogio({ lead, agora }: { lead: LeadDaFila; agora: Date }) {
+  if (!relogioApertado(lead, agora)) return null;
+  const dias = diasDoRelogio(lead, agora);
+  if (dias === null) return null;
+  return (
+    <span
+      title={lead.relogioDoCaso ?? "Relógio do caso — não é prazo processual"}
+      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-ib-bruma px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ib-carimbo ring-1 ring-inset ring-ib-mar/20"
+    >
+      <span aria-hidden="true">◷</span>
+      {rotuloRelogio(dias)}
+    </span>
+  );
+}
+
 export function LinhaDaFila({
   lead,
   prazo,
@@ -124,6 +154,7 @@ export function LinhaDaFila({
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:w-[15rem] sm:justify-end">
+          <ChipRelogio lead={lead} agora={agora} />
           <SlaEstourado lead={lead} agora={agora} />
           {prazo ? <ContadorPrazo dias={prazo.dias} faixa={prazo.faixa} /> : null}
           <div className="text-right">

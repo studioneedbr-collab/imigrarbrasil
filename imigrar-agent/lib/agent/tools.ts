@@ -55,6 +55,9 @@ export const AGENT_TOOLS = [
         modalidade_provavel: { type: "string", description: "O caminho migratório que provavelmente atende esse objetivo (reunião familiar, residência Mercosul, refúgio, naturalização, visto de trabalho…). É uma HIPÓTESE para o advogado conferir, não uma orientação para dar à pessoa." },
         resumo: { type: "string", description: "DUAS LINHAS para quem abrir a fila de manhã e precisar decidir o que pegar sem abrir dez conversas. Fatos, não impressões." },
 
+        relogio_do_caso: { type: "string", description: "O RELÓGIO DESTE CASO, na frase dela: quando começam as aulas, quando começa o contrato, quando vence o passaporte ou o CRNM, quando o familiar chega. Todo caso tem um relógio — uma conversa que termina sem nenhuma noção de prazo é uma conversa incompleta. Se não houver nada pressionando, escreva 'sem urgência'. Texto, NUNCA data calculada." },
+        intencao: { type: "string", enum: ["contratar", "sozinho", "sem_condicoes"], description: "A resposta ao TESTE DE INTENÇÃO — a pergunta que você faz UMA vez, antes de encaminhar: se ela prefere tocar o processo por conta própria com uma orientação, ou que o escritório cuide de tudo. contratar: quer o escritório conduzindo. sozinho: quer tocar por conta. sem_condicoes: disse que não tem como pagar (aí é DPU). Só preencha depois de perguntar — nunca deduza de um 'ok'." },
+
         // PRAZO: você SINALIZA, você NÃO DATA. Nenhuma data entra por esta tool.
         tem_prazo_correndo: { type: "boolean", description: "true quando a pessoa menciona multa migratória, indeferimento, notificação para sair do país, intimação ou qualquer prazo correndo. É um ALERTA, não uma data: NUNCA calcule, deduza ou registre data de notificação ou data limite — quem confirma isso com ela é uma pessoa do time, por telefone. Na dúvida, marque true: um alerta a mais custa uma ligação, um a menos custa o prazo." },
         prazo_tipo: { type: "string", enum: ["multa", "indeferimento", "notificacao_saida", "outro"], description: "Que prazo é esse, quando der para saber pelo que ela disse." },
@@ -193,6 +196,8 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
         objetivo: i.objetivo as string | undefined,
         modalidadeProvavel: i.modalidade_provavel as string | undefined,
         resumo: i.resumo as string | undefined,
+        relogioDoCaso: i.relogio_do_caso as string | undefined,
+        intencao: i.intencao as Lead["intencao"] | undefined,
         temPrazoCorrendo: i.tem_prazo_correndo as boolean | undefined,
         prazoTipo: i.prazo_tipo as Lead["prazoTipo"] | undefined,
         classificacao: i.classificacao as Classificacao | undefined,
@@ -232,11 +237,12 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
             error: "atenda_antes_de_encaminhar",
             faltam: falta.faltam,
             motivo:
-              `Ainda não há caso nenhum para levar ao time jurídico — ${portao.motivo}. ` +
-              `Acolha, se apresente em uma linha e pergunte o que a pessoa precisa. Ao longo da conversa, descubra: ` +
-              `${falta.faltam.join(", ")} — uma pergunta por vez. ` +
-              `NÃO diga que encaminhou: ninguém foi chamado. Assim que aparecer caso concreto, prazo, situação irregular, ` +
-              `refúgio, risco ou pedido de valores, chame esta tool de novo que ela passa.`,
+              `Não dá para transferir esta ficha ainda — ${portao.motivo}. ` +
+              `Falta: ${falta.faltam.join("; ")}. Uma pergunta por vez, aproveitando o que ela já contou. ` +
+              `Ficha vazia chega ao advogado como conversa que ninguém consegue retomar. ` +
+              `Se ela se recusar a responder duas vezes seguidas, encerre com cortesia e classifique como CURIOSO — não insista. ` +
+              `NÃO diga que encaminhou: ninguém foi chamado. Assim que aparecer prazo correndo, situação irregular, ` +
+              `refúgio, risco ou pedido de valores, chame esta tool de novo que ela passa na hora, com o que você tiver.`,
           };
         }
       }

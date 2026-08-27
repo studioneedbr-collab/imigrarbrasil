@@ -5,7 +5,7 @@
 // detalhe, na aba de filtradas e nas métricas — quatro grafias diferentes da mesma
 // coisa é como um time deixa de confiar no painel.
 
-import type { AtendimentoStatus, Classificacao, PrazoTipo } from "@/lib/domain/types";
+import type { AtendimentoStatus, Classificacao, Intencao, PrazoTipo } from "@/lib/domain/types";
 
 export const CLASSIFICACAO_LABEL: Record<Classificacao, string> = {
   QUENTE_PRAZO: "Prazo correndo",
@@ -41,6 +41,19 @@ export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = {
   indeferimento: "Indeferimento",
   notificacao_saida: "Notificação de saída",
   outro: "Outro prazo",
+};
+
+export const INTENCAO_LABEL: Record<Intencao, string> = {
+  contratar: "Quer que o escritório cuide",
+  sozinho: "Prefere tocar sozinho",
+  sem_condicoes: "Sem condições de pagar",
+};
+
+/** O que fazer com cada resposta — quem lê a ficha decide em cima disto. */
+export const INTENCAO_AJUDA: Record<Intencao, string> = {
+  contratar: "Declarou que quer o escritório conduzindo. É este que vai para a fila.",
+  sozinho: "Quer orientação pontual, não condução. Não ocupe a agenda do time com ele.",
+  sem_condicoes: "Encaminhado à Defensoria Pública da União.",
 };
 
 /** "há 3 dias", "há 2 h", "agora". Tempo desde o último contato, curto o bastante para caber na linha. */

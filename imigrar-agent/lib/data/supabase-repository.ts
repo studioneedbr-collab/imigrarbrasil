@@ -2,7 +2,7 @@
 import type { Repository } from "@/lib/data/repository";
 import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
-import { semCamposDePrazo } from "@/lib/data/prazo";
+import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
 import { createServerClient } from "@/lib/supabase/client";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
@@ -284,6 +284,8 @@ export class SupabaseRepository implements Repository {
       vinculo_familiar_brasil: patch.vinculoFamiliarBrasil,
       situacao_documental: patch.situacaoDocumental, objetivo: patch.objetivo,
       modalidade_provavel: patch.modalidadeProvavel, resumo: patch.resumo,
+      relogio_do_caso: patch.relogioDoCaso, relogio_data: patch.relogioData,
+      intencao: patch.intencao,
       tem_prazo_correndo: patch.temPrazoCorrendo, prazo_tipo: patch.prazoTipo,
       classificacao: patch.classificacao,
       atendimento_status: patch.atendimentoStatus, motivo_perda: patch.motivoPerda,
@@ -295,8 +297,9 @@ export class SupabaseRepository implements Repository {
 
   async upsertLead(conversationId: string, patch: Partial<Lead>) {
     const { data: existing } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
-    // Caminho do agente: as datas de prazo caem fora antes de virar coluna.
-    const row = this.leadRow(semCamposDePrazo(patch));
+    // Caminho do agente: as datas caem fora antes de virar coluna — as de prazo
+    // processual e a do relógio do caso, que também é de humano. Ver lib/data/prazo.ts.
+    const row = this.leadRow(semCamposSoDeHumano(semCamposDePrazo(patch)));
     row.conversation_id = conversationId;
     // A PRIMEIRA classificação da IA fica guardada à parte, e só na primeira vez: é o
     // denominador da taxa de reclassificação.
@@ -505,6 +508,8 @@ export class SupabaseRepository implements Repository {
       situacaoDocumental: r.situacao_documental ?? null,
       objetivo: r.objetivo ?? null, modalidadeProvavel: r.modalidade_provavel ?? null,
       resumo: r.resumo ?? null,
+      relogioDoCaso: r.relogio_do_caso ?? null, relogioData: r.relogio_data ?? null,
+      intencao: r.intencao ?? null,
       temPrazoCorrendo: r.tem_prazo_correndo ?? false, prazoTipo: r.prazo_tipo ?? null,
       prazoDataNotificacao: r.prazo_data_notificacao ?? null,
       prazoDataLimite: r.prazo_data_limite ?? null,

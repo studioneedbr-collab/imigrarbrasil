@@ -9,14 +9,16 @@ import {
   ATENDIMENTO_LABEL,
   CLASSIFICACAO_AJUDA,
   CLASSIFICACAO_LABEL,
+  INTENCAO_AJUDA,
+  INTENCAO_LABEL,
   PRAZO_TIPO_LABEL,
 } from "@/lib/domain/rotulos";
 import { CLASSIFICACOES } from "@/lib/domain/types";
 import type {
-  Classificacao, Conversation, Lead, Lembrete, Message, PrazoTipo, Reclassificacao,
+  Classificacao, Conversation, Intencao, Lead, Lembrete, Message, PrazoTipo, Reclassificacao,
 } from "@/lib/domain/types";
 import type { EventoDaLinha } from "@/lib/operacao/linha-do-tempo";
-import { diasRestantes, faixaDoPrazo } from "@/lib/fila/ordenacao";
+import { RELOGIO_APERTADO_DIAS, diasRestantes, faixaDoPrazo } from "@/lib/fila/ordenacao";
 
 /**
  * O DETALHE DO LEAD.
@@ -470,6 +472,7 @@ const CAMPOS: CampoTexto[] = [
   { chave: "nacionalidade", label: "Nacionalidade" },
   { chave: "paisExterior", label: "País (se está fora do Brasil)" },
   { chave: "objetivo", label: "O que a pessoa quer conseguir", multi: true },
+  { chave: "relogioDoCaso", label: "O relógio do caso", multi: true, dica: "O que pressiona e quando: início das aulas, contrato, vencimento de passaporte ou CRNM. Prazo processual fica no bloco de prazo, acima." },
   { chave: "modalidadeProvavel", label: "Modalidade provável", dica: "Hipótese para conferir, não orientação dada à pessoa." },
   { chave: "situacaoDocumental", label: "Situação documental", multi: true },
   { chave: "documentosPossui", label: "Documentos que tem", multi: true },
@@ -537,6 +540,43 @@ function Ficha({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
             <option value="brasil">no Brasil</option>
             <option value="exterior">no exterior</option>
           </select>
+        </label>
+
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
+            Data do relógio (opcional)
+          </span>
+          <input
+            type="date"
+            value={(form.relogioData as string) ?? lead.relogioData ?? ""}
+            onChange={(e) => mexer("relogioData", e.target.value || null)}
+            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          />
+          <span className="mt-0.5 block text-[11px] text-ib-slate">
+            Só preencha se a pessoa confirmou a data. A menos de {RELOGIO_APERTADO_DIAS} dias, o caso sobe na
+            fila normal e ganha marcador — não vira prazo processual e não entra no bloco de prazos.
+          </span>
+        </label>
+
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
+            Intenção declarada
+          </span>
+          <select
+            value={(form.intencao as string) ?? lead.intencao ?? ""}
+            onChange={(e) => mexer("intencao", e.target.value || null)}
+            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          >
+            <option value="">ainda não perguntaram</option>
+            {(Object.keys(INTENCAO_LABEL) as Intencao[]).map((i) => (
+              <option key={i} value={i}>
+                {INTENCAO_LABEL[i]}
+              </option>
+            ))}
+          </select>
+          <span className="mt-0.5 block text-[11px] text-ib-slate">
+            {lead.intencao ? INTENCAO_AJUDA[lead.intencao] : "Sai do teste de intenção, feito uma vez antes de encaminhar."}
+          </span>
         </label>
 
         <label className="flex items-start gap-2 text-sm text-ib-ink">

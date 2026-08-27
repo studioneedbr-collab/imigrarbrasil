@@ -64,9 +64,19 @@ export function avaliarTransferencia(i: TransferGateInput): TransferGateResult {
 // ao advogado, e rápido. Então aqui ele libera por padrão e segura um caso só — a conversa
 // que ainda não tem nada: nenhum sinal de caso, nenhum pedido por uma pessoa e nenhuma
 // qualificação. É o freio contra despachar quem acabou de mandar "oi".
+//
+// A FICHA MÍNIMA ENTRA POR `dossieCompleto`. Quem define o que é "completo" é
+// `qualificacaoFaltando`, e desde a v3 ela exige nome, nacionalidade, onde a pessoa está,
+// o que ela quer, alguma noção do relógio do caso e a resposta ao teste de intenção. Foi
+// exatamente uma ficha vazia — sem o nome, sem saber quando começavam as aulas, sem
+// ninguém ter perguntado se a pessoa queria contratar — que motivou este freio.
+//
+// A EXCEÇÃO CONTINUA VALENDO E VEM ANTES: prazo correndo, situação irregular, refúgio,
+// pedido explícito por um advogado ou risco à pessoa passam com a ficha pela metade. Ficha
+// incompleta custa uma pergunta a mais; prazo perdido custa o caso.
 
 export interface EncaminhamentoComercialInput {
-  /** A qualificação (nacionalidade, onde está, o que quer, prazo) está completa? */
+  /** A ficha mínima (nome, nacionalidade, onde está, objetivo, relógio, intenção) está completa? */
   dossieCompleto: boolean;
   /** Últimas mensagens da pessoa — é nelas que se vê o caso concreto e o pedido de humano. */
   textoRecente: string;
@@ -87,10 +97,10 @@ export function avaliarEncaminhamentoComercial(
   if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };
   if (CASO_JURIDICO.test(texto)) return { liberado: true, motivo: "caso que exige advogado" };
   if (i.assuntoExigePessoa) return { liberado: true, motivo: "assunto que exige análise jurídica" };
-  if (i.dossieCompleto) return { liberado: true, motivo: "qualificação completa" };
+  if (i.dossieCompleto) return { liberado: true, motivo: "ficha mínima completa" };
   return {
     liberado: false,
     motivo:
-      "a conversa ainda não tem caso nenhum — acolha, entenda o que a pessoa precisa e só então encaminhe",
+      "não há nada urgente aqui e a ficha ainda está pela metade — continue a entrevista antes de encaminhar",
   };
 }

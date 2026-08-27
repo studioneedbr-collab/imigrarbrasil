@@ -80,6 +80,16 @@ const fichaSchema = z.object({
   objetivo: z.string().max(1000).nullish(),
   modalidadeProvavel: z.string().max(200).nullish(),
   resumo: z.string().max(1000).nullish(),
+  // O relógio do caso é TEXTO, nunca data — quem confirma data é gente, por POST /prazo.
+  relogioDoCaso: z.string().max(1000).nullish(),
+  // A DATA do relógio entra por aqui — e SÓ por aqui. A ficha é a tela de gente; o
+  // caminho do agente (`upsertLead`) descarta o campo. Ver lib/data/prazo.ts.
+  relogioData: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD.")
+    .nullish()
+    .or(z.literal("").transform(() => null)),
+  intencao: z.enum(["contratar", "sozinho", "sem_condicoes"]).nullish(),
   temPrazoCorrendo: z.boolean().optional(),
   notes: z.string().max(5000).nullish(),
 });

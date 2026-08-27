@@ -23,7 +23,8 @@ export const dynamic = "force-dynamic";
  */
 const CABECALHO = [
   "id", "criado_em", "nome", "whatsapp", "idioma", "nacionalidade", "localizacao",
-  "classificacao", "modalidade_provavel", "objetivo", "tem_prazo_correndo", "prazo_tipo",
+  "classificacao", "modalidade_provavel", "objetivo", "relogio_do_caso", "relogio_data", "intencao",
+  "tem_prazo_correndo", "prazo_tipo",
   "prazo_data_limite", "dias_restantes", "atendimento", "responsavel",
 ];
 
@@ -36,7 +37,8 @@ function linha(l: LeadDaFila): string {
   return [
     l.id, l.createdAt, l.contactName ?? "", l.whatsappNumber, l.idioma ?? "",
     l.nacionalidade ?? "", l.localizacao ?? "", l.classificacao ?? "",
-    l.modalidadeProvavel ?? "", l.objetivo ?? "", l.temPrazoCorrendo ? "sim" : "não",
+    l.modalidadeProvavel ?? "", l.objetivo ?? "", l.relogioDoCaso ?? "", l.relogioData ?? "", l.intencao ?? "",
+    l.temPrazoCorrendo ? "sim" : "não",
     l.prazoTipo ?? "", l.prazoDataLimite ?? "", "", l.atendimentoStatus ?? "",
     l.responsavelNome ?? "",
   ].map(csvEscape).join(";");

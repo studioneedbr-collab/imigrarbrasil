@@ -5,7 +5,7 @@ import type {
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
-import { semCamposDePrazo } from "@/lib/data/prazo";
+import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 let counter = 0;
@@ -177,8 +177,9 @@ export class MemoryRepository implements Repository {
       stage: "novo", score: 0,
       temPrazoCorrendo: false, atendimentoStatus: "novo",
     };
-    // Datas de prazo caem fora: este é o caminho do agente. Ver lib/data/prazo.ts.
-    const limpo = semCamposDePrazo(patch);
+    // Datas caem fora: este é o caminho do agente — prazo processual e o relógio do
+    // caso, que também é de humano. Ver lib/data/prazo.ts.
+    const limpo = semCamposSoDeHumano(semCamposDePrazo(patch));
     // A PRIMEIRA classificação da IA fica guardada à parte. É o denominador da taxa de
     // reclassificação — sobrescrevê-la a cada turno apagaria a discordância humana.
     const classificacaoIa =

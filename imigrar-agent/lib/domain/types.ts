@@ -182,6 +182,13 @@ export type Localizacao = "brasil" | "exterior";
 export type PrazoTipo = "multa" | "indeferimento" | "notificacao_saida" | "outro";
 
 /**
+ * O que a pessoa disse quando lhe perguntaram se quer tocar o processo sozinha ou se
+ * prefere que o escritório cuide. É o campo que separa caso de curioso — e o único que
+ * responde, antes de alguém gastar uma hora ao telefone, se há intenção de contratar.
+ */
+export type Intencao = "contratar" | "sozinho" | "sem_condicoes";
+
+/**
  * QUENTE_PRAZO           prazo processual correndo
  * QUENTE_JUDICIAL        caso exige ação judicial
  * MORNO_ADMINISTRATIVO   caso viável, sem urgência
@@ -249,6 +256,25 @@ export interface LeadImigracao {
   objetivo?: string | null;
   modalidadeProvavel?: string | null;
   resumo?: string | null;
+
+  /**
+   * O RELÓGIO DO CASO — a frase da pessoa sobre o que pressiona o caso dela e quando:
+   * "as aulas começam em março", "o passaporte vence em julho", "sem urgência".
+   *
+   * De propósito NÃO é `temPrazoCorrendo`. Aquele booleano é prazo processual (multa,
+   * indeferimento, notificação de saída) e joga o lead no bloco de prioridade máxima da
+   * fila; misturar o começo das aulas ali afogaria quem tem defesa a protocolar. Aqui é
+   * texto livre, sem data calculada, para quem for pegar o caso saber o que corre.
+   */
+  relogioDoCaso?: string | null;
+  /**
+   * A data desse relógio, quando alguém do time consegue apurá-la (YYYY-MM-DD). SEMPRE
+   * de humano: o agente não escreve aqui, do mesmo jeito que não escreve data de prazo.
+   * Existe porque prazo mole vira duro — "aulas em março" é tranquilo em novembro e é
+   * emergência em fevereiro, e o texto sozinho não mostra a virada.
+   */
+  relogioData?: string | null;
+  intencao?: Intencao | null;
 
   temPrazoCorrendo?: boolean;
   prazoTipo?: PrazoTipo | null;

@@ -62,34 +62,64 @@ describe("dossiê que se preenche sozinho", () => {
   });
 });
 
-// A qualificação daqui não é a triagem comercial que ela substituiu: nada nesta lista
-// SEGURA nada. Um caso concreto vai para o advogado mesmo com a lista pela metade.
+// A FICHA MÍNIMA (v3). Nada aqui segura um caso URGENTE — prazo correndo, irregularidade,
+// refúgio e risco vão ao advogado com a ficha pela metade, e quem garante isso é o
+// transfer-gate. O que esta lista segura é a transferência de ficha vazia: a conversa que
+// motivou a v3 chegou ao time sem o nome da pessoa, sem saber quando começavam as aulas e
+// sem ninguém ter perguntado se ela queria contratar.
 describe("o que o time jurídico ainda não sabe", () => {
   const completo = lead({
+    contactName: "Rosa",
     clientType: "Venezuela",
     region: "Brasil — Boa Vista",
     servicesInterested: ["Regularização migratória"],
     urgency: "immediate",
+    intencao: "contratar",
   });
 
   it("lista o que falta, na ordem de descobrir", () => {
     const r = qualificacaoFaltando(lead({ clientType: "Haiti" }));
     expect(r.completo).toBe(false);
     expect(r.faltam).toEqual([
+      "o nome dela",
       "onde a pessoa está agora (no Brasil ou no exterior)",
       "o que ela quer conseguir",
-      "se há prazo ou urgência",
+      "o que pressiona o caso e quando (nem que seja 'sem urgência')",
+      "se ela prefere tocar o processo sozinha ou que o escritório cuide (pergunte UMA vez)",
     ]);
   });
 
-  it("nacionalidade, onde está, o que quer e prazo bastam", () => {
+  it("nome, nacionalidade, onde está, objetivo, relógio e intenção completam a ficha", () => {
     expect(qualificacaoFaltando(completo).completo).toBe(true);
   });
 
-  it("nome e situação são complementares — não seguram o encaminhamento", () => {
+  it("o nome passou a ser obrigatório — era o que faltava na conversa que motivou a v3", () => {
+    const semNome = qualificacaoFaltando({ ...completo, contactName: undefined });
+    expect(semNome.completo).toBe(false);
+    expect(semNome.faltam).toContain("o nome dela");
+  });
+
+  it("o relógio do caso conta mesmo sem prazo processual", () => {
+    const semUrgencia = { ...completo, urgency: undefined, temPrazoCorrendo: false };
+    expect(qualificacaoFaltando(semUrgencia).completo).toBe(false);
+    expect(
+      qualificacaoFaltando({ ...semUrgencia, relogioDoCaso: "as aulas começam em março" }).completo,
+    ).toBe(true);
+  });
+
+  it("sem o teste de intenção a ficha não fecha", () => {
+    const r = qualificacaoFaltando({ ...completo, intencao: undefined });
+    expect(r.completo).toBe(false);
+    expect(r.faltam.join(" ")).toMatch(/escrit[óo]rio cuide/);
+  });
+
+  it("como ela entrou e os documentos são complementares — não seguram nada", () => {
     const r = qualificacaoFaltando(completo);
     expect(r.faltam).toEqual([]);
-    expect(r.complementares).toEqual(["o nome dela", "como ela entrou e o que tem hoje"]);
+    expect(r.complementares).toEqual([
+      "como ela entrou e o que tem hoje",
+      "que documentos do país de origem ela tem em mãos",
+    ]);
   });
 
   // A lista NUNCA pede número de documento: quem faz isso é o time jurídico, depois.

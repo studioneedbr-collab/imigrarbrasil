@@ -24,3 +24,19 @@ export function semCamposDePrazo<T extends Partial<Lead>>(patch: T): T {
   for (const campo of CAMPOS_DE_PRAZO) delete limpo[campo];
   return limpo;
 }
+
+// ─── O QUE SÓ HUMANO PREENCHE ───
+//
+// `relogioData` não é prazo processual (não entra em `CAMPOS_DE_PRAZO`, não vai para o
+// bloco de prazos), mas nasce do mesmo problema: é uma DATA, e data que o modelo deduz
+// da frase de alguém — "acho que as aulas começam em março" — vira posição na fila e
+// marcador na tela. Por isso o caminho do agente (`upsertLead`) a descarta, enquanto a
+// ficha (`updateLead`) grava normalmente: lá quem digita é gente.
+
+export const CAMPOS_SO_DE_HUMANO = ["relogioData"] as const;
+
+export function semCamposSoDeHumano<T extends Partial<Lead>>(patch: T): T {
+  const limpo = { ...patch };
+  for (const campo of CAMPOS_SO_DE_HUMANO) delete limpo[campo];
+  return limpo;
+}
