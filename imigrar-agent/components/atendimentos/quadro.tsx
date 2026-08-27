@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CardDoAtendimento } from "@/components/atendimentos/card";
+import { ResumoDoLead } from "@/components/atendimentos/resumo-modal";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import type { AtendimentoStatus } from "@/lib/domain/types";
@@ -50,8 +51,26 @@ export default function Quadro({
   const [visiveis, setVisiveis] = useState<Record<string, number>>({});
   const [perda, setPerda] = useState<{ lead: LeadDaFila; motivo: string } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // O card aberto em resumo. Guardamos o ID e não o objeto: depois de assumir, o lead
+  // muda (ganha responsável) e um objeto congelado mostraria o estado anterior.
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [assumindo, setAssumindo] = useState(false);
 
   const colunas = useMemo(() => montarKanban(leads, agora), [leads, agora]);
+  const leadAberto = aberto ? leads.find((l) => l.id === aberto) ?? null : null;
+
+  /**
+   * Assumir a partir do resumo. É a MESMA chamada do arrasto para "Em atendimento" —
+   * `mover` já sabe traduzir a transição em ação, exigir motivo onde precisa e desfazer
+   * se o servidor recusar. Um segundo caminho de escrita aqui seria a forma mais rápida
+   * de "assumir pelo modal" deixar de gravar responsável.
+   */
+  async function assumirDoResumo(lead: LeadDaFila) {
+    setAssumindo(true);
+    await mover(lead, "em_atendimento");
+    setAssumindo(false);
+    setAberto(null);
+  }
 
   /**
    * Move o card na tela, chama o endpoint e desfaz se ele recusar. O `router.refresh()`
@@ -157,7 +176,7 @@ export default function Quadro({
                       arrastando === lead.id ? "opacity-40" : ""
                     }`}
                   >
-                    <CardDoAtendimento lead={lead} agora={agora} />
+                    <CardDoAtendimento lead={lead} agora={agora} onAbrir={(l) => setAberto(l.id)} />
                     {/* O caminho sem arrasto: existe sempre, e no celular é o único. */}
                     <label className="mt-1 flex items-center gap-1 px-1 xl:hidden">
                       <span className="text-[10px] text-ib-slate">mover para</span>
@@ -197,6 +216,16 @@ export default function Quadro({
           );
         })}
       </div>
+
+      {leadAberto ? (
+        <ResumoDoLead
+          lead={leadAberto}
+          agora={agora}
+          assumindo={assumindo}
+          onFechar={() => setAberto(null)}
+          onAssumir={assumirDoResumo}
+        />
+      ) : null}
 
       {perda ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ib-ink/40 p-4">

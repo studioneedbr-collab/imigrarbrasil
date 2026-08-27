@@ -86,36 +86,58 @@ export default function ChaveGeral() {
 
   return (
     <>
-      <div
-        className={`mb-4 flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
-          ligada
-            ? "border-ib-line bg-white"
-            : "border-ib-danger/30 bg-ib-danger/5"
-        }`}
-      >
+      {/* ─────────────────────────────────────────────────────────────────────────
+          LIGADO É UMA LINHA. DESLIGADO É UM ALARME.
+
+          Os dois estados tinham o mesmo desenho: mesma caixa, mesmo ícone de 36px, mesmo
+          padding, logo abaixo da faixa vermelha de captação parada. O resultado é que o
+          estado NORMAL do sistema — o agente funcionando — ocupava a mesma área e a mesma
+          altura que um alarme, todo dia, em todas as telas.
+
+          Duas coisas dão errado aí, e a segunda é a que custa caro. A primeira é o espaço:
+          um bloco permanente empurra o trabalho para baixo da dobra. A segunda é que
+          quando tudo pesa igual, nada pesa: o olho aprende a pular aquela região, e o dia
+          em que ela ficar vermelha ele vai pular também.
+
+          Então: ligado vira uma linha discreta, que continua SEMPRE visível (um botão que
+          só aparece quando algo está errado é um botão que ninguém sabe que existe) e
+          continua a um clique de desligar. Desligado mantém a caixa inteira — ali é
+          alarme, e alarme domina.
+          ───────────────────────────────────────────────────────────────────────── */}
+      {ligada ? (
+        <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-ib-slate">
+          <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+          <span className="font-medium text-ib-ink">Agente ligado</span>
+          <span className="text-ib-slate">
+            · a Ana está respondendo nas instâncias que estão ligadas
+          </span>
+          {admin ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMotivo("");
+                setErro(null);
+                setConfirmando("desligar");
+              }}
+              className="ml-auto rounded px-1.5 py-0.5 font-semibold text-ib-slate underline decoration-dotted transition hover:text-ib-danger focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ib-danger"
+            >
+              Desligar o agente
+            </button>
+          ) : null}
+        </div>
+      ) : (
+      <div className="mb-4 flex flex-col gap-3 rounded-xl border border-ib-danger/30 bg-ib-danger/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <span
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              ligada ? "bg-emerald-50 text-emerald-700" : "bg-ib-danger/10 text-ib-danger"
-            }`}
-          >
-            <Icon name={ligada ? "agent" : "shield"} className="h-4.5 w-4.5" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ib-danger/10 text-ib-danger">
+            <Icon name="shield" className="h-4.5 w-4.5" />
           </span>
           <div className="min-w-0">
-            <p className={`text-sm font-semibold ${ligada ? "text-ib-ink" : "text-ib-danger"}`}>
-              {ligada ? "Agente ligado" : "Agente DESLIGADO"}
-            </p>
+            <p className="text-sm font-semibold text-ib-danger">Agente DESLIGADO</p>
             <p className="mt-0.5 truncate text-xs text-ib-slate">
-              {ligada ? (
-                <>A Ana está respondendo nas instâncias que estão ligadas.</>
-              ) : (
-                <>
-                  Por {chave.autor ?? "alguém"}
-                  {chave.em ? ` desde ${fmtDate(chave.em)}` : ""}
-                  {chave.motivo ? ` — ${chave.motivo}` : ""}. As mensagens continuam
-                  chegando e sendo gravadas.
-                </>
-              )}
+              Por {chave.autor ?? "alguém"}
+              {chave.em ? ` desde ${fmtDate(chave.em)}` : ""}
+              {chave.motivo ? ` — ${chave.motivo}` : ""}. As mensagens continuam chegando e
+              sendo gravadas.
             </p>
           </div>
         </div>
@@ -126,15 +148,11 @@ export default function ChaveGeral() {
             onClick={() => {
               setMotivo("");
               setErro(null);
-              setConfirmando(ligada ? "desligar" : "ligar");
+              setConfirmando("ligar");
             }}
-            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
-              ligada
-                ? "border border-ib-danger/40 text-ib-danger hover:bg-ib-danger/10 focus-visible:outline-ib-danger"
-                : "bg-ib-mar text-white hover:bg-ib-carimbo focus-visible:outline-ib-mar"
-            }`}
+            className="shrink-0 rounded-lg bg-ib-mar px-4 py-2 text-sm font-semibold text-white transition hover:bg-ib-carimbo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ib-mar"
           >
-            {ligada ? "Desligar o agente" : "Ligar o agente"}
+            Ligar o agente
           </button>
         ) : (
           // Quem não é admin vê o estado, e é isso que importa: ninguém pode esquecer
@@ -142,6 +160,7 @@ export default function ChaveGeral() {
           <span className="shrink-0 text-xs text-ib-slate">Só um admin pode mudar.</span>
         )}
       </div>
+      )}
 
       {confirmando ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
