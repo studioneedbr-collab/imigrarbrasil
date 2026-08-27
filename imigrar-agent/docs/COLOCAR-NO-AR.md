@@ -32,6 +32,14 @@ sem perceber.
      descartada em silêncio — o registro nunca lança, então ninguém veria) e cria
      `chamadas_llm`, de onde sai todo o custo. Sem ela o painel abre, a tela de falhas de
      LLM fica vazia e o custo em Métricas fica zerado.
+   - A `025_parecer_e_telefone.sql` também precisa rodar ANTES do código novo, e pelo
+     mesmo motivo da anterior: ela acrescenta `parecer_barrado` ao CHECK de
+     `eventos_operacao` (é o registro de quando o verificador de saída corta uma frase em
+     que a Ana estava dando parecer sobre o caso de alguém — sem a migration, o CHECK
+     rejeita e o corte fica invisível) e cria `conversations.telefone_normalizado`, que é
+     por onde se descobre que duas conversas são da mesma pessoa. Sem essa coluna a
+     deduplicação por telefone não encontra nada e o contato volta a entrar duas vezes na
+     fila. Ela já faz o backfill das conversas existentes.
    - A `019_fila_de_prazos.sql` é a que faz o painel virar fila de prazos: cria os campos
      de imigração, o log de acesso, a reclassificação e o CHECK que impede data de prazo
      sem o nome de quem confirmou. **Sem ela o painel abre, mas a fila vem vazia** — e

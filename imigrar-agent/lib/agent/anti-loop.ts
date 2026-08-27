@@ -156,7 +156,10 @@ const QUEM: Record<LeadSetor, string> = {
 function msgImpasse(setor: LeadSetor, proximoRetorno?: string): string {
   const quem = QUEM[setor] ?? QUEM.comercial;
   const abertura = "Deixa eu te dar um retorno certinho em vez de ficar repetindo a mesma coisa. ";
-  const fecho = " Continuo por aqui: se quiser me contar mais algum detalhe, pode mandar.";
+  // A partir do encaminhamento o agente se cala (ver lib/agent/ativacao.ts), então o
+  // fecho não pode prometer que ele continua por perto. O que ele diz é o que é verdade:
+  // escrever aqui continua funcionando, e quem lê agora é o time.
+  const fecho = " Pode continuar escrevendo por aqui: eles leem tudo o que você mandar.";
   if (proximoRetorno) {
     return `${abertura}Já deixei o seu caso com ${quem}. O atendimento é de segunda a sexta, das 8h às 18h, então eles te retornam ${proximoRetorno}.${fecho}`;
   }

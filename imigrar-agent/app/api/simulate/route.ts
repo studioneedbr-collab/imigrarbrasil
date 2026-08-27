@@ -57,6 +57,13 @@ export async function POST(req: NextRequest) {
       // randomUUID e não Date.now(): duas aberturas no mesmo milissegundo
       // colidiam no unique de whatsapp_number.
       conv = await repo.getOrCreateConversation(`${SIM_PREFIX}${randomUUID()}`);
+      // ENSAIO NASCE MARCADO COMO ENSAIO. Sem esta linha a conversa caía no padrão
+      // `producao` do repositório e desaguava na fila de trabalho e no quadro: `sim:v2-5`,
+      // `sim:v2-12` e `sim:at-8-3` chegaram a aparecer entre casos de gente de verdade.
+      await repo
+        .updateConversation(conv.id, { ambiente: "teste" })
+        .catch((e) => console.error("[simulate] não marquei a conversa como ensaio:", e instanceof Error ? e.message : e));
+      conv = { ...conv, ambiente: "teste" };
     }
 
     const res = await processMessage({ conversationId: conv.id, userText: message });

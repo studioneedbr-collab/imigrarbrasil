@@ -55,13 +55,51 @@ export function paginaDaBusca(valor: string | string[] | undefined): number {
 }
 
 /**
+ * A PÁGINA QUE O BANCO JÁ CORTOU.
+ *
+ * `paginar` recebe a lista inteira e fatia; esta recebe a fatia pronta e só descreve onde
+ * ela está. É a diferença entre as duas paginações que existem no painel — e a razão de
+ * ambas existirem: as telas pequenas (Filtradas) continuam carregando tudo e cortando na
+ * memória, porque é mais simples e funciona; a Fila não pode, porque um lead que não
+ * coube é um prazo que ninguém viu.
+ *
+ * `total` vem do banco, e é o número honesto: quantos existem NAQUELE BLOCO, já sem
+ * ensaio, sem conversa filtrada e sem caso encerrado. Era exatamente essa distinção que
+ * faltava quando a tela dizia "42 atendimentos mais recentes, de 43" sem nada ter sido
+ * cortado.
+ */
+export function paginaDoServidor<T>(
+  itens: T[],
+  pagina: number,
+  porPagina: number,
+  total: number,
+): Pagina<T> {
+  const totalPaginas = Math.max(1, Math.ceil(total / porPagina));
+  const atual = Math.min(Math.max(Math.trunc(pagina) || 1, 1), totalPaginas);
+  const inicio = (atual - 1) * porPagina;
+  return {
+    itens,
+    pagina: atual,
+    totalPaginas,
+    total,
+    de: total === 0 ? 0 : inicio + 1,
+    ate: inicio + itens.length,
+  };
+}
+
+/**
  * TETO DE CARGA — quantos leads a fila busca no banco por vez.
  *
- * A ordenação da fila é feita em memória, em cima de TODOS os leads, porque a regra dos
- * três blocos não cabe num `order by` (ver lib/fila/ordenacao.ts). Isso é barato com
+ * A ordenação da fila é feita em memória, em cima dos leads carregados, porque a regra
+ * dos três blocos não cabe num `order by` (ver lib/fila/ordenacao.ts). Isso é barato com
  * centenas de casos e deixa de ser com milhares. O teto segura o custo sem reescrever a
  * regra em SQL — e a tela AVISA quando corta, que é a única parte inegociável: uma
  * página que esconde metade dos casos em silêncio é pior do que uma página lenta.
+ *
+ * A TELA INICIAL NÃO USA MAIS ISTO. Lá o corte passou a ser feito pelo banco, com os
+ * blocos de prazo fora da paginação — ver `paginaDoServidor` e `listLeadsDaFila`. O teto
+ * continua valendo para as telas que precisam da lista inteira em memória (Filtradas, o
+ * quadro), onde um caso que não coube é um card fora de lugar, não um prazo perdido.
  */
 export const TETO_DE_CARGA = 500;
 

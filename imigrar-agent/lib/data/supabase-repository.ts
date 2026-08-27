@@ -7,6 +7,11 @@ import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
 import { createServerClient } from "@/lib/supabase/client";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
+import {
+  conversaParaReaproveitar,
+  normalizarTelefone,
+  variantesDoTelefone,
+} from "@/lib/whatsapp/telefone";
 
 const mapConversation = (r: DbConversation): Conversation => ({
   id: r.id, whatsappNumber: r.whatsapp_number, contactName: r.contact_name,
@@ -75,12 +80,42 @@ export class SupabaseRepository implements Repository {
     const { data: found } = await this.db.from("conversations").select("*").eq("whatsapp_number", whatsappNumber).maybeSingle();
     if (found) return mapConversation(found as DbConversation);
 
+    // MESMO TELEFONE, OUTRA GRAFIA. O unique de `whatsapp_number` nunca deixou passar
+    // duas linhas com o mesmo texto — o que passava eram "+55 95 99123-4567" e
+    // "559591234567", que são a mesma pessoa. Cada grafia abria uma conversa, e o
+    // contato aparecia duas vezes na fila com metade da ficha em cada uma.
+    // A janela e o "está aberta?" são regra de domínio: lib/whatsapp/telefone.ts.
+    const variantes = variantesDoTelefone(whatsappNumber);
+    if (variantes.length) {
+      const { data: parecidas } = await this.db
+        .from("conversations")
+        .select("id,status,last_message_at,updated_at")
+        .in("telefone_normalizado", variantes)
+        .order("updated_at", { ascending: false })
+        .limit(20);
+      const escolhida = conversaParaReaproveitar(
+        (parecidas ?? []).map((c: any) => ({
+          id: c.id,
+          status: c.status,
+          atividadeEm: c.last_message_at ?? c.updated_at,
+        })),
+      );
+      if (escolhida) {
+        const achada = await this.getConversation(escolhida.id);
+        if (achada) return achada;
+      }
+    }
+
     // upsert e não insert: duas mensagens do mesmo número chegando juntas caíam
     // ambas aqui e a segunda violava o unique de whatsapp_number — o webhook
     // engolia a exceção e a mensagem do cliente era perdida.
     const { data, error } = await this.db.from("conversations")
       .upsert(
-        { whatsapp_number: whatsappNumber, contact_name: contactName ?? null },
+        {
+          whatsapp_number: whatsappNumber,
+          contact_name: contactName ?? null,
+          telefone_normalizado: normalizarTelefone(whatsappNumber) || null,
+        },
         { onConflict: "whatsapp_number" },
       ).select("*").single();
     if (error) throw error;
@@ -660,6 +695,81 @@ export class SupabaseRepository implements Repository {
     const { count } = await this.db.from("leads").select("id", { count: "exact", head: true });
     return count ?? 0;
   }
+
+  async listConversationsByIds(ids: string[]): Promise<Conversation[]> {
+    if (!ids.length) return [];
+    const { data } = await this.db.from("conversations").select("*").in("id", ids);
+    return ((data as DbConversation[] | null) ?? []).map(mapConversation);
+  }
+
+  /**
+   * A fila, montada no banco. Ver a documentação do método na interface — em especial a
+   * regra que manda em tudo aqui: os leads COM PRAZO vêm todos, sempre, sem teto.
+   *
+   * A conversa entra por `!inner` porque a fila de trabalho exclui ENSAIO, e o ambiente
+   * mora na conversa. Fazer esse corte depois de contar era o que produzia o "42 de 43":
+   * o denominador vinha da tabela inteira e o numerador já estava filtrado.
+   *
+   * O BLOCO 3 É DEFINIDO POR EXCLUSÃO DOS IDS COM PRAZO, e não por um filtro invertido.
+   * Escrever "não tem prazo" em PostgREST parece trivial e não é: `neq('classificacao',
+   * 'QUENTE_PRAZO')` descarta as linhas em que a coluna é NULL — que são a maioria —, e
+   * `is(false)` não pega os NULL de `tem_prazo_correndo`. As duas armadilhas somem quando
+   * o complemento é feito por id, e a lista de ids é pequena por definição: são os casos
+   * com prazo, que já foram carregados inteiros na consulta ao lado.
+   */
+  async listLeadsDaFila(opcoes: { pagina: number; porPagina: number }) {
+    const FILTRADAS = ["CURIOSO", "DPU", "FORA_ESCOPO"];
+    const ENCERRADOS = ["fechado", "perdido"];
+    // Um lead entra no bloco de prazo por qualquer um dos três caminhos — o booleano da
+    // IA, a classificação, ou a data já confirmada por uma pessoa. Aceitar os três evita
+    // o caso em que um deles sozinho faria o caso sumir dos dois blocos.
+    const COM_PRAZO =
+      "tem_prazo_correndo.is.true,classificacao.eq.QUENTE_PRAZO,prazo_data_limite.not.is.null";
+
+    /** O recorte comum: operação real, não filtrada, não encerrada. */
+    const daFila = (colunas = "*, conversations!inner(ambiente,whatsapp_number)", contar = false) =>
+      this.db
+        .from("leads")
+        .select(colunas, contar ? { count: "exact", head: true } : undefined)
+        .not("conversations.ambiente", "eq", "teste")
+        .not("conversations.whatsapp_number", "like", "sim:%")
+        .not("classificacao", "in", `(${FILTRADAS.join(",")})`)
+        .not("atendimento_status", "in", `(${ENCERRADOS.join(",")})`);
+
+    const { data: brutosComPrazo } = await daFila().or(COM_PRAZO);
+    const comPrazo = ((brutosComPrazo as Record<string, any>[] | null) ?? []).map((r) =>
+      this.mapLead(r),
+    );
+    const idsComPrazo = comPrazo.map((l) => l.id);
+    const foraDoPrazo = <T>(q: T): T =>
+      idsComPrazo.length
+        ? ((q as any).not("id", "in", `(${idsComPrazo.join(",")})`) as T)
+        : q;
+
+    const inicio = Math.max(0, (opcoes.pagina - 1) * opcoes.porPagina);
+
+    const [normal, contagemNormal, contagemFiltradas] = await Promise.all([
+      // A ordem é a da fila: mais parado primeiro. `updated_at` é o carimbo que se move a
+      // cada turno da conversa, então é ele que responde "há quanto tempo isto parou" sem
+      // precisar de uma segunda tabela na consulta.
+      foraDoPrazo(daFila())
+        .order("updated_at", { ascending: true })
+        .range(inicio, inicio + opcoes.porPagina - 1),
+      foraDoPrazo(daFila("id, conversations!inner(ambiente,whatsapp_number)", true)),
+      this.db
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .in("classificacao", FILTRADAS),
+    ]);
+
+    return {
+      comPrazo,
+      normal: ((normal.data as Record<string, any>[] | null) ?? []).map((r) => this.mapLead(r)),
+      totalNormal: contagemNormal.count ?? 0,
+      totalFiltradas: contagemFiltradas.count ?? 0,
+    };
+  }
+
   async deleteLead(id: string) {
     const { error } = await this.db.from("leads").delete().eq("id", id);
     if (error) throw error;

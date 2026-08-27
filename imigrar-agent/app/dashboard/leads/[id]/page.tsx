@@ -6,13 +6,17 @@ import { Card, Icon, Skeleton, btnGhost, btnPrimary, fmtTime } from "@/component
 import { ChipIdioma, ContadorPrazo } from "@/components/fila/linha";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import {
+  AINDA_NAO,
+  AINDA_NAO_AJUDA,
   ATENDIMENTO_LABEL,
   CLASSIFICACAO_AJUDA,
   CLASSIFICACAO_LABEL,
   INTENCAO_AJUDA,
   INTENCAO_LABEL,
   PRAZO_TIPO_LABEL,
+  porQueImporta,
 } from "@/lib/domain/rotulos";
+import { qualificacaoFaltando } from "@/lib/domain/ficha";
 import { CLASSIFICACOES } from "@/lib/domain/types";
 import type {
   Classificacao, Conversation, Intencao, Lead, Lembrete, Message, PrazoTipo, Reclassificacao,
@@ -133,16 +137,151 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start">
         <Transcricao messages={data.messages} />
+        {/* ─────────────────────────────────────────────────────────────────────
+            A LATERAL, EM TRÊS CAMADAS.
+            
+            Antes era uma pilha de formulários — prazo, atendimento, retornos, ficha com
+            campos soltos —, e quem abria a tela não conseguia entender o caso sem ler
+            campo por campo. Um formulário aberto pede que você preencha; o que a pessoa
+            precisa primeiro é ENTENDER.
+            
+            1. O cartão de qualidade, só leitura, legível em cinco segundos.
+            2. As ações, como botões.
+            3. A ficha completa, recolhida atrás de "Editar ficha".
+            
+            A EXCEÇÃO É O PRAZO A CONFIRMAR, e ela vem acima de tudo: enquanto não há data,
+            não há contador, e a única forma de saber quantos dias sobram é alguém ligar.
+            É a única coisa que passa na frente do cartão.
+            ───────────────────────────────────────────────────────────────────── */}
         <div className="space-y-5 lg:sticky lg:top-4">
           {lead.temPrazoCorrendo ? <BlocoPrazo lead={lead} aoSalvar={carregar} /> : null}
+          <CartaoDeQualidade detalhe={data} />
           <Acoes detalhe={data} aoSalvar={carregar} />
           <Retornos detalhe={data} aoSalvar={carregar} />
-          <Ficha lead={lead} aoSalvar={carregar} />
-          <Classificar detalhe={data} aoSalvar={carregar} />
+          <Recolhivel titulo="Editar ficha" ajuda="O que o agente errou, corrija aqui. A correção fica registrada.">
+            <Ficha lead={lead} aoSalvar={carregar} />
+          </Recolhivel>
+          <Recolhivel titulo="Reclassificar" ajuda="Trocar a leitura que o agente fez deste caso.">
+            <Classificar detalhe={data} aoSalvar={carregar} />
+          </Recolhivel>
           <LinhaDoTempo eventos={data.linhaDoTempo} />
         </div>
       </div>
     </div>
+  );
+}
+
+/* ───────────────────────── O cartão de qualidade ─────────────────────────── */
+
+/**
+ * O QUE ESTE CASO É, EM CINCO SEGUNDOS.
+ *
+ * Só leitura, sem um campo de formulário sequer, e sem rolagem. É a primeira coisa da
+ * lateral (só o prazo a confirmar passa na frente) porque é a pergunta que quem abre a
+ * tela está fazendo: quem é essa pessoa, o que ela quer, e isso é urgente?
+ *
+ * A ÚLTIMA LINHA É A QUE FALTAVA. Os campos sempre estiveram aqui, espalhados por três
+ * cartões; o que não existia era a CONCLUSÃO — e montar a conclusão lendo dez campos é
+ * trabalho que a tela deveria ter feito. Ver `porQueImporta`, em lib/domain/rotulos.ts.
+ */
+function CartaoDeQualidade({ detalhe }: { detalhe: Detalhe }) {
+  const { lead } = detalhe;
+  const nacionalidade = lead.nacionalidade ?? lead.clientType ?? null;
+  const onde =
+    lead.localizacao === "exterior"
+      ? `no exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}`
+      : lead.localizacao === "brasil"
+        ? `no Brasil${lead.region ? ` — ${lead.region}` : ""}`
+        : lead.region ?? null;
+  const prazo = lead.prazoDataLimite ? diasRestantes(lead.prazoDataLimite, new Date()) : null;
+  const motivo = porQueImporta({ ...lead, fichaFaltando: qualificacaoFaltando(lead).faltam });
+
+  const TOM: Record<typeof motivo.tom, string> = {
+    urgente: "border-ib-danger/30 bg-ib-danger/[0.06] text-ib-danger",
+    atencao: "border-ib-mar/25 bg-ib-bruma text-ib-carimbo",
+    neutro: "border-ib-line bg-ib-papel/60 text-ib-ink",
+    baixo: "border-ib-line bg-ib-papel/60 text-ib-slate",
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-2.5">
+        <ChipIdioma idioma={lead.idioma} />
+        <div className="min-w-0 flex-1">
+          <p
+            className={`truncate text-base font-semibold ${
+              lead.contactName ? "text-ib-ink" : "text-ib-slate"
+            }`}
+          >
+            {lead.contactName ?? AINDA_NAO}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-ib-slate">
+            {[nacionalidade, onde].filter(Boolean).join(" · ") || AINDA_NAO_AJUDA}
+          </p>
+        </div>
+        {prazo !== null ? <ContadorPrazo dias={prazo} faixa={faixaDoPrazo(prazo)} /> : null}
+      </div>
+
+      <p className="mt-3 text-sm leading-snug text-ib-ink">
+        {lead.objetivo?.trim() || lead.modalidadeProvavel?.trim() || (
+          <span className="text-ib-slate">Ainda não se sabe o que a pessoa procura.</span>
+        )}
+      </p>
+
+      {lead.classificacao ? (
+        <p className="mt-1.5 text-xs text-ib-slate">
+          {CLASSIFICACAO_LABEL[lead.classificacao]}
+          {lead.modalidadeProvavel && lead.objetivo
+            ? ` · ${lead.modalidadeProvavel}`
+            : ""}
+        </p>
+      ) : null}
+
+      <p className={`mt-3 rounded-lg border px-3 py-2 text-[13px] leading-snug ${TOM[motivo.tom]}`}>
+        {motivo.texto}
+      </p>
+    </Card>
+  );
+}
+
+/* ──────────────────────────────── Recolhível ─────────────────────────────── */
+
+/**
+ * O QUE NÃO PRECISA FICAR ABERTO.
+ *
+ * Um formulário aberto ocupa a lateral inteira e pede que você preencha — e na maior parte
+ * das vezes ninguém veio aqui para preencher nada, veio entender o caso. Recolhido, ele
+ * continua a uma tecla de distância e para de competir com a informação.
+ *
+ * `<details>` e não estado do React de propósito: o navegador já sabe abrir, fechar,
+ * responder ao teclado e anunciar isso para leitor de tela, e o conteúdo continua no DOM
+ * (então dá para achar pelo Ctrl+F).
+ */
+function Recolhivel({
+  titulo,
+  ajuda,
+  children,
+}: {
+  titulo: string;
+  ajuda?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group rounded-2xl border border-ib-line bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ib-mar">
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-ib-ink">{titulo}</span>
+          {ajuda ? <span className="mt-0.5 block text-xs text-ib-slate">{ajuda}</span> : null}
+        </span>
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-ib-slate transition group-open:rotate-90"
+        >
+          ›
+        </span>
+      </summary>
+      <div className="border-t border-ib-line">{children}</div>
+    </details>
   );
 }
 
@@ -520,13 +659,8 @@ function Ficha({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
   const mexeu = Object.keys(form).length > 0;
 
   return (
-    <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ib-ink">Ficha</h2>
-      <p className="mt-1 text-xs text-ib-slate">
-        O que o agente errou, corrija aqui. A correção fica registrada.
-      </p>
-
-      <div className="mt-3 space-y-3">
+    <div className="p-5">
+      <div className="space-y-3">
         <label className="block">
           <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
             Onde a pessoa está
@@ -633,7 +767,7 @@ function Ficha({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
       >
         {salvando ? "Salvando ficha…" : "Salvar ficha"}
       </button>
-    </Card>
+    </div>
   );
 }
 
@@ -664,9 +798,8 @@ function Classificar({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => 
   }
 
   return (
-    <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ib-ink">Classificação</h2>
-      <p className="mt-1 text-xs text-ib-slate">
+    <div className="p-5">
+      <p className="text-xs text-ib-slate">
         O agente classificou como{" "}
         <strong className="text-ib-ink">
           {lead.classificacaoIa ? CLASSIFICACAO_LABEL[lead.classificacaoIa] : "—"}
@@ -717,7 +850,7 @@ function Classificar({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => 
           ))}
         </ul>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -739,6 +872,10 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
   const [nota, setNota] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // O FORMULÁRIO COMEÇA FECHADO. Um campo de data aberto na lateral pede que você o
+  // preencha, e na maioria das vezes ninguém veio agendar nada — veio entender o caso.
+  // Os retornos JÁ agendados continuam à vista: aquilo é informação, não formulário.
+  const [agendando, setAgendando] = useState(false);
 
   async function agendar() {
     setSalvando(true);
@@ -755,6 +892,7 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
     }
     setQuando("");
     setNota("");
+    setAgendando(false);
     aoSalvar();
   }
 
@@ -796,9 +934,11 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
         </ul>
       ) : null}
 
+      {agendando ? (
       <div className="mt-3 space-y-2">
         <input
           type="date"
+          autoFocus
           value={quando}
           onChange={(e) => setQuando(e.target.value)}
           aria-label="Data do retorno"
@@ -819,7 +959,19 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
         >
           {salvando ? "Agendando retorno…" : "Agendar retorno"}
         </button>
+        <button
+          type="button"
+          onClick={() => setAgendando(false)}
+          className="w-full text-xs font-semibold text-ib-slate hover:underline"
+        >
+          Cancelar
+        </button>
       </div>
+      ) : (
+        <button type="button" onClick={() => setAgendando(true)} className={`${btnGhost} mt-3 w-full`}>
+          Agendar retorno
+        </button>
+      )}
     </Card>
   );
 }

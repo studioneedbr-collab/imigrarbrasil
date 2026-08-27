@@ -46,6 +46,17 @@ export interface LeadDaFila extends Lead {
   aguardandoHumanoDesde?: string | null;
   /** SLA da instância por onde a conversa entrou, em minutos de expediente. */
   slaMinutos?: number | null;
+  /**
+   * O QUE AINDA FALTA NA FICHA, em português, pronto para a tela.
+   *
+   * Calculado no servidor por `qualificacaoFaltando` (lib/agent/lead-capture.ts) e
+   * carregado junto com a fila. Fica aqui, e não no componente, por dois motivos: a regra
+   * de "ficha mínima" é a MESMA que segura o encaminhamento no atendimento, e duplicá-la
+   * no cliente seria o começo de duas definições de ficha completa; e importar o módulo
+   * de triagem inteiro num componente de cliente arrastaria as tabelas de nacionalidade
+   * para dentro do bundle do painel.
+   */
+  fichaFaltando?: string[];
 }
 
 /** O SLA da primeira resposta humana estourou neste caso? */

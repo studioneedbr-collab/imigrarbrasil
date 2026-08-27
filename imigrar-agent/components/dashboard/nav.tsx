@@ -55,6 +55,9 @@ const navGroups: NavGroup[] = [
       // problemas com duas causas. Ver o comentário em app/dashboard/falhas-llm/page.tsx.
       { href: "/dashboard/falhas-llm", label: "Falhas de LLM", icon: "bolt" },
       { href: "/simulate", label: "Simulador", icon: "external" },
+      // Onde o que foi ensaiado vai parar. A fila, o quadro e as métricas excluem ensaio
+      // de propósito — sem esta tela, ele não teria onde ser lido.
+      { href: "/dashboard/ensaios", label: "Ensaios", icon: "chat" },
     ],
   },
   {

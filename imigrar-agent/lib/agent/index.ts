@@ -5,7 +5,8 @@ import { computeLeadScore } from "@/lib/agent/lead-score";
 import { executeTool } from "@/lib/agent/tools";
 import { classifyRouting } from "@/lib/agent/routing-net";
 import { avaliarImpasse } from "@/lib/agent/anti-loop";
-import { avaliarTransferencia } from "@/lib/agent/transfer-gate";
+import { avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-gate";
+import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
@@ -221,7 +222,30 @@ export async function respondToConversation(
     temNome: !!knownLead?.contactName,
     ultimaMensagem: lastUserText,
   });
-  const blockTools = portao.liberado ? undefined : ["transferir_para_humano"];
+  // CONFIRMAÇÃO PENDENTE. O outro lado do mesmo portão: aqui não se pergunta se já há
+  // caso, e sim se a Ana pediu autorização para passar o contato e ainda não recebeu um
+  // sim. Ver lib/agent/transfer-gate.ts — e a conversa da Ana Rodríguez, em que "me llamo
+  // Ana Rodríguez, vivo en Boa Vista" foi lido como confirmação.
+  const ultimaRespostaDoAgente =
+    [...rawMsgs].reverse().find((m) => m.role === "assistant")?.content ?? "";
+  const confirmacao = avaliarConfirmacao({
+    ultimaRespostaDoAgente,
+    ultimaMensagem: lastUserText,
+    textoRecente: rawMsgs
+      .filter((m) => m.role === "user")
+      .slice(-3)
+      .map((m) => m.content)
+      .join("  "),
+  });
+
+  const blockTools =
+    portao.liberado && confirmacao.liberado ? undefined : ["transferir_para_humano"];
+
+  if (!confirmacao.liberado) {
+    systemPrompt +=
+      `\n\n════════ VOCÊ PEDIU CONFIRMAÇÃO E ELA AINDA NÃO DISSE SIM ════════\nA sua última mensagem perguntou se pode passar o contato dela. O que veio agora não é um sim — é outra coisa que ela quis contar. Resposta que não responde à pergunta não é confirmação, e silêncio sobre a pergunta muito menos.\nEntão: acolha o que ela acabou de dizer, aproveite o dado se ele serve para a ficha, e repita a pergunta uma vez, de leve, no fim da mensagem. NÃO encaminhe e, principalmente, NÃO escreva que já encaminhou nem que ela concordou — dizer que ela confirmou quando ela não confirmou é o tipo de frase que faz alguém parar de contar o que importa.\nSe aparecer prazo correndo, situação irregular, refúgio ou risco, aí você passa na hora, sem esperar resposta — e diz isso com todas as letras ("vou passar o seu caso agora"), nunca como se ela tivesse autorizado.`;
+  }
+
   if (!portao.liberado) {
     systemPrompt +=
       `\n\n════════ ANTES DE ENCAMINHAR, ATENDA ════════\nEsta conversa ainda não tem nada que exija um advogado (${portao.motivo}). Acolha, se apresente em uma linha e pergunte o que a pessoa precisa. Não diga que vai encaminhar e não prometa que "o time entra em contato" — ainda não há caso nenhum para encaminhar. Assim que aparecer caso concreto, prazo, irregularidade, refúgio ou pedido de valores, aí sim o encaminhamento é o certo.`;
@@ -347,16 +371,47 @@ export async function respondToConversation(
     buttons = undefined;
   }
 
-  if (!opts.sombra) await repo.addMessage(conversationId, "assistant", reply);
-
   // CHAMAR A TOOL NÃO É TER ENCAMINHADO. O portão de lib/agent/transfer-gate.ts recusa o
   // encaminhamento quando a conversa ainda não tem caso nenhum, e devolve `ok: false`.
   // Contar a CHAMADA marcava a conversa como "transferida" no painel sem ninguém ter sido
   // chamado: o atendente via um caso encaminhado que não existia no funil, e a Ana parava
   // de ser cobrada pelo atendimento que continuava só dela.
+  //
+  // Isto é lido ANTES de gravar a resposta porque o verificador de saída precisa saber o
+  // FATO: uma mensagem que diz "já passei o seu caso" sem encaminhamento nenhum deixa
+  // alguém aflito esperando um telefonema que ninguém agendou.
   const transferred = toolCalls.some(
     (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok !== false,
   );
+
+  // ─── O VERIFICADOR DE SAÍDA ───
+  //
+  // A última leitura antes de a mensagem sair. Corta duas coisas que o prompt proíbe e o
+  // modelo escreve assim mesmo, sempre por gentileza: o parecer sobre a situação da
+  // pessoa ("sua entrada ficou regular") e o anúncio de um encaminhamento que não houve.
+  // Ver lib/agent/verificador-de-saida.ts.
+  const revisao = revisarTurno(reply, {
+    idioma: idiomaDetectado ?? convBefore?.idioma,
+    encaminhou: transferred,
+  });
+  if (revisao.cortes.length) {
+    reply = revisao.texto;
+    // O CORTE NÃO PODE SER SILENCIOSO. Ele salva aquela mensagem; o registro é o que
+    // permite descobrir que o PROMPT está deixando isso passar com frequência — e prompt
+    // que deixa passar parecer é defeito, não azar.
+    console.warn(`[verificador] cortei ${revisao.cortes.length} frase(s) da resposta (conversa ${conversationId})`);
+    await repo
+      .registrarEventoOperacao({
+        tipo: "parecer_barrado",
+        conversationId,
+        detalhe: revisao.cortes.join(" ⁄ ").slice(0, 500),
+      })
+      .catch(() => {
+        // Registrar o corte não pode virar um segundo problema no meio do atendimento.
+      });
+  }
+
+  if (!opts.sombra) await repo.addMessage(conversationId, "assistant", reply);
   const desqualificado = toolCalls.some(
     (t) => t.name === "registrar_dados_lead" && (t.input as { stage?: string })?.stage === "desqualificado",
   );

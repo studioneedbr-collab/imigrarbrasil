@@ -51,6 +51,11 @@ export interface ContextoDeAtendimento {
   instancia: InstanciaParaDecisao | null;
   /** E-mail do atendente que assumiu esta conversa, se houver (NÍVEL 3). */
   conversaAssumidaPor?: string | null;
+  /**
+   * O AGENTE JÁ ENCAMINHOU ESTA CONVERSA ao time jurídico (`status: 'transferred'`,
+   * ninguém assumiu ainda). Também cala o agente — ver `decidirAtendimento`.
+   */
+  conversaJaEncaminhada?: boolean;
 }
 
 /**
@@ -94,6 +99,28 @@ export function decidirAtendimento(ctx: ContextoDeAtendimento): DecisaoDeAtendim
       nivel: "conversa",
       motivo: `${ctx.conversaAssumidaPor} assumiu esta conversa.`,
       aguardaHumano: false,
+    };
+  }
+
+  // ENCAMINHOU, CALOU. Este é o outro lado do nível 3, e ele faltava.
+  //
+  // Numa conversa real a Ana disse "ya pasé tu caso al equipo jurídico" e seguiu
+  // conversando por mais duas mensagens. Do lado de lá isso é ambíguo do pior jeito: a
+  // pessoa não sabe mais se está falando com o time jurídico ou não, e o que ela contar a
+  // partir dali — o detalhe do caso, a data da notificação — vai para alguém que não é
+  // advogado e pode nunca chegar a quem vai cuidar dela. Pior: cada resposta nova da Ana
+  // parece atendimento em andamento, e o caso deixa de PARECER que está esperando gente.
+  //
+  // Nada é descartado: a mensagem entra, aparece no painel e o relógio de primeira
+  // resposta humana continua correndo. O agente é que não fala mais. Ele volta quando um
+  // humano devolver a conversa a ele — `releaseConversation` põe o status em `active`.
+  if (ctx.conversaJaEncaminhada) {
+    return {
+      acao: "silencio",
+      nivel: "conversa",
+      motivo: "O agente já encaminhou esta conversa ao time jurídico e está em silêncio.",
+      // Teste nunca entra na fila de trabalho, aqui como em todo o resto.
+      aguardaHumano: ctx.instancia?.ambiente !== "teste",
     };
   }
 

@@ -2,9 +2,9 @@ import Link from "next/link";
 import AutoRefresh from "@/components/dashboard/auto-refresh";
 import { Card, Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import { LinhaDaFila } from "@/components/fila/linha";
-import { AvisoDeCorte, Paginacao } from "@/components/dashboard/paginacao";
-import { carregarFila } from "@/lib/fila/carregar";
-import { TETO_DE_CARGA, avaliarCorte, paginaDaBusca, paginar } from "@/lib/fila/paginacao";
+import { Paginacao } from "@/components/dashboard/paginacao";
+import { carregarFilaPaginada } from "@/lib/fila/carregar";
+import { POR_PAGINA, paginaDaBusca, paginaDoServidor } from "@/lib/fila/paginacao";
 import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 
@@ -78,13 +78,18 @@ export default async function FilaPage({
   searchParams?: { p?: string };
 }) {
   const agora = new Date();
-  const { fila, total } = await carregarFila(agora, { limite: TETO_DE_CARGA });
-  const corte = avaliarCorte(fila.aConfirmar.length + fila.correndo.length + fila.normal.length + fila.filtradas.length, total);
-
-  // SÓ O BLOCO 3 PAGINA. Os dois de prazo são pequenos por natureza e são exatamente o
-  // que não pode sumir atrás de um botão: quem tem defesa a protocolar não vai para a
-  // página 2.
-  const pagina = paginar(fila.normal, paginaDaBusca(searchParams?.p));
+  // SÓ O BLOCO 3 PAGINA, E A PAGINAÇÃO É DE VERDADE — o banco devolve os leads com prazo
+  // TODOS, sem teto, e uma página do resto. Antes isto era um teto de carga com um aviso
+  // amarelo dizendo "42 atendimentos mais recentes, de 43": os dois blocos de prazo
+  // dependiam de caber no teto, e o denominador contava a tabela inteira (com ensaio, com
+  // filtradas, com caso encerrado), então o aviso aparecia mesmo sem nada ter sido
+  // cortado. Quem tem defesa a protocolar não pode depender de caber numa página.
+  const numeroDaPagina = paginaDaBusca(searchParams?.p);
+  const { fila, totalNormal, totalFiltradas } = await carregarFilaPaginada(agora, {
+    pagina: numeroDaPagina,
+    porPagina: POR_PAGINA,
+  });
+  const pagina = paginaDoServidor(fila.normal, numeroDaPagina, POR_PAGINA, totalNormal);
 
   const vencidos = fila.correndo.filter((i) => i.faixa === "vencido").length;
   const criticos = fila.correndo.filter((i) => i.faixa === "critico").length;
@@ -97,8 +102,6 @@ export default async function FilaPage({
   return (
     <div className="space-y-6">
       <AutoRefresh seconds={30} />
-
-      <AvisoDeCorte corte={corte} />
 
       <PageHeader
         eyebrow="Fila de trabalho"
@@ -115,7 +118,7 @@ export default async function FilaPage({
             </Link>
             <Link href="/dashboard/filtradas" className={btnGhost}>
               <Icon name="search" className="h-4 w-4" />
-              Filtradas ({fila.filtradas.length})
+              Filtradas ({totalFiltradas})
             </Link>
             <Link href="/dashboard/metricas" className={btnGhost}>
               <Icon name="activity" className="h-4 w-4" />
@@ -191,10 +194,10 @@ export default async function FilaPage({
       {/* ── BLOCO 3 ── */}
       <Bloco
         titulo="Fila normal"
-        contagem={fila.normal.length}
+        contagem={totalNormal}
         descricao="Judicial primeiro; dentro de cada grupo, o mais parado no topo."
       >
-        {fila.normal.length === 0 ? (
+        {totalNormal === 0 ? (
           <Vazio>
             Nada esperando atendimento. Toda conversa com caso concreto ou já está com um
             responsável, ou foi fechada. Vale abrir <Link className="underline" href="/dashboard/filtradas">Filtradas</Link>{" "}

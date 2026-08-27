@@ -346,7 +346,14 @@ export interface AccessLogEntry {
  * áudios — quem clicava caía numa lista de transcrição. São dois problemas diferentes,
  * com duas causas diferentes, e agora com dois nomes e duas telas.
  */
-export type TipoEventoOperacao = "transcricao_falhou" | "llm_falhou" | "documento_falhou";
+export type TipoEventoOperacao =
+  | "transcricao_falhou"
+  | "llm_falhou"
+  | "documento_falhou"
+  // O verificador de saída cortou uma frase em que a Ana qualificava a situação da
+  // pessoa ("sua entrada está regular"). O corte salva aquela mensagem; o registro é o
+  // que permite descobrir que o PROMPT está deixando isso passar com frequência.
+  | "parecer_barrado";
 
 export interface EventoOperacao {
   id: string;

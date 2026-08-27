@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ChipIdioma } from "@/components/fila/linha";
-import { PRAZO_TIPO_LABEL, desde } from "@/lib/domain/rotulos";
+import { ChipIdioma, Nacionalidade } from "@/components/fila/linha";
+import { AINDA_NAO_AJUDA, PRAZO_TIPO_LABEL, desde, rotuloContato } from "@/lib/domain/rotulos";
 import {
   diasDoRelogio,
   diasRestantes,
@@ -22,25 +21,66 @@ import {
  * A cor forte continua sendo SÓ do prazo processual — aqui dentro também. O relógio do
  * caso usa o chip discreto, e o resto do card não usa cor nenhuma. Um quadro onde todo
  * card grita é um quadro onde nada é urgente.
+ *
+ * CLICAR ABRE UM RESUMO, NÃO A CONVERSA.
+ *
+ * Antes o card era um link para a página do caso, e sair do quadro para espiar um card
+ * custava duas navegações — ida e volta, com o quadro remontando no caminho. Só que no
+ * quadro ninguém está atendendo: está ORGANIZANDO, e organizar dez casos significa espiar
+ * dez casos. Quem quer mesmo entrar na conversa tem o botão no rodapé do resumo, que é
+ * uma navegação em vez de vinte.
  */
-export function CardDoAtendimento({ lead, agora }: { lead: LeadDaFila; agora: Date }) {
+export function CardDoAtendimento({
+  lead,
+  agora,
+  onAbrir,
+}: {
+  lead: LeadDaFila;
+  agora: Date;
+  /** Abre o resumo do lead. Sem ela o card é só leitura (usado fora do quadro). */
+  onAbrir?: (lead: LeadDaFila) => void;
+}) {
   const prazo = lead.prazoDataLimite ? diasRestantes(lead.prazoDataLimite, agora) : null;
   const relogio = relogioApertado(lead, agora) ? diasDoRelogio(lead, agora) : null;
 
+  const contato = rotuloContato(lead);
+
   return (
-    <article className="rounded-lg border border-ib-line bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+    <article
+      onClick={onAbrir ? () => onAbrir(lead) : undefined}
+      onKeyDown={
+        onAbrir
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onAbrir(lead);
+              }
+            }
+          : undefined
+      }
+      role={onAbrir ? "button" : undefined}
+      tabIndex={onAbrir ? 0 : undefined}
+      aria-label={onAbrir ? `Abrir o resumo de ${contato.texto}` : undefined}
+      className={`rounded-lg border border-ib-line bg-white p-3 text-left shadow-[0_1px_2px_rgba(16,24,40,0.04)] ${
+        onAbrir
+          ? "transition hover:border-ib-mar/40 hover:bg-ib-papel focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          : ""
+      }`}
+    >
       <div className="flex items-center gap-2">
         <ChipIdioma idioma={lead.idioma} />
-        <Link
-          href={`/dashboard/leads/${lead.id}`}
-          className="min-w-0 flex-1 truncate text-sm font-semibold text-ib-ink hover:underline"
+        <span
+          title={contato.conhecido ? contato.texto : AINDA_NAO_AJUDA}
+          className={`min-w-0 flex-1 truncate text-sm font-semibold ${
+            contato.conhecido ? "text-ib-ink" : "text-ib-slate"
+          }`}
         >
-          {lead.contactName ?? lead.whatsappNumber}
-        </Link>
+          {contato.texto}
+        </span>
       </div>
 
       <p className="mt-1 truncate text-xs text-ib-slate">
-        {lead.nacionalidade ?? lead.clientType ?? "Nacionalidade —"}
+        <Nacionalidade lead={lead} />
         {" · "}
         <span className="text-ib-carimbo">
           {lead.modalidadeProvavel ?? lead.objetivo ?? "Modalidade a definir"}

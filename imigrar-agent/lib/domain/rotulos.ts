@@ -71,3 +71,108 @@ export function desde(iso: string | null | undefined, agora: Date = new Date()):
   const m = Math.floor(d / 30);
   return `há ${m} ${m === 1 ? "mês" : "meses"}`;
 }
+
+// ─── O VAZIO TEM QUE SER LEGÍVEL ───
+//
+// Quase todo card do painel mostrava "??" no idioma e "Nacionalidade —" na nacionalidade,
+// e "Nacionalidade —" ainda saía cortado como "Nacionalidade..." por não caber na coluna.
+//
+// Os dois defeitos são o mesmo defeito: um campo vazio estava sendo desenhado como se
+// fosse um valor. "??" parece erro de sistema — quem lê pensa que o dado se perdeu, não
+// que a conversa tem duas mensagens e ainda não deu tempo de descobrir. A diferença muda
+// o que a pessoa faz em seguida: com "erro" ela vai conferir o sistema, com "ainda não
+// identificado" ela abre a conversa e pergunta.
+
+/** O que ocupa o lugar de um campo que a conversa ainda não revelou. */
+export const AINDA_NAO = "—";
+
+/** O título (tooltip) que explica o traço, para quem passa o mouse e quer saber. */
+export const AINDA_NAO_AJUDA = "Ainda não identificado nesta conversa";
+
+/** Nacionalidade em uma palavra, ou o traço. Nunca a palavra "Nacionalidade". */
+export function rotuloNacionalidade(
+  lead: { nacionalidade?: string | null; clientType?: string | null },
+): { texto: string; conhecida: boolean } {
+  const valor = (lead.nacionalidade ?? lead.clientType ?? "").trim();
+  return valor ? { texto: valor, conhecida: true } : { texto: AINDA_NAO, conhecida: false };
+}
+
+/** O nome do contato, ou o traço. "Contato sem nome" ocupava a linha inteira sem dizer nada. */
+export function rotuloContato(
+  lead: { contactName?: string | null; whatsappNumber?: string | null },
+): { texto: string; conhecido: boolean } {
+  const nome = (lead.contactName ?? "").trim();
+  if (nome) return { texto: nome, conhecido: true };
+  const numero = (lead.whatsappNumber ?? "").trim();
+  return numero ? { texto: numero, conhecido: false } : { texto: AINDA_NAO, conhecido: false };
+}
+
+// ─── POR QUE ESTE CASO IMPORTA (OU NÃO) ───
+//
+// A lateral do caso mostrava dez campos e nenhuma frase. Quem abria precisava ler campo
+// por campo e montar sozinho a conclusão — e a conclusão é sempre a mesma pergunta: isto
+// aqui é urgente, é trabalho normal, ou não é trabalho nosso?
+//
+// Uma linha, e ela vem da hierarquia que o resto do painel já usa: prazo processual acima
+// de tudo, depois o que tira o caso da fila (gratuidade, fora do escopo, sem caso
+// concreto), depois o relógio do caso, e por último o que falta para o time jurídico
+// conseguir pegar. Não é resumo do caso — o resumo tem o lugar dele. É o motivo.
+
+export type TomDoCaso = "urgente" | "atencao" | "neutro" | "baixo";
+
+export interface PorQueImporta {
+  texto: string;
+  tom: TomDoCaso;
+}
+
+export function porQueImporta(lead: {
+  temPrazoCorrendo?: boolean | null;
+  prazoDataLimite?: string | null;
+  prazoTipo?: PrazoTipo | null;
+  classificacao?: Classificacao | null;
+  intencao?: Intencao | null;
+  relogioDoCaso?: string | null;
+  fichaFaltando?: string[];
+}): PorQueImporta {
+  if (lead.temPrazoCorrendo || lead.prazoDataLimite) {
+    const que = lead.prazoTipo ? PRAZO_TIPO_LABEL[lead.prazoTipo].toLowerCase() : "prazo processual";
+    return {
+      tom: "urgente",
+      texto: lead.prazoDataLimite
+        ? `Há ${que} com data confirmada — este caso perde valor a cada dia parado.`
+        : `Há ${que} sinalizado e a data ainda não foi confirmada. Alguém precisa ligar hoje para descobrir quantos dias sobram.`,
+    };
+  }
+  if (lead.classificacao === "DPU") {
+    return {
+      tom: "baixo",
+      texto: "Perfil de gratuidade: foi encaminhado à Defensoria Pública da União, não ao time.",
+    };
+  }
+  if (lead.classificacao === "FORA_ESCOPO") {
+    return { tom: "baixo", texto: "Fora do escopo: outro país de destino ou outra área do direito." };
+  }
+  if (lead.classificacao === "CURIOSO") {
+    return { tom: "baixo", texto: "Perguntou sem caso concreto. Não ocupa a agenda do time." };
+  }
+  if (lead.intencao === "sozinho") {
+    return { tom: "baixo", texto: "Disse que prefere tocar o processo sozinha — quer orientação, não condução." };
+  }
+  if (lead.intencao === "sem_condicoes") {
+    return { tom: "baixo", texto: "Declarou não ter condições de pagar. O caminho aqui é a Defensoria." };
+  }
+  if (lead.relogioDoCaso?.trim()) {
+    return { tom: "atencao", texto: `O que pressiona o caso: ${lead.relogioDoCaso.trim()}` };
+  }
+  const faltam = lead.fichaFaltando ?? [];
+  if (faltam.length) {
+    return {
+      tom: "neutro",
+      texto: `Ficha incompleta: o time jurídico ainda não sabe ${faltam.slice(0, 2).join(" nem ")}.`,
+    };
+  }
+  if (lead.intencao === "contratar") {
+    return { tom: "atencao", texto: "Ficha completa e disse que quer o escritório conduzindo. Está pronto para o time." };
+  }
+  return { tom: "neutro", texto: "Ficha completa, sem prazo sinalizado. Trabalho normal da fila." };
+}

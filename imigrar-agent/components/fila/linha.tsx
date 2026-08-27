@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
-import { CLASSIFICACAO_LABEL, PRAZO_TIPO_LABEL, desde } from "@/lib/domain/rotulos";
+import {
+  AINDA_NAO,
+  AINDA_NAO_AJUDA,
+  CLASSIFICACAO_LABEL,
+  PRAZO_TIPO_LABEL,
+  desde,
+  rotuloNacionalidade,
+} from "@/lib/domain/rotulos";
 import {
   diasDoRelogio,
   relogioApertado,
@@ -31,18 +38,54 @@ const FAIXA_ESTILO: Record<FaixaPrazo, { pill: string; barra: string }> = {
   acompanhamento: { pill: "bg-slate-100 text-ib-slate", barra: "bg-slate-300" },
 };
 
+/**
+ * O CHIP DE IDIOMA.
+ *
+ * O vazio aqui era "??", e "??" parece erro de sistema: quem lê acha que o dado se
+ * perdeu, não que a conversa tem duas mensagens e ainda não deu tempo de saber. A
+ * diferença muda o que a pessoa faz em seguida — com "erro" ela vai conferir o sistema,
+ * com um traço ela abre a conversa. O traço leva o motivo no title e no leitor de tela,
+ * que é onde a explicação cabe sem ocupar a coluna.
+ */
 export function ChipIdioma({ idioma }: { idioma?: string | null }) {
   const nome = nomeDoIdioma(idioma);
   return (
     <span
-      title={nome ? `Conversa em ${nome}` : "Idioma ainda não detectado"}
+      title={nome ? `Conversa em ${nome}` : AINDA_NAO_AJUDA}
       className={`inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded px-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider ${
         idioma && idioma !== "pt"
           ? "bg-ib-bruma text-ib-carimbo ring-1 ring-inset ring-ib-mar/20"
           : "bg-slate-100 text-ib-slate"
       }`}
     >
-      {idioma ?? "??"}
+      {idioma ?? AINDA_NAO}
+      {idioma ? null : <span className="sr-only">Idioma ainda não identificado</span>}
+    </span>
+  );
+}
+
+/**
+ * A NACIONALIDADE, ou o traço.
+ *
+ * Antes o vazio era a palavra "Nacionalidade —", que não cabia na coluna e saía cortada
+ * como "Nacionalidade...". Um rótulo truncado é pior do que rótulo nenhum: ele parece um
+ * valor pela metade, e alguém vai abrir o caso só para descobrir que não havia nada ali.
+ */
+export function Nacionalidade({
+  lead,
+  className = "",
+}: {
+  lead: { nacionalidade?: string | null; clientType?: string | null };
+  className?: string;
+}) {
+  const { texto, conhecida } = rotuloNacionalidade(lead);
+  return (
+    <span
+      title={conhecida ? texto : AINDA_NAO_AJUDA}
+      className={`${className} ${conhecida ? "text-ib-ink" : "text-ib-slate"}`}
+    >
+      {texto}
+      {conhecida ? null : <span className="sr-only">Nacionalidade ainda não identificada</span>}
     </span>
   );
 }
@@ -124,11 +167,9 @@ export function LinhaDaFila({
         href={`/dashboard/leads/${lead.id}`}
         className="flex flex-col gap-2 px-4 py-3 transition hover:bg-ib-papel focus:outline-none focus-visible:bg-ib-bruma focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ib-mar sm:flex-row sm:items-start sm:gap-4 sm:pl-5"
       >
-        <div className="flex shrink-0 items-center gap-2 sm:w-[9.5rem]">
+        <div className="flex shrink-0 items-center gap-2 sm:w-[11.5rem]">
           <ChipIdioma idioma={lead.idioma} />
-          <span className="truncate text-sm font-semibold text-ib-ink">
-            {lead.nacionalidade ?? lead.clientType ?? "Nacionalidade —"}
-          </span>
+          <Nacionalidade lead={lead} className="truncate text-sm font-semibold" />
         </div>
 
         <div className="min-w-0 flex-1">

@@ -76,7 +76,7 @@ export const AGENT_TOOLS = [
   {
     name: "transferir_para_humano",
     description:
-      "Encaminha o atendimento para o TIME JURÍDICO (advogados) e avisa a equipe. Use sempre que a conversa virar caso concreto: processo em andamento, indeferimento, prazo correndo, situação irregular, refúgio, risco à pessoa, pedido de valores ou de falar com um advogado, aflição significativa, ou quando você não souber responder com segurança. AVISE E CONFIRME ANTES de chamar — a única exceção é risco imediato. Depois de chamar, CONTINUE na conversa.",
+      "Encaminha o atendimento para o TIME JURÍDICO (advogados) e avisa a equipe. Use sempre que a conversa virar caso concreto: processo em andamento, indeferimento, prazo correndo, situação irregular, refúgio, risco à pessoa, pedido de valores ou de falar com um advogado, aflição significativa, ou quando você não souber responder com segurança. AVISE E CONFIRME ANTES de chamar — a única exceção é risco imediato ou prazo processual correndo, e aí você avisa que está passando AGORA, sem dizer que ela confirmou. Depois de chamar você NÃO responde mais nesta conversa: a mensagem que acompanha esta tool é a sua última, então escreva-a como despedida.",
     input_schema: {
       type: "object",
       properties: {
