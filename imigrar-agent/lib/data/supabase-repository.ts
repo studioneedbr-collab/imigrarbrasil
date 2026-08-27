@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm } from "@/lib/domain/types";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm, FunilCrm, EtapaCrm } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
@@ -381,6 +381,7 @@ export class SupabaseRepository implements Repository {
       classificacao: patch.classificacao,
       atendimento_status: patch.atendimentoStatus, motivo_perda: patch.motivoPerda,
       responsavel_id: patch.responsavelId, assumido_em: patch.assumidoEm,
+      funil_id: patch.funilId, etapa_id: patch.etapaId,
     };
     Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
     return row;
@@ -647,6 +648,102 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  // ─── CRM: FUNIS E ETAPAS ───
+  //
+  // O banco pode ainda não ter a migration 026 (deploy em duas etapas, banco de um
+  // ambiente antigo). Nesse caso `listFunis` devolve LISTA VAZIA em vez de estourar, e a
+  // tela cai no funil padrão que vive em código: um CRM que não abre porque falta uma
+  // tabela é pior do que um CRM que abre com as cinco colunas de sempre.
+
+  private mapFunil(r: Record<string, any>): FunilCrm {
+    return {
+      id: r.id, nome: r.nome, descricao: r.descricao ?? null, ordem: r.ordem ?? 0,
+      padrao: !!r.padrao, arquivado: !!r.arquivado, criadoEm: r.criado_em,
+    };
+  }
+  private mapEtapa(r: Record<string, any>): EtapaCrm {
+    return {
+      id: r.id, funilId: r.funil_id, nome: r.nome, ajuda: r.ajuda ?? null,
+      status: r.status, ordem: r.ordem ?? 0, arquivada: !!r.arquivada,
+    };
+  }
+
+  async listFunis(): Promise<FunilCrm[]> {
+    const { data, error } = await this.db.from("crm_funis").select("*").order("ordem", { ascending: true });
+    if (error) {
+      console.error("[crm] não consegui listar funis (migration 026 aplicada?):", error.message);
+      return [];
+    }
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapFunil(r));
+  }
+
+  async criarFunil(f: { nome: string; descricao?: string | null; padrao?: boolean }): Promise<FunilCrm> {
+    const { count } = await this.db.from("crm_funis").select("id", { count: "exact", head: true });
+    // Um padrão só — o índice único do banco também barra, e aqui a gente evita o erro.
+    if (f.padrao) await this.db.from("crm_funis").update({ padrao: false }).eq("padrao", true);
+    const { data, error } = await this.db.from("crm_funis")
+      .insert({ nome: f.nome, descricao: f.descricao ?? null, padrao: !!f.padrao, ordem: count ?? 0 })
+      .select("*").single();
+    if (error) throw error;
+    return this.mapFunil(data);
+  }
+
+  async atualizarFunil(id: string, patch: Partial<FunilCrm>): Promise<FunilCrm> {
+    if (patch.padrao) await this.db.from("crm_funis").update({ padrao: false }).eq("padrao", true);
+    const row: Record<string, any> = {
+      nome: patch.nome, descricao: patch.descricao, ordem: patch.ordem,
+      padrao: patch.padrao, arquivado: patch.arquivado,
+    };
+    Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
+    const { data, error } = await this.db.from("crm_funis").update(row).eq("id", id).select("*").single();
+    if (error) throw error;
+    return this.mapFunil(data);
+  }
+
+  async excluirFunil(id: string): Promise<void> {
+    // `on delete set null` em leads e `on delete cascade` em crm_etapas fazem o resto: o
+    // caso continua no banco e volta a ser distribuído pelo status.
+    const { error } = await this.db.from("crm_funis").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  async listEtapas(funilId?: string): Promise<EtapaCrm[]> {
+    let q = this.db.from("crm_etapas").select("*").order("ordem", { ascending: true });
+    if (funilId) q = q.eq("funil_id", funilId);
+    const { data, error } = await q;
+    if (error) {
+      console.error("[crm] não consegui listar etapas:", error.message);
+      return [];
+    }
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapEtapa(r));
+  }
+
+  async criarEtapa(e: { funilId: string; nome: string; ajuda?: string | null; status: EtapaCrm["status"]; ordem?: number }): Promise<EtapaCrm> {
+    const { count } = await this.db.from("crm_etapas")
+      .select("id", { count: "exact", head: true }).eq("funil_id", e.funilId);
+    const { data, error } = await this.db.from("crm_etapas")
+      .insert({ funil_id: e.funilId, nome: e.nome, ajuda: e.ajuda ?? null, status: e.status, ordem: e.ordem ?? count ?? 0 })
+      .select("*").single();
+    if (error) throw error;
+    return this.mapEtapa(data);
+  }
+
+  async atualizarEtapa(id: string, patch: Partial<EtapaCrm>): Promise<EtapaCrm> {
+    const row: Record<string, any> = {
+      nome: patch.nome, ajuda: patch.ajuda, status: patch.status,
+      ordem: patch.ordem, arquivada: patch.arquivada,
+    };
+    Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
+    const { data, error } = await this.db.from("crm_etapas").update(row).eq("id", id).select("*").single();
+    if (error) throw error;
+    return this.mapEtapa(data);
+  }
+
+  async excluirEtapa(id: string): Promise<void> {
+    const { error } = await this.db.from("crm_etapas").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {
     // Falha de log não pode derrubar o atendimento: se a tabela ainda não existe (banco
     // sem a migration 019), o painel continua funcionando e o erro aparece no console.
@@ -706,6 +803,7 @@ export class SupabaseRepository implements Repository {
       classificacao: r.classificacao ?? null, classificacaoIa: r.classificacao_ia ?? null,
       atendimentoStatus: r.atendimento_status ?? "novo", motivoPerda: r.motivo_perda ?? null,
       responsavelId: r.responsavel_id ?? null, assumidoEm: r.assumido_em ?? null,
+      funilId: r.funil_id ?? null, etapaId: r.etapa_id ?? null,
       resgatadoEm: r.resgatado_em ?? null, resgatadoPor: r.resgatado_por ?? null,
     };
   }

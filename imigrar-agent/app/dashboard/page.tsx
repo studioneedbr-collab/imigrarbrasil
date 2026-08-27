@@ -112,7 +112,7 @@ export default async function FilaPage({
         description={descricao}
         actions={
           <>
-            <Link href="/dashboard/atendimentos" className={btnGhost}>
+            <Link href="/dashboard/crm" className={btnGhost}>
               <Icon name="check" className="h-4 w-4" />
               Quadro
             </Link>

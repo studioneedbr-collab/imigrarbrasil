@@ -245,6 +245,50 @@ export type AtendimentoStatus =
   | "fechado"
   | "perdido";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// O CRM: FUNIS E ETAPAS
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// O `atendimentoStatus` acima é do DOMÍNIO e continua sendo ele que manda: é o que a fila
+// lê, o que decide se um caso está encerrado, o que exige motivo quando vira "perdido" e o
+// que entra no log de acesso. Ele não se cria pela tela, e é isso que impede o painel de
+// virar uma planilha onde cada pessoa inventa o próprio vocabulário.
+//
+// O que se cria pela tela é a ETAPA — o nome que o escritório dá a um momento do trabalho
+// ("aguardando certidão consular", "protocolo enviado", "proposta com o cliente"). Cada
+// etapa APONTA para um dos cinco status: é essa amarração que deixa o time desenhar o
+// próprio quadro sem que a fila, os prazos e os relatórios percam o chão.
+//
+// O FUNIL é o conjunto de etapas. Existe mais de um porque "multa migratória correndo" e
+// "visto de trabalho para quem ainda está lá fora" não são o mesmo trabalho, e forçá-los
+// nas mesmas colunas transforma as duas em colunas que não descrevem nenhum dos dois.
+
+export interface FunilCrm {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  ordem: number;
+  /** O funil onde cai quem chega sem funil escolhido. Sempre existe exatamente um. */
+  padrao: boolean;
+  arquivado: boolean;
+  criadoEm: string;
+}
+
+export interface EtapaCrm {
+  id: string;
+  funilId: string;
+  nome: string;
+  /** A linha embaixo do título da coluna: o que significa um caso estar aqui. */
+  ajuda?: string | null;
+  /**
+   * O status do domínio por trás desta etapa. Mover um card para cá aplica a MESMA ação
+   * que o botão correspondente do detalhe — inclusive a exigência de motivo em "perdido".
+   */
+  status: AtendimentoStatus;
+  ordem: number;
+  arquivada: boolean;
+}
+
 /**
  * O que o agente preenche na conversa e o que o humano confirma depois.
  *
@@ -298,6 +342,14 @@ export interface LeadImigracao {
   classificacaoIa?: Classificacao | null;
 
   atendimentoStatus?: AtendimentoStatus;
+  /**
+   * Onde o caso está NO QUADRO — o funil e a etapa que o time desenhou. Nulo é o normal
+   * para quem acabou de chegar: o quadro mostra o caso na primeira etapa cujo status bate
+   * com o `atendimentoStatus`, e a etapa só passa a existir quando alguém move o card.
+   * Ver lib/crm/funil.ts.
+   */
+  funilId?: string | null;
+  etapaId?: string | null;
   motivoPerda?: string | null;
   responsavelId?: string | null;
   assumidoEm?: string | null;

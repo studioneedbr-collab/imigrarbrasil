@@ -61,13 +61,28 @@ export function montarKanban(leads: LeadDaFila[], agora: Date = new Date()): Col
 
   return COLUNAS.map((status) => {
     const leadsDaColuna = porStatus.get(status)!;
-    leadsDaColuna.sort(
-      DESFECHOS.includes(status)
-        ? (a, b) => ultimaAtividade(b) - ultimaAtividade(a)
-        : (a, b) => peso(b, agora) - peso(a, agora) || ultimaAtividade(a) - ultimaAtividade(b),
-    );
+    ordenarColuna(leadsDaColuna, status, agora);
     return { status, leads: leadsDaColuna };
   });
+}
+
+/**
+ * A ordem DENTRO de uma coluna, no lugar (mutando o array).
+ *
+ * Vive aqui e não no componente porque o quadro do CRM (lib/crm/funil.ts) monta colunas
+ * customizadas e precisa ordenar do MESMO jeito: uma etapa nova chamada "aguardando
+ * certidão" continua sendo trabalho, e trabalho se ordena por prazo.
+ */
+export function ordenarColuna(
+  leads: LeadDaFila[],
+  status: AtendimentoStatus,
+  agora: Date = new Date(),
+): void {
+  leads.sort(
+    DESFECHOS.includes(status)
+      ? (a, b) => ultimaAtividade(b) - ultimaAtividade(a)
+      : (a, b) => peso(b, agora) - peso(a, agora) || ultimaAtividade(a) - ultimaAtividade(b),
+  );
 }
 
 /** Prazo processual acima de relógio apertado, e os dois acima do resto. */

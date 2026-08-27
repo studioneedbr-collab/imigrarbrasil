@@ -33,7 +33,13 @@ export function semCamposDePrazo<T extends Partial<Lead>>(patch: T): T {
 // marcador na tela. Por isso o caminho do agente (`upsertLead`) a descarta, enquanto a
 // ficha (`updateLead`) grava normalmente: lá quem digita é gente.
 
-export const CAMPOS_SO_DE_HUMANO = ["relogioData"] as const;
+//
+// `funilId` e `etapaId` entram pelo mesmo motivo, de outro ângulo: onde o caso está no
+// quadro é uma decisão de quem atende. O agente escreve na ficha a cada mensagem que
+// chega — se ele pudesse mexer nisso, um card arrastado à mão para "aguardando certidão"
+// voltaria sozinho para a coluna anterior no próximo "oi" da pessoa.
+
+export const CAMPOS_SO_DE_HUMANO = ["relogioData", "funilId", "etapaId"] as const;
 
 export function semCamposSoDeHumano<T extends Partial<Lead>>(patch: T): T {
   const limpo = { ...patch };

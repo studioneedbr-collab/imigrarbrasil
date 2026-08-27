@@ -138,33 +138,31 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start">
         <Transcricao messages={data.messages} />
         {/* ─────────────────────────────────────────────────────────────────────
-            A LATERAL, EM TRÊS CAMADAS.
-            
-            Antes era uma pilha de formulários — prazo, atendimento, retornos, ficha com
-            campos soltos —, e quem abria a tela não conseguia entender o caso sem ler
-            campo por campo. Um formulário aberto pede que você preencha; o que a pessoa
-            precisa primeiro é ENTENDER.
-            
-            1. O cartão de qualidade, só leitura, legível em cinco segundos.
-            2. As ações, como botões.
-            3. A ficha completa, recolhida atrás de "Editar ficha".
-            
-            A EXCEÇÃO É O PRAZO A CONFIRMAR, e ela vem acima de tudo: enquanto não há data,
-            não há contador, e a única forma de saber quantos dias sobram é alguém ligar.
-            É a única coisa que passa na frente do cartão.
+            A LATERAL: UMA CABEÇA FIXA E UM PAINEL DE ABAS.
+
+            Antes era uma pilha — prazo, atendimento, retornos, ficha, reclassificação,
+            linha do tempo —, cada bloco empurrando o seguinte para fora da tela. Quem
+            precisava da linha do tempo rolava três telas de formulário para chegar nela, e
+            no caminho perdia de vista o que o caso era. Rolagem não é só desconforto: é
+            informação que deixa de existir enquanto você olha outra.
+
+            Agora o que responde "que caso é este e o que eu faço agora" NÃO ROLA:
+
+            1. O prazo a confirmar, quando há (a única coisa que passa na frente de tudo:
+               enquanto não há data, não há contador, e a única forma de saber quantos dias
+               sobram é alguém ligar).
+            2. O cartão de qualidade, só leitura, legível em cinco segundos.
+            3. As ações, como botões.
+
+            O RESTO VIRA ABA. Ficha, retornos, classificação e histórico ocupam o MESMO
+            espaço, um de cada vez, e a rolagem — quando sobra — acontece dentro do painel
+            em vez de arrastar a cabeça do caso para cima. Ver `PainelDoCaso`.
             ───────────────────────────────────────────────────────────────────── */}
-        <div className="space-y-5 lg:sticky lg:top-4">
+        <div className="space-y-4 lg:sticky lg:top-4">
           {lead.temPrazoCorrendo ? <BlocoPrazo lead={lead} aoSalvar={carregar} /> : null}
           <CartaoDeQualidade detalhe={data} />
           <Acoes detalhe={data} aoSalvar={carregar} />
-          <Retornos detalhe={data} aoSalvar={carregar} />
-          <Recolhivel titulo="Editar ficha" ajuda="O que o agente errou, corrija aqui. A correção fica registrada.">
-            <Ficha lead={lead} aoSalvar={carregar} />
-          </Recolhivel>
-          <Recolhivel titulo="Reclassificar" ajuda="Trocar a leitura que o agente fez deste caso.">
-            <Classificar detalhe={data} aoSalvar={carregar} />
-          </Recolhivel>
-          <LinhaDoTempo eventos={data.linhaDoTempo} />
+          <PainelDoCaso detalhe={data} aoSalvar={carregar} />
         </div>
       </div>
     </div>
@@ -244,44 +242,115 @@ function CartaoDeQualidade({ detalhe }: { detalhe: Detalhe }) {
   );
 }
 
-/* ──────────────────────────────── Recolhível ─────────────────────────────── */
+/* ───────────────────────────── O painel de abas ──────────────────────────── */
+
+type Aba = "ficha" | "retornos" | "classificacao" | "historico";
+
+const ABAS: { id: Aba; titulo: string; ajuda: string }[] = [
+  {
+    id: "ficha",
+    titulo: "Ficha",
+    ajuda: "O que o agente errou, corrija aqui. A correção fica registrada.",
+  },
+  {
+    id: "retornos",
+    titulo: "Retornos",
+    ajuda: "No dia marcado, este caso sobe para o topo de Meus atendimentos com a sua nota à vista.",
+  },
+  {
+    id: "classificacao",
+    titulo: "Classificação",
+    ajuda: "Trocar a leitura que o agente fez deste caso. Discordar aqui é o que o calibra.",
+  },
+  {
+    id: "historico",
+    titulo: "Histórico",
+    ajuda: "O que o time já fez neste caso, em ordem — não o que a pessoa disse.",
+  },
+];
 
 /**
- * O QUE NÃO PRECISA FICAR ABERTO.
+ * QUATRO PAINÉIS NO LUGAR DE UM.
  *
- * Um formulário aberto ocupa a lateral inteira e pede que você preencha — e na maior parte
- * das vezes ninguém veio aqui para preencher nada, veio entender o caso. Recolhido, ele
- * continua a uma tecla de distância e para de competir com a informação.
+ * Ficha, retornos, classificação e histórico não competem pela mesma atenção: quem abre a
+ * tela para entender o caso não veio preencher ficha, e quem veio corrigir a ficha não
+ * está lendo a linha do tempo. Empilhados, os quatro somavam três telas de rolagem e
+ * empurravam para fora da vista justamente a cabeça do caso — o cartão de qualidade e as
+ * ações, que são o que se olha o tempo todo.
  *
- * `<details>` e não estado do React de propósito: o navegador já sabe abrir, fechar,
- * responder ao teclado e anunciar isso para leitor de tela, e o conteúdo continua no DOM
- * (então dá para achar pelo Ctrl+F).
+ * A rolagem que sobra fica DENTRO do painel (`max-h` + `overflow-y-auto`): a ficha tem
+ * quinze campos e não há layout que a faça caber, mas rolar a ficha não deve custar o
+ * resto da tela.
+ *
+ * A aba com pendência avisa no rótulo — um retorno agendado é compromisso com data, e
+ * esconder isso atrás de uma aba fechada seria trocar rolagem por esquecimento.
  */
-function Recolhivel({
-  titulo,
-  ajuda,
-  children,
-}: {
-  titulo: string;
-  ajuda?: string;
-  children: React.ReactNode;
-}) {
+function PainelDoCaso({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }) {
+  const [aba, setAba] = useState<Aba>("ficha");
+  const pendentes = detalhe.lembretes.filter((l) => !l.feitoEm).length;
+  const atual = ABAS.find((a) => a.id === aba)!;
+
+  const contador: Partial<Record<Aba, number>> = {
+    retornos: pendentes,
+    historico: detalhe.linhaDoTempo.length,
+  };
+
   return (
-    <details className="group rounded-2xl border border-ib-line bg-white">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ib-mar">
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-ib-ink">{titulo}</span>
-          {ajuda ? <span className="mt-0.5 block text-xs text-ib-slate">{ajuda}</span> : null}
-        </span>
-        <span
-          aria-hidden="true"
-          className="shrink-0 text-ib-slate transition group-open:rotate-90"
-        >
-          ›
-        </span>
-      </summary>
-      <div className="border-t border-ib-line">{children}</div>
-    </details>
+    <Card className="overflow-hidden">
+      <div role="tablist" aria-label="Detalhes do caso" className="flex border-b border-ib-line bg-ib-papel/60">
+        {ABAS.map((a) => {
+          const ativa = a.id === aba;
+          const n = contador[a.id];
+          return (
+            <button
+              key={a.id}
+              type="button"
+              role="tab"
+              id={`aba-${a.id}`}
+              aria-selected={ativa}
+              aria-controls={`painel-${a.id}`}
+              onClick={() => setAba(a.id)}
+              className={`flex-1 border-b-2 px-2 py-2.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ib-mar ${
+                ativa
+                  ? "border-ib-mar bg-white text-ib-ink"
+                  : "border-transparent text-ib-slate hover:bg-white/60 hover:text-ib-ink"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1">
+                {a.titulo}
+                {n ? (
+                  <span
+                    className={`rounded-full px-1.5 font-mono text-[10px] tabular-nums ${
+                      a.id === "retornos" && pendentes > 0
+                        ? "bg-ib-mar/15 text-ib-carimbo"
+                        : "bg-ib-line/70 text-ib-slate"
+                    }`}
+                  >
+                    {n}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="border-b border-ib-line px-5 py-2 text-[11px] leading-snug text-ib-slate">
+        {atual.ajuda}
+      </p>
+
+      <div
+        role="tabpanel"
+        id={`painel-${aba}`}
+        aria-labelledby={`aba-${aba}`}
+        className="max-h-[calc(100vh-24rem)] min-h-[10rem] overflow-y-auto"
+      >
+        {aba === "ficha" ? <Ficha lead={detalhe.lead} aoSalvar={aoSalvar} /> : null}
+        {aba === "retornos" ? <Retornos detalhe={detalhe} aoSalvar={aoSalvar} /> : null}
+        {aba === "classificacao" ? <Classificar detalhe={detalhe} aoSalvar={aoSalvar} /> : null}
+        {aba === "historico" ? <LinhaDoTempo eventos={detalhe.linhaDoTempo} /> : null}
+      </div>
+    </Card>
   );
 }
 
@@ -393,6 +462,11 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
 
   const confirmado = !!lead.prazoDataLimite;
   const dias = lead.prazoDataLimite ? diasRestantes(lead.prazoDataLimite) : null;
+  // DEPOIS DE CONFIRMADO, O FORMULÁRIO SAI DA FRENTE. Enquanto não há data, ele é a coisa
+  // mais importante da tela; com a data gravada vira um contador de uma linha, e manter
+  // três campos abertos ali só empurrava o resto do caso para baixo.
+  const [ajustando, setAjustando] = useState(false);
+  const formVisivel = !confirmado || ajustando;
 
   async function confirmar() {
     setSalvando(true);
@@ -407,6 +481,7 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
       setErro((await r.json().catch(() => ({}))).error ?? "Não foi possível confirmar o prazo.");
       return;
     }
+    setAjustando(false);
     aoSalvar();
   }
 
@@ -429,12 +504,25 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
 
       <div className="space-y-3 p-5">
         {confirmado && dias !== null ? (
-          <div className="flex items-center gap-2">
-            <ContadorPrazo dias={dias} faixa={faixaDoPrazo(dias)} />
-            <span className="text-xs text-ib-slate">{PRAZO_TIPO_LABEL[lead.prazoTipo ?? "outro"]}</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <ContadorPrazo dias={dias} faixa={faixaDoPrazo(dias)} />
+              <span className="text-xs text-ib-slate">
+                {PRAZO_TIPO_LABEL[lead.prazoTipo ?? "outro"]} · {lead.prazoDataLimite}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAjustando((a) => !a)}
+              className="shrink-0 text-[11px] font-semibold text-ib-mar hover:underline"
+            >
+              {ajustando ? "cancelar" : "ajustar datas"}
+            </button>
           </div>
         ) : null}
 
+        {formVisivel ? (
+          <>
         <label className="block">
           <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
             Que prazo é este
@@ -486,8 +574,10 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
         {erro ? <p className="text-xs font-medium text-ib-danger">{erro}</p> : null}
 
         <button type="button" onClick={confirmar} disabled={salvando} className={`${btnPrimary} w-full`}>
-          {salvando ? "Confirmando prazo…" : "Confirmar prazo"}
+          {salvando ? "Confirmando prazo…" : confirmado ? "Regravar prazo" : "Confirmar prazo"}
         </button>
+          </>
+        ) : null}
       </div>
     </Card>
   );
@@ -523,15 +613,15 @@ function Acoes({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }
   const responsavel = detalhe.usuarios.find((u) => u.id === lead.responsavelId);
 
   return (
-    <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ib-ink">Atendimento</h2>
-      <p className="mt-1 text-xs text-ib-slate">
+    <Card className="p-4">
+      <p className="text-xs text-ib-slate">
+        <span className="font-semibold text-ib-ink">Atendimento · </span>
         {responsavel
-          ? `Com ${responsavel.nome} desde ${lead.assumidoEm ? fmtTime(lead.assumidoEm) : "—"}.`
-          : "Ninguém assumiu este atendimento ainda."}
+          ? `com ${responsavel.nome} desde ${lead.assumidoEm ? fmtTime(lead.assumidoEm) : "—"}`
+          : "ninguém assumiu ainda"}
       </p>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
         {/* O nome da ação se mantém do botão até a confirmação. */}
         <button
           type="button"
@@ -904,15 +994,13 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
   const pendentes = lembretes.filter((l) => !l.feitoEm);
 
   return (
-    <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ib-ink">Retornos</h2>
-      <p className="mt-1 text-xs leading-relaxed text-ib-slate">
-        No dia marcado, este caso sobe para o topo de <strong>Meus atendimentos</strong> com
-        a sua nota à vista.
-      </p>
+    <div className="p-5">
+      {pendentes.length === 0 && !agendando ? (
+        <p className="text-xs text-ib-slate">Nenhum retorno agendado para este caso.</p>
+      ) : null}
 
       {pendentes.length > 0 ? (
-        <ul className="mt-3 space-y-2">
+        <ul className="space-y-2">
           {pendentes.map((l) => (
             <li
               key={l.id}
@@ -972,7 +1060,7 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
           Agendar retorno
         </button>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -985,11 +1073,16 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
  * não responde isso: ela conta o que a PESSOA disse, não o que o time fez.
  */
 function LinhaDoTempo({ eventos }: { eventos: EventoDaLinha[] }) {
-  if (!eventos.length) return null;
+  if (!eventos.length) {
+    return (
+      <p className="p-5 text-xs text-ib-slate">
+        Nada registrado ainda além da chegada da conversa.
+      </p>
+    );
+  }
   return (
-    <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ib-ink">Linha do tempo</h2>
-      <ol className="mt-3 space-y-2.5 border-l border-ib-line pl-4">
+    <div className="p-5">
+      <ol className="space-y-2.5 border-l border-ib-line pl-4">
         {eventos.map((e, i) => (
           <li key={`${e.em}-${i}`} className="relative">
             <span
@@ -1007,6 +1100,6 @@ function LinhaDoTempo({ eventos }: { eventos: EventoDaLinha[] }) {
           </li>
         ))}
       </ol>
-    </Card>
+    </div>
   );
 }

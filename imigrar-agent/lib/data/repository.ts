@@ -2,7 +2,7 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
-  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
 } from "@/lib/domain/types";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
@@ -197,6 +197,25 @@ export interface Repository {
   criarLembrete(l: { leadId: string; quando: string; nota: string; autor: string }): Promise<Lembrete>;
   listLembretes(opts?: { leadId?: string; apenasPendentes?: boolean }): Promise<Lembrete[]>;
   concluirLembrete(id: string, quem: string): Promise<void>;
+
+  /**
+   * O CRM — os funis e as etapas que o escritório desenha.
+   *
+   * Nada aqui cria status: etapa aponta para um dos cinco `AtendimentoStatus`, e é o
+   * status que continua mandando na fila, no encerramento e na auditoria. Ver
+   * lib/crm/funil.ts.
+   *
+   * `excluirFunil` e `excluirEtapa` NÃO apagam caso nenhum: o lead volta a ser
+   * distribuído pelo status, que é o dado do domínio.
+   */
+  listFunis(): Promise<FunilCrm[]>;
+  criarFunil(f: { nome: string; descricao?: string | null; padrao?: boolean }): Promise<FunilCrm>;
+  atualizarFunil(id: string, patch: Partial<Pick<FunilCrm, "nome" | "descricao" | "ordem" | "padrao" | "arquivado">>): Promise<FunilCrm>;
+  excluirFunil(id: string): Promise<void>;
+  listEtapas(funilId?: string): Promise<EtapaCrm[]>;
+  criarEtapa(e: { funilId: string; nome: string; ajuda?: string | null; status: EtapaCrm["status"]; ordem?: number }): Promise<EtapaCrm>;
+  atualizarEtapa(id: string, patch: Partial<Pick<EtapaCrm, "nome" | "ajuda" | "status" | "ordem" | "arquivada">>): Promise<EtapaCrm>;
+  excluirEtapa(id: string): Promise<void>;
 
   /** Log de acesso e de exportação (LGPD): quem, o quê, quando. */
   registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">): Promise<void>;

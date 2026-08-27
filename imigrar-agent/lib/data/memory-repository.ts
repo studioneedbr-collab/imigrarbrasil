@@ -3,13 +3,14 @@ import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
-  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm,
+  ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
 } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { ambienteDaConversa } from "@/lib/domain/ambiente";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
+import { FUNIL_PADRAO, etapasPadrao } from "@/lib/crm/funil";
 import {
   conversaParaReaproveitar,
   normalizarTelefone,
@@ -37,6 +38,10 @@ export class MemoryRepository implements Repository {
   private instancias = new Map<string, ZapiInstancia>();
   private rascunhos: RascunhoAgente[] = [];
   private chamadas: ChamadaLlm[] = [];
+  // O CRM começa com o funil padrão já montado — em memória vale o mesmo motivo do banco
+  // (ver a migration 026): quadro sem coluna esconde todos os casos de uma vez.
+  private funis: FunilCrm[] = [{ ...FUNIL_PADRAO }];
+  private etapas: EtapaCrm[] = etapasPadrao();
 
   async getOrCreateConversation(whatsappNumber: string, contactName?: string): Promise<Conversation> {
     const existing = this.byNumber.get(whatsappNumber);
@@ -370,6 +375,71 @@ export class MemoryRepository implements Repository {
   async concluirLembrete(lembreteId: string, quem: string) {
     const l = this.lembretes.find((x) => x.id === lembreteId);
     if (l) { l.feitoEm = now(); l.feitoPor = quem; }
+  }
+
+  // ─── CRM: FUNIS E ETAPAS ───
+
+  async listFunis() {
+    return [...this.funis].sort((a, b) => a.ordem - b.ordem || a.criadoEm.localeCompare(b.criadoEm));
+  }
+  async criarFunil(f: { nome: string; descricao?: string | null; padrao?: boolean }) {
+    const funil: FunilCrm = {
+      id: id("funil"),
+      nome: f.nome,
+      descricao: f.descricao ?? null,
+      ordem: this.funis.length,
+      padrao: !!f.padrao,
+      arquivado: false,
+      criadoEm: now(),
+    };
+    // Um padrão só. Dois significaria metade dos casos novos caindo no quadro que a
+    // pessoa não está olhando.
+    if (funil.padrao) this.funis.forEach((x) => (x.padrao = false));
+    this.funis.push(funil);
+    return funil;
+  }
+  async atualizarFunil(funilId: string, patch: Partial<FunilCrm>) {
+    const f = this.funis.find((x) => x.id === funilId);
+    if (!f) throw new Error("Funil não encontrado.");
+    if (patch.padrao) this.funis.forEach((x) => (x.padrao = false));
+    Object.assign(f, patch);
+    return f;
+  }
+  async excluirFunil(funilId: string) {
+    this.funis = this.funis.filter((x) => x.id !== funilId);
+    this.etapas = this.etapas.filter((e) => e.funilId !== funilId);
+    // O caso não vai junto: volta a ser distribuído pelo status.
+    for (const l of Array.from(this.leads.values())) {
+      if (l.funilId === funilId) { l.funilId = null; l.etapaId = null; }
+    }
+  }
+  async listEtapas(funilId?: string) {
+    return this.etapas
+      .filter((e) => !funilId || e.funilId === funilId)
+      .sort((a, b) => a.ordem - b.ordem);
+  }
+  async criarEtapa(e: { funilId: string; nome: string; ajuda?: string | null; status: EtapaCrm["status"]; ordem?: number }) {
+    const etapa: EtapaCrm = {
+      id: id("etapa"),
+      funilId: e.funilId,
+      nome: e.nome,
+      ajuda: e.ajuda ?? null,
+      status: e.status,
+      ordem: e.ordem ?? this.etapas.filter((x) => x.funilId === e.funilId).length,
+      arquivada: false,
+    };
+    this.etapas.push(etapa);
+    return etapa;
+  }
+  async atualizarEtapa(etapaId: string, patch: Partial<EtapaCrm>) {
+    const e = this.etapas.find((x) => x.id === etapaId);
+    if (!e) throw new Error("Etapa não encontrada.");
+    Object.assign(e, patch);
+    return e;
+  }
+  async excluirEtapa(etapaId: string) {
+    this.etapas = this.etapas.filter((x) => x.id !== etapaId);
+    for (const l of Array.from(this.leads.values())) if (l.etapaId === etapaId) l.etapaId = null;
   }
 
   async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {

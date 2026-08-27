@@ -55,6 +55,13 @@ sem perceber.
      por onde se descobre que duas conversas são da mesma pessoa. Sem essa coluna a
      deduplicação por telefone não encontra nada e o contato volta a entrar duas vezes na
      fila. Ela já faz o backfill das conversas existentes.
+   - A `026_crm_funis.sql` é a do CRM: cria `crm_funis` e `crm_etapas`, acrescenta
+     `leads.funil_id` e `leads.etapa_id`, e insere o funil padrão com as cinco colunas de
+     sempre. Ela pode rodar DEPOIS do código sem estrago — a tela cai no funil padrão que
+     vive em código (`lib/crm/funil.ts`) e abre com as cinco colunas de antes —, mas nesse
+     estado o botão de desenhar etapas fica desligado, porque criar etapa num funil que
+     não existe no banco daria erro a cada clique. Sem ela, arrastar continua funcionando:
+     o que move o card é o `atendimento_status`, que não mudou.
    - A `019_fila_de_prazos.sql` é a que faz o painel virar fila de prazos: cria os campos
      de imigração, o log de acesso, a reclassificação e o CHECK que impede data de prazo
      sem o nome de quem confirmou. **Sem ela o painel abre, mas a fila vem vazia** — e
