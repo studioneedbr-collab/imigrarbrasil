@@ -21,11 +21,17 @@ sem perceber.
    - `service_role` secret → `SUPABASE_SERVICE_ROLE_KEY`
      (é a chave que ignora RLS. Nunca vai para o navegador — só para variável de servidor.)
 3. **SQL Editor** → rodar os arquivos de `supabase/migrations/` **em ordem numérica**,
-   do `001` ao `019`. Um por vez, conferindo que cada um termina sem erro.
+   do `001` até o último. Um por vez, conferindo que cada um termina sem erro.
    - `SETUP_COMPLETO.sql` é um consolidado antigo, da base que originou este código. Ignore: use as
      migrations numeradas.
    - A `017_rag_chunks.sql` cria a extensão `vector` e a função `buscar_chunks`. Se a
      extensão falhar, habilite `vector` em **Database → Extensions** e rode de novo.
+   - A `024_custo_e_vocabulario.sql` faz duas coisas que precisam existir ANTES do
+     código novo subir. Ela renomeia o tipo de evento `deepseek_falhou` para
+     `llm_falhou` (o CHECK antigo REJEITA o nome novo, e cada queda do modelo seria
+     descartada em silêncio — o registro nunca lança, então ninguém veria) e cria
+     `chamadas_llm`, de onde sai todo o custo. Sem ela o painel abre, a tela de falhas de
+     LLM fica vazia e o custo em Métricas fica zerado.
    - A `019_fila_de_prazos.sql` é a que faz o painel virar fila de prazos: cria os campos
      de imigração, o log de acesso, a reclassificação e o CHECK que impede data de prazo
      sem o nome de quem confirmou. **Sem ela o painel abre, mas a fila vem vazia** — e
@@ -86,7 +92,9 @@ seguro, não o produto.
 1. Conta em <https://platform.deepseek.com> e adicionar crédito.
 2. Criar API key → `DEEPSEEK_API_KEY`.
 
-**Conferir:** o painel em **Integrações** mostra o saldo da conta.
+**Conferir:** o painel em **Integrações** mostra o DeepSeek com a credencial
+**configurada**, e o botão *Testar conexão* devolve a latência da chamada. A chave em si
+nunca aparece ali, nem mascarada — nem no HTML, nem na resposta da API.
 
 ---
 
@@ -132,6 +140,9 @@ ao número aparece em **Conversas** em poucos segundos.
    - `AUTH_SECRET`: gerar com `openssl rand -base64 48`. Em produção o login falha alto
      se estiver vazio — de propósito.
    - `NEXT_PUBLIC_APP_URL`: a URL final, com o domínio já apontado.
+   - `USD_BRL`: a cotação usada para mostrar o custo em reais ao lado do dólar em
+     Métricas. Sem ela, o painel usa um padrão do código e AVISA na tela que a cotação
+     não foi escolhida — o número continua certo em dólar de qualquer forma.
 3. **Settings → Domains**: apontar o domínio e esperar o DNS.
 4. Os dois crons de follow-up já estão declarados em `vercel.json` e sobem sozinhos.
    Preencher `CRON_SECRET`.
