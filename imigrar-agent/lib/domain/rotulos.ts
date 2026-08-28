@@ -97,6 +97,20 @@ export function rotuloNacionalidade(
   return valor ? { texto: valor, conhecida: true } : { texto: AINDA_NAO, conhecida: false };
 }
 
+/**
+ * IDENTIFICADOR TÉCNICO NÃO É NOME DE PESSOA.
+ *
+ * O número do WhatsApp serve de nome provisório enquanto ninguém sabe como a pessoa se
+ * chama — um telefone é reconhecível, dá para ligar. Mas as conversas de ensaio e de
+ * roteiro não têm telefone: têm `sim:v2-28`, `cand:3`, `fb:12`. Isso aparecia no painel
+ * exatamente onde vai o nome, inclusive nas iniciais do avatar ("SI", "CA"), e lê-se como
+ * dado corrompido. Um traço é mais honesto: diz que o nome ainda não se sabe, em vez de
+ * inventar um que ninguém reconhece.
+ */
+function ehIdentificadorTecnico(valor: string): boolean {
+  return valor.includes(":");
+}
+
 /** O nome do contato, ou o traço. "Contato sem nome" ocupava a linha inteira sem dizer nada. */
 export function rotuloContato(
   lead: { contactName?: string | null; whatsappNumber?: string | null },
@@ -104,7 +118,10 @@ export function rotuloContato(
   const nome = (lead.contactName ?? "").trim();
   if (nome) return { texto: nome, conhecido: true };
   const numero = (lead.whatsappNumber ?? "").trim();
-  return numero ? { texto: numero, conhecido: false } : { texto: AINDA_NAO, conhecido: false };
+  if (!numero || ehIdentificadorTecnico(numero)) {
+    return { texto: AINDA_NAO, conhecido: false };
+  }
+  return { texto: numero, conhecido: false };
 }
 
 // ─── POR QUE ESTE CASO IMPORTA (OU NÃO) ───

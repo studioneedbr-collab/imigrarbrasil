@@ -62,6 +62,7 @@ function usePosicaoFlutuante(
   ancora: React.RefObject<HTMLElement>,
   aberto: boolean,
   alturaEstimada: number,
+  larguraMinima = 0,
 ): PosicaoFlutuante | null {
   const [pos, setPos] = useState<PosicaoFlutuante | null>(null);
 
@@ -71,13 +72,19 @@ function usePosicaoFlutuante(
     const r = el.getBoundingClientRect();
     const abaixo = window.innerHeight - r.bottom;
     const acima = abaixo < Math.min(alturaEstimada, 240) && r.top > abaixo;
+    // O painel costuma ser mais largo que o campo (a lista mostra a linha de ajuda, o
+    // calendário tem sete colunas). Num campo encostado na direita — a ficha vive numa
+    // coluna estreita à direita da tela — essa sobra saía pela borda da janela, e a
+    // última coluna de dias ficava fora do alcance. Encosta na margem em vez de vazar.
+    const largura = Math.max(r.width, larguraMinima);
+    const limite = window.innerWidth - largura - ESPACO * 2;
     setPos({
       top: acima ? r.top - ESPACO : r.bottom + ESPACO,
-      left: r.left,
-      width: r.width,
+      left: Math.max(ESPACO * 2, Math.min(r.left, limite)),
+      width: largura,
       acima,
     });
-  }, [ancora, alturaEstimada]);
+  }, [ancora, alturaEstimada, larguraMinima]);
 
   useLayoutEffect(() => {
     if (!aberto) {
@@ -98,12 +105,12 @@ function usePosicaoFlutuante(
 }
 
 /** O estilo do painel preso ao <body>, já virado para cima quando foi o caso. */
-function estiloFlutuante(pos: PosicaoFlutuante, larguraMinima?: number): React.CSSProperties {
+function estiloFlutuante(pos: PosicaoFlutuante): React.CSSProperties {
   return {
     position: "fixed",
     top: pos.top,
     left: pos.left,
-    width: larguraMinima ? Math.max(pos.width, larguraMinima) : pos.width,
+    width: pos.width,
     transform: pos.acima ? "translateY(-100%)" : undefined,
   };
 }
@@ -156,7 +163,7 @@ export function Selecao<T extends string>({
   const indiceAtual = Math.max(0, opcoes.findIndex((o) => o.valor === valor));
   const gatilho = useRef<HTMLButtonElement>(null);
   // ~56px por opção (rótulo + a linha de ajuda), limitado pelo max-h da lista.
-  const pos = usePosicaoFlutuante(gatilho, aberto, Math.min(opcoes.length * 56 + 8, 288));
+  const pos = usePosicaoFlutuante(gatilho, aberto, Math.min(opcoes.length * 56 + 8, 288), 220);
 
   useEffect(() => {
     if (!aberto) return;
@@ -236,7 +243,7 @@ export function Selecao<T extends string>({
           ? createPortal(
           <ul
             ref={lista}
-            style={estiloFlutuante(pos, 220)}
+            style={estiloFlutuante(pos)}
             role="listbox"
             tabIndex={-1}
             aria-activedescendant={`${id}-op-${marcado}`}
@@ -393,7 +400,7 @@ export function CampoData({
   const painel = useRef<HTMLDivElement>(null);
   // Mesma razão da lista de seleção: o calendário é preso ao <body> para não ser cortado
   // pelo `overflow` da ficha, que rola por dentro. ~320px é a altura do calendário cheio.
-  const pos = usePosicaoFlutuante(caixa, aberto, 320);
+  const pos = usePosicaoFlutuante(caixa, aberto, 320, 256);
   /** O último valor que ESTE campo emitiu — ver o efeito abaixo. */
   const emitido = useRef<string | null | undefined>(valor);
 
@@ -528,7 +535,7 @@ export function CampoData({
           ? createPortal(
           <div
             ref={painel}
-            style={estiloFlutuante(pos, 256)}
+            style={estiloFlutuante(pos)}
             className="z-[60] rounded-xl border border-ib-line bg-white p-3 shadow-lg"
           >
             <div className="flex items-center justify-between">

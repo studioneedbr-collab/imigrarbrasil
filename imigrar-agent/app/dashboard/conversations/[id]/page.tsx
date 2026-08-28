@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, Lead, Message, TransferTicket, Urgency } from "@/lib/domain/types";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
+import { rotuloContato } from "@/lib/domain/rotulos";
 import RascunhoSombra, { type RascunhoView } from "@/components/agente/rascunho-sombra";
 import { QualidadeDoLead } from "@/components/atendimentos/qualidade";
 import { Selecao } from "@/components/dashboard/campos";
@@ -315,7 +316,21 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const transferTickets = data.transferTickets ?? [];
   const rascunhos = data.rascunhos ?? [];
   const transferTicket = transferTickets[0] ?? null;
-  const title = conversation.contactName ?? conversation.whatsappNumber;
+  /*
+   * O NOME VEM DO LEAD PRIMEIRO.
+   *
+   * A conversa só sabe o nome quando o WhatsApp manda `senderName`; quem escreve pela
+   * primeira vez, ou entra pelo simulador, chega sem ele. O NOME de verdade é o que a Ana
+   * extraiu durante o atendimento, e esse mora no lead — a lateral desta mesma página já
+   * lia de lá, só o cabeçalho e o avatar é que não. Sem isto, o título da conversa era o
+   * identificador cru (`sim:v2-28`, `cand:3`) e as iniciais do avatar viravam "SI"/"CA".
+   * A mesma precedência que o webhook e a transferência já praticam.
+   */
+  const contato = rotuloContato({
+    contactName: lead?.contactName ?? conversation.contactName,
+    whatsappNumber: conversation.whatsappNumber,
+  });
+  const title = contato.texto;
 
   // A lista do que falta NÃO mora mais aqui: é a ficha mínima do domínio
   // (lib/domain/ficha.ts), lida pelo bloco de qualidade. Uma definição só, para a
@@ -351,7 +366,9 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
       <PageHeader
         eyebrow="Conversa ao vivo"
         title={title}
-        description={conversation.contactName ? conversation.whatsappNumber : undefined}
+        // O número só vira subtítulo quando o título é um nome de verdade; senão a mesma
+        // informação apareceria duas vezes.
+        description={contato.conhecido ? conversation.whatsappNumber : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge kind="conversation" status={conversation.status} />
@@ -385,8 +402,14 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
         {/* LEFT — live chat */}
         <Card className="flex h-[calc(100vh-15rem)] min-h-[440px] flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-ib-line px-5 py-4">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-ib-bruma font-mono text-sm font-semibold text-ib-mar">
-              {title.slice(0, 2).toUpperCase()}
+            {/* Iniciais só quando há nome. Sem isso o avatar carimbava "SI"/"CA" — as
+                duas primeiras letras de `sim:` e `cand:` — como se fossem as iniciais de
+                alguém. */}
+            <span
+              title={contato.conhecido ? title : "Nome ainda não identificado"}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-ib-bruma font-mono text-sm font-semibold text-ib-mar"
+            >
+              {contato.conhecido ? title.slice(0, 2).toUpperCase() : "—"}
             </span>
             <div className="min-w-0">
               <p className="truncate font-semibold text-ib-ink">{title}</p>
