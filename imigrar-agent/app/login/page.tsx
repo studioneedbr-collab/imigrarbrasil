@@ -31,7 +31,9 @@ function LoginView() {
   // Next ainda buscava o dashboard — era isso que dava a sensação de travamento.
   const [phase, setPhase] = useState<"idle" | "checking" | "entering">("idle");
   const [shakeKey, setShakeKey] = useState(0);
+  const [demorando, setDemorando] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
+  const resgate = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const busy = phase !== "idle";
 
@@ -41,6 +43,12 @@ function LoginView() {
     router.prefetch(next);
     emailRef.current?.focus();
   }, [router, next]);
+
+  // Limpa o resgate se a página sair antes de ele disparar (o caso normal: a navegação
+  // deu certo e este componente desmontou).
+  useEffect(() => () => {
+    if (resgate.current) clearTimeout(resgate.current);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,6 +72,28 @@ function LoginView() {
       setPhase("entering");
       router.replace(next); // replace: o botão "voltar" não devolve à tela de login
       router.refresh();
+
+      /*
+       * O RESGATE — POR QUE ESTA TELA NÃO PODE MAIS FICAR CARREGANDO PARA SEMPRE.
+       *
+       * `router.replace()` é uma navegação suave: o Next busca o RSC do destino e, se
+       * essa busca falhar (o painel devolveu 500, a rede caiu, o deploy está no ar pela
+       * metade), ele ABANDONA a navegação em silêncio. Não lança, não devolve promessa,
+       * não avisa. Aqui isso virava o pior estado possível: a senha estava certa, o
+       * cookie estava gravado, e a pessoa ficava olhando "Carregando seu painel…" sem
+       * fim, sem erro e sem saída. Foi exatamente esse o sintoma relatado.
+       *
+       * Passados 4 segundos sem sair do /login, trocamos para uma navegação DURA. Ela
+       * não depende do roteador do cliente: o navegador pede a página inteira, manda o
+       * cookie e o middleware decide. Se o painel estiver de pé, entra; se estiver
+       * quebrado, aparece a página de erro — que é informação, e não uma espera eterna.
+       */
+      setDemorando(false);
+      if (resgate.current) clearTimeout(resgate.current);
+      resgate.current = setTimeout(() => {
+        setDemorando(true);
+        window.location.assign(next);
+      }, 4000);
     } catch {
       setError("Falha de conexão. Verifique sua internet e tente de novo.");
       setShakeKey((k) => k + 1);
@@ -221,7 +251,17 @@ function LoginView() {
               </span>
             </span>
             <p className="text-sm font-medium text-ib-ink">Acesso liberado</p>
-            <p className="text-xs text-ib-slate">Carregando seu painel…</p>
+            <p className="text-xs text-ib-slate">
+              {demorando ? "Está demorando. Abrindo o painel direto…" : "Carregando seu painel…"}
+            </p>
+            {/* Saída manual, sempre visível. Mesmo com o resgate automático, quem está com
+                pressa não deveria depender de um cronômetro para conseguir entrar. */}
+            <a
+              href={next}
+              className="text-xs font-medium text-ib-mar underline underline-offset-2 hover:text-ib-casa"
+            >
+              Abrir o painel agora
+            </a>
           </div>
         </div>
       )}

@@ -114,7 +114,9 @@ export default async function FilaPage({
           <>
             <Link href="/dashboard/crm" className={btnGhost}>
               <Icon name="check" className="h-4 w-4" />
-              Quadro
+              {/* "Quadro" era o nome antigo da tela. O menu já diz CRM, e um mesmo destino
+                  com dois nomes obriga a pessoa a clicar para descobrir que é o mesmo lugar. */}
+              CRM
             </Link>
             <Link href="/dashboard/filtradas" className={btnGhost}>
               <Icon name="search" className="h-4 w-4" />

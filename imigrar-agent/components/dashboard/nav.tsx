@@ -5,7 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/dashboard/ui";
 
-type NavLink = { href: string; label: string; icon: IconName; adminOnly?: boolean };
+type NavLink = {
+  href: string;
+  label: string;
+  icon: IconName;
+  adminOnly?: boolean;
+  /** A linha embaixo do nome. Diz o que a tela É, não o que ela faz. */
+  nota?: string;
+};
 type NavGroup = { section: string | null; links: NavLink[] };
 
 /**
@@ -21,25 +28,65 @@ type NavGroup = { section: string | null; links: NavLink[] };
  * time economizado, e não faturamento.
  */
 const navGroups: NavGroup[] = [
+  /*
+   * AS SEÇÕES TÊM NOME, E CADA ITEM DIZ O QUE É.
+   *
+   * O menu era um bloco sem título seguido de "Atendimento", e as duas primeiras telas
+   * — Fila e Conversas — não se distinguiam pelo nome. A pergunta que aparecia era
+   * literal: "Fila, Meus atendimentos, Conversas: não sei o que é o quê". As três são
+   * recortes do MESMO dado, e é isso que a linha embaixo do nome precisa dizer:
+   *
+   *   Fila       o que vence primeiro, para todo o time
+   *   Meus       o mesmo recorte, só o que é seu
+   *   Conversas  toda mensagem que entrou, inclusive o que não virou caso
+   *
+   * Quem chega para trabalhar abre a primeira seção. As outras duas são manutenção do
+   * agente e gestão — coisas que se abre de vez em quando, não o dia inteiro.
+   */
   {
-    section: null,
+    section: "Trabalho de hoje",
     links: [
-      { href: "/dashboard", label: "Fila", icon: "bolt" },
-      { href: "/dashboard/meus", label: "Meus atendimentos", icon: "check" },
-  { href: "/dashboard/crm", label: "CRM", icon: "activity" },
+      { href: "/dashboard", label: "Fila", icon: "bolt", nota: "o que vence primeiro" },
+      {
+        href: "/dashboard/meus",
+        label: "Meus atendimentos",
+        icon: "check",
+        nota: "os casos que são seus",
+      },
+      { href: "/dashboard/crm", label: "CRM", icon: "activity", nota: "o funil, por etapa" },
     ],
   },
   {
-    section: "Atendimento",
+    section: "Conversas",
     links: [
-      { href: "/dashboard/conversations", label: "Conversas", icon: "chat" },
+      {
+        href: "/dashboard/conversations",
+        label: "Conversas",
+        icon: "chat",
+        nota: "tudo que entrou no WhatsApp",
+      },
       // Auditoria do que o agente descartou. Fica no menu, e não escondida numa aba,
       // porque um agente que filtra demais só é descoberto por quem revisa isto.
-      { href: "/dashboard/filtradas", label: "Filtradas", icon: "search" },
-      { href: "/dashboard/documentos", label: "Documentos", icon: "doc" },
+      {
+        href: "/dashboard/filtradas",
+        label: "Filtradas",
+        icon: "search",
+        nota: "o que o agente descartou",
+      },
+      {
+        href: "/dashboard/documentos",
+        label: "Documentos",
+        icon: "doc",
+        nota: "anexos recebidos",
+      },
       // Um áudio não transcrito é um lead perdido. Fica no menu, e não escondido numa
       // aba, porque essa perda não avisa que aconteceu.
-      { href: "/dashboard/audios", label: "Falhas de transcrição", icon: "pulse" },
+      {
+        href: "/dashboard/audios",
+        label: "Falhas de transcrição",
+        icon: "pulse",
+        nota: "áudios que não foram lidos",
+      },
     ],
   },
   {
@@ -49,8 +96,13 @@ const navGroups: NavGroup[] = [
       // comportamento da Ana precisa primeiro ver o comportamento que existe — metade
       // dos pedidos de "muda o prompt" some quando se descobre que a decisão não é do
       // prompt, é de um portão em código.
-      { href: "/dashboard/mapa", label: "Mapa do atendimento", icon: "activity" },
-      { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear" },
+      {
+        href: "/dashboard/mapa",
+        label: "Mapa do atendimento",
+        icon: "activity",
+        nota: "o que a Ana decide, e onde",
+      },
+      { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear", nota: "o que ela sabe" },
       // A fila de sombra. Fica no menu, e não escondida dentro das conversas, porque na
       // fase de testes ela é o trabalho: cada rascunho ali é uma resposta esperando um
       // "podia ter saído?" — e uma pessoa do outro lado esperando alguém decidir.
@@ -69,9 +121,26 @@ const navGroups: NavGroup[] = [
   {
     section: "Gestão",
     links: [
-      { href: "/dashboard/metricas", label: "Métricas", icon: "activity" },
-      { href: "/dashboard/acesso", label: "Acesso e retenção", icon: "shield", adminOnly: true },
-      { href: "/dashboard/users", label: "Usuários", icon: "users", adminOnly: true },
+      {
+        href: "/dashboard/metricas",
+        label: "Métricas",
+        icon: "activity",
+        nota: "tempo do time economizado",
+      },
+      {
+        href: "/dashboard/acesso",
+        label: "Acesso e retenção",
+        icon: "shield",
+        adminOnly: true,
+        nota: "quem viu o quê",
+      },
+      {
+        href: "/dashboard/users",
+        label: "Usuários",
+        icon: "users",
+        adminOnly: true,
+        nota: "quem entra no painel",
+      },
     ],
   },
 ];
@@ -138,7 +207,7 @@ export default function DashboardNav() {
                   key={link.href}
                   href={link.href}
                   aria-current={active ? "page" : undefined}
-                  className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  className={`relative flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                     active
                       ? "bg-ib-selo/15 text-white ring-1 ring-inset ring-ib-selo/25"
                       : "text-white/70 hover:bg-white/[0.07] hover:text-white"
@@ -151,7 +220,20 @@ export default function DashboardNav() {
                     name={link.icon}
                     className={`h-[18px] w-[18px] shrink-0 ${active ? "text-ib-selo" : ""}`}
                   />
-                  <span>{link.label}</span>
+                  {/* No celular o menu vira uma fileira horizontal de chips: a nota não
+                      cabe ali e some. No rail, ela é o que responde "o que é isto?". */}
+                  <span className="min-w-0">
+                    <span className="block truncate">{link.label}</span>
+                    {link.nota ? (
+                      <span
+                        className={`hidden truncate text-[11px] font-normal leading-tight md:block ${
+                          active ? "text-white/60" : "text-white/40"
+                        }`}
+                      >
+                        {link.nota}
+                      </span>
+                    ) : null}
+                  </span>
                 </Link>
               );
             })}

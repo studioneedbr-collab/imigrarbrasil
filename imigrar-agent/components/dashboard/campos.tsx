@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * OS CAMPOS DO SISTEMA — seleção e data, sem controle nativo do navegador.
@@ -25,6 +26,87 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 const campoBase =
   "w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-left text-sm text-ib-ink transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar disabled:cursor-not-allowed disabled:bg-ib-papel disabled:text-ib-slate";
+
+/*
+ * ─── POR QUE A LISTA E O CALENDÁRIO SAEM DO FLUXO DA PÁGINA ───
+ *
+ * Os dois eram `position: absolute` dentro do próprio campo. Isso funciona até o campo
+ * cair dentro de um contêiner que corta o que transborda — e no painel do caso ele cai:
+ * o cartão das abas é `overflow-hidden` e o miolo é `overflow-y-auto` (a ficha tem quinze
+ * campos e precisa rolar por dentro). O resultado era a lista de classificação aparecendo
+ * cortada na borda do cartão, com as últimas opções inalcançáveis, e o calendário
+ * espremido do mesmo jeito. Nenhum `z-index` resolve: recorte não é ordem de camada.
+ *
+ * A saída é tirar o painel flutuante da árvore visual e prendê-lo ao <body>, posicionado
+ * em coordenadas de tela a partir do campo. Aí nenhum contêiner acima consegue cortá-lo —
+ * vale para o painel do caso, para o quadro do CRM e para dentro dos modais, sem que cada
+ * tela precise saber disso.
+ */
+
+interface PosicaoFlutuante {
+  top: number;
+  left: number;
+  width: number;
+  /** True quando não coube abaixo e o painel foi virado para cima do campo. */
+  acima: boolean;
+}
+
+const ESPACO = 4;
+
+/**
+ * Segue o campo na tela: recalcula ao abrir, ao rolar (em qualquer contêiner, por isso o
+ * listener é de captura) e ao redimensionar. Sem isso, rolar a ficha deixaria a lista
+ * parada no ar, longe do campo que a abriu.
+ */
+function usePosicaoFlutuante(
+  ancora: React.RefObject<HTMLElement>,
+  aberto: boolean,
+  alturaEstimada: number,
+): PosicaoFlutuante | null {
+  const [pos, setPos] = useState<PosicaoFlutuante | null>(null);
+
+  const medir = useCallback(() => {
+    const el = ancora.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const abaixo = window.innerHeight - r.bottom;
+    const acima = abaixo < Math.min(alturaEstimada, 240) && r.top > abaixo;
+    setPos({
+      top: acima ? r.top - ESPACO : r.bottom + ESPACO,
+      left: r.left,
+      width: r.width,
+      acima,
+    });
+  }, [ancora, alturaEstimada]);
+
+  useLayoutEffect(() => {
+    if (!aberto) {
+      setPos(null);
+      return;
+    }
+    medir();
+    // `true` = captura: pega a rolagem do contêiner interno também, não só a da janela.
+    window.addEventListener("scroll", medir, true);
+    window.addEventListener("resize", medir);
+    return () => {
+      window.removeEventListener("scroll", medir, true);
+      window.removeEventListener("resize", medir);
+    };
+  }, [aberto, medir]);
+
+  return pos;
+}
+
+/** O estilo do painel preso ao <body>, já virado para cima quando foi o caso. */
+function estiloFlutuante(pos: PosicaoFlutuante, larguraMinima?: number): React.CSSProperties {
+  return {
+    position: "fixed",
+    top: pos.top,
+    left: pos.left,
+    width: larguraMinima ? Math.max(pos.width, larguraMinima) : pos.width,
+    transform: pos.acima ? "translateY(-100%)" : undefined,
+  };
+}
 
 export interface OpcaoSelecao<T extends string> {
   valor: T;
@@ -72,12 +154,19 @@ export function Selecao<T extends string>({
 
   const atual = opcoes.find((o) => o.valor === valor) ?? null;
   const indiceAtual = Math.max(0, opcoes.findIndex((o) => o.valor === valor));
+  const gatilho = useRef<HTMLButtonElement>(null);
+  // ~56px por opção (rótulo + a linha de ajuda), limitado pelo max-h da lista.
+  const pos = usePosicaoFlutuante(gatilho, aberto, Math.min(opcoes.length * 56 + 8, 288));
 
   useEffect(() => {
     if (!aberto) return;
     setMarcado(indiceAtual);
     const fora = (e: MouseEvent) => {
-      if (!caixa.current?.contains(e.target as Node)) setAberto(false);
+      const alvo = e.target as Node;
+      // A lista mora no <body>, fora de `caixa` — sem conferi-la aqui, clicar numa opção
+      // contaria como "clique fora" e fecharia o campo antes da escolha acontecer.
+      if (caixa.current?.contains(alvo) || lista.current?.contains(alvo)) return;
+      setAberto(false);
     };
     // O Esc fecha a LISTA, e só ela. Sem `stopImmediatePropagation` o mesmo Esc chegava
     // ao modal que contém o campo (o resumo do caso ouve Esc no document também), e
@@ -117,6 +206,7 @@ export function Selecao<T extends string>({
       ) : null}
       <div ref={caixa} className={`relative ${label ? "mt-1" : ""}`}>
         <button
+          ref={gatilho}
           type="button"
           id={id}
           disabled={disabled}
@@ -142,9 +232,11 @@ export function Selecao<T extends string>({
           </span>
         </button>
 
-        {aberto ? (
+        {aberto && pos
+          ? createPortal(
           <ul
             ref={lista}
+            style={estiloFlutuante(pos, 220)}
             role="listbox"
             tabIndex={-1}
             aria-activedescendant={`${id}-op-${marcado}`}
@@ -166,7 +258,7 @@ export function Selecao<T extends string>({
                 escolher(marcado);
               }
             }}
-            className="absolute z-40 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-ib-line bg-white py-1 shadow-lg focus:outline-none"
+            className="z-[60] max-h-72 overflow-y-auto rounded-xl border border-ib-line bg-white py-1 shadow-lg focus:outline-none"
           >
             {opcoes.map((o, i) => {
               const escolhida = o.valor === valor;
@@ -199,8 +291,10 @@ export function Selecao<T extends string>({
                 </li>
               );
             })}
-          </ul>
-        ) : null}
+          </ul>,
+              document.body,
+            )
+          : null}
       </div>
       {dica ? <span className="mt-0.5 block text-[11px] leading-snug text-ib-slate">{dica}</span> : null}
     </div>
@@ -243,6 +337,26 @@ function hojeIso(): string {
 }
 
 /**
+ * Qual mês o calendário abre.
+ *
+ * Era `(valor ?? hojeIso()).slice(0, 7)`, e o `??` foi o bug: ele só cobre null e
+ * undefined. Quem usa o campo grava string VAZIA quando não há data — a ficha do lead faz
+ * `onChange={(v) => setLimite(v ?? "")}` —, então o mês visível virava "", o
+ * `"".split("-")` virava [NaN], e o cabeçalho saía "undefined de NaN" com a grade de dias
+ * vazia. Ou seja: o calendário abria quebrado exatamente no caso mais comum, o campo em
+ * branco.
+ *
+ * Aqui a regra é a mesma para as três formas de "sem data" ("", null, undefined) e para
+ * lixo (um "27/08/2026" que escapou sem converter): cai no mês corrente. O que esta
+ * função NUNCA pode devolver é algo que vire NaN na tela.
+ */
+export function mesInicial(valor: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(valor ?? "");
+  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${m[1]}-${m[2]}`;
+  return hojeIso().slice(0, 7);
+}
+
+/**
  * O CAMPO DE DATA.
  *
  * Digitar vem primeiro: quem está com a notificação na mão digita 27082026 e segue. O
@@ -274,8 +388,12 @@ export function CampoData({
 }) {
   const [texto, setTexto] = useState(() => (valor ? paraBr(valor) : ""));
   const [aberto, setAberto] = useState(false);
-  const [mes, setMes] = useState(() => (valor ?? hojeIso()).slice(0, 7));
+  const [mes, setMes] = useState(() => mesInicial(valor));
   const caixa = useRef<HTMLDivElement>(null);
+  const painel = useRef<HTMLDivElement>(null);
+  // Mesma razão da lista de seleção: o calendário é preso ao <body> para não ser cortado
+  // pelo `overflow` da ficha, que rola por dentro. ~320px é a altura do calendário cheio.
+  const pos = usePosicaoFlutuante(caixa, aberto, 320);
   /** O último valor que ESTE campo emitiu — ver o efeito abaixo. */
   const emitido = useRef<string | null | undefined>(valor);
 
@@ -292,12 +410,19 @@ export function CampoData({
     if (valor === emitido.current) return;
     emitido.current = valor;
     setTexto(valor ? paraBr(valor) : "");
+    // O mês visível acompanha: sem isto, uma ficha recarregada com outra data abria o
+    // calendário no mês antigo.
+    setMes(mesInicial(valor));
   }, [valor]);
 
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => {
-      if (!caixa.current?.contains(e.target as Node)) setAberto(false);
+      const alvo = e.target as Node;
+      // O calendário mora no <body>: sem conferi-lo aqui, clicar num dia contaria como
+      // clique fora e fecharia o campo sem escolher nada.
+      if (caixa.current?.contains(alvo) || painel.current?.contains(alvo)) return;
+      setAberto(false);
     };
     // Mesmo motivo do seletor: o Esc fecha o calendário, não o modal atrás dele.
     const tecla = (e: KeyboardEvent) => {
@@ -399,8 +524,13 @@ export function CampoData({
           </button>
         </div>
 
-        {aberto ? (
-          <div className="absolute z-40 mt-1 w-64 rounded-xl border border-ib-line bg-white p-3 shadow-lg">
+        {aberto && pos
+          ? createPortal(
+          <div
+            ref={painel}
+            style={estiloFlutuante(pos, 256)}
+            className="z-[60] rounded-xl border border-ib-line bg-white p-3 shadow-lg"
+          >
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -473,8 +603,10 @@ export function CampoData({
                 fechar
               </button>
             </div>
-          </div>
-        ) : null}
+          </div>,
+              document.body,
+            )
+          : null}
       </div>
       {invalido ? (
         <span className="mt-0.5 block text-[11px] font-medium text-ib-danger">
