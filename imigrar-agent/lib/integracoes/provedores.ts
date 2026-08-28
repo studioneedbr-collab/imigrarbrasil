@@ -52,6 +52,7 @@ const ROTULOS: Record<TipoChamadaLlm, string> = {
   classificacao: "classificação",
   transcricao: "transcrição",
   embedding: "embedding",
+  traducao: "tradução",
 };
 
 export function rotuloDoUso(t: TipoChamadaLlm): string {

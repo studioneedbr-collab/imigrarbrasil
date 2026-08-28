@@ -437,7 +437,8 @@ export type TipoChamadaLlm =
   | "extracao"
   | "classificacao"
   | "transcricao"
-  | "embedding";
+  | "embedding"
+  | "traducao";
 
 export const TIPOS_DE_CHAMADA: TipoChamadaLlm[] = [
   "redacao",
@@ -445,6 +446,7 @@ export const TIPOS_DE_CHAMADA: TipoChamadaLlm[] = [
   "classificacao",
   "transcricao",
   "embedding",
+  "traducao",
 ];
 
 /** Uma chamada a provedor de IA, com o que ela custou. Uma linha por chamada. */
