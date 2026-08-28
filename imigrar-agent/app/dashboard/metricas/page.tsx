@@ -10,6 +10,8 @@ import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
 import { rotuloPrazo, diasRestantes } from "@/lib/fila/ordenacao";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 import { resumirCustos } from "@/lib/custos/resumo";
+import { metricasDeFollowup } from "@/lib/followup/metricas";
+import { MOTIVO_ESPERA_LABEL } from "@/lib/followup/motivos";
 import { cambio, emReais } from "@/lib/custos/cambio";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +56,7 @@ const ABAS = [
   { key: "prazos", label: "Prazos" },
   { key: "agente", label: "Agente" },
   { key: "custo", label: "Custo" },
+  { key: "followup", label: "Follow-up" },
 ] as const;
 
 type AbaKey = (typeof ABAS)[number]["key"];
@@ -195,11 +198,12 @@ export default async function MetricasPage({
   const agora = new Date();
   const de = new Date(agora.getTime() - periodo.dias * 86_400_000);
 
-  const [todos, reclassificacoes, session, chamadas] = await Promise.all([
+  const [todos, reclassificacoes, session, chamadas, toques] = await Promise.all([
     carregarLeadsDaFila(),
     getRepository().listReclassificacoes().catch(() => []),
     getSession(),
     getRepository().listChamadasLlm({ desde: de.toISOString() }).catch(() => []),
+    getRepository().listToquesDoPeriodo(de.toISOString(), agora.toISOString()).catch(() => []),
   ]);
 
   // O FILTRO DE NACIONALIDADE ENTRA ANTES DO CÁLCULO, não depois: filtrar o gráfico e
@@ -228,6 +232,13 @@ export default async function MetricasPage({
   const idiomaPorConversa = new Map(leads.map((l) => [l.conversationId, l.idioma]));
   const custos = resumirCustos(chamadasDoRecorte, idiomaPorConversa, de, agora);
   const taxa = cambio();
+
+  const fup = metricasDeFollowup(
+    toques,
+    leads,
+    { motivo: MOTIVO_ESPERA_LABEL, idioma: (c) => nomeDoIdioma(c) ?? c },
+    agora,
+  );
 
   const totalReal = todos.filter((l) => l.ambiente !== "teste").length;
   const base = { aba, periodo: periodo.key, nacionalidade };
@@ -720,6 +731,128 @@ export default async function MetricasPage({
                     ))}
                   </ul>
                 </div>
+              )}
+            </Bloco>
+          </div>
+        </>
+      ) : null}
+
+      {/* ─── FOLLOW-UP ───
+          A TAXA DE RESPOSTA POR IDIOMA é a razão desta aba existir. O projeto se apoia na
+          promessa de atender em qualquer língua, e se essa promessa se quebrar, ela se
+          quebra em silêncio: os modelos em português continuam funcionando, quem fala
+          crioulo simplesmente para de responder, e nada na tela indica nada. Um idioma
+          muito abaixo dos outros quase sempre é tradução ruim ou tom errado — e isso se
+          corrige numa tarde, se alguém souber. */}
+      {aba === "followup" ? (
+        <>
+          <Bloco
+            titulo="O que o follow-up fez no período"
+            descricao="Toques que SAÍRAM, e o que voltou deles. Rascunho não enviado e tarefa não tratada não contam como mensagem — contam como fila."
+          >
+            <div className="grid grid-cols-1 divide-y divide-ib-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+              <Numero
+                label="Follow-ups enviados"
+                valor={String(fup.enviados)}
+                nota={`${fup.pulados} rascunhos foram pulados por quem ia aprovar — modelo pulado toda vez é modelo errado.`}
+              />
+              <Numero
+                label="Taxa de resposta"
+                valor={fup.taxaGeral === null ? "—" : `${fup.taxaGeral}%`}
+                nota={
+                  fup.taxaGeral === null
+                    ? "Nenhum follow-up saiu no período."
+                    : `${fup.responderam} de ${fup.enviados} voltaram a falar depois do toque.`
+                }
+              />
+              <Numero
+                label="Casos recuperados"
+                valor={String(fup.recuperados)}
+                nota="Pessoas que voltaram a responder por causa de um follow-up. Contado por caso, não por toque."
+              />
+              <Numero
+                label="Perdidos por esgotamento"
+                valor={String(fup.perdidosPorEsgotamento)}
+                nota="Três toques sem resposta: o caso fechou como “sumiu”, com uma última mensagem de despedida."
+                tom={fup.perdidosPorEsgotamento > fup.recuperados ? "alerta" : "normal"}
+              />
+            </div>
+          </Bloco>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Bloco
+              titulo="Taxa de resposta por idioma"
+              descricao="O número que diz se as traduções estão boas. Um idioma muito abaixo dos outros é tradução ruim ou tom errado, quase nunca desinteresse."
+            >
+              {fup.porIdioma.length === 0 ? (
+                <p className="px-5 py-4 text-sm text-ib-slate">Nenhum follow-up saiu no período.</p>
+              ) : (
+                <ul className="divide-y divide-ib-line">
+                  {fup.porIdioma.map((l) => (
+                    <li key={l.chave} className="px-5 py-2.5 text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="text-ib-ink">{l.rotulo}</span>
+                        <span
+                          className={`font-mono text-xs tabular-nums ${
+                            l.taxa !== null && fup.taxaGeral !== null && l.enviados >= 3 && l.taxa < fup.taxaGeral / 2
+                              ? "font-semibold text-ib-danger"
+                              : "text-ib-ink"
+                          }`}
+                        >
+                          {l.taxa === null ? "—" : `${l.taxa}%`}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-ib-slate">
+                        {l.responderam} de {l.enviados} responderam
+                        {l.enviados < 3 ? " · amostra pequena demais para concluir" : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Bloco>
+
+            <Bloco
+              titulo="Por motivo de espera"
+              descricao="O que a gente estava esperando quando escreveu — e quanto tempo os casos parados já estão esperando."
+            >
+              {fup.porMotivo.length === 0 && fup.esperaMediaDias.length === 0 ? (
+                <p className="px-5 py-4 text-sm text-ib-slate">Nada registrado no período.</p>
+              ) : (
+                <ul className="divide-y divide-ib-line">
+                  {fup.porMotivo.map((l) => (
+                    <li key={l.chave} className="px-5 py-2.5 text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="text-ib-ink">{l.rotulo}</span>
+                        <span className="font-mono text-xs tabular-nums text-ib-ink">
+                          {l.taxa === null ? "—" : `${l.taxa}%`}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-ib-slate">
+                        {l.enviados} enviados · {l.responderam} responderam
+                        {fup.esperaMediaDias.find((e) => e.chave === l.chave)
+                          ? ` · ${fup.esperaMediaDias.find((e) => e.chave === l.chave)!.dias} dias de espera média`
+                          : ""}
+                      </p>
+                    </li>
+                  ))}
+                  {fup.esperaMediaDias
+                    .filter((e) => !fup.porMotivo.some((m) => m.chave === e.chave))
+                    .map((e) => (
+                      <li key={e.chave} className="px-5 py-2.5 text-sm">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="text-ib-ink">{e.rotulo}</span>
+                          <span className="font-mono text-xs tabular-nums text-ib-slate">
+                            {e.dias} d
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-ib-slate">
+                          {e.casos} caso{e.casos > 1 ? "s" : ""} parado{e.casos > 1 ? "s" : ""} · nenhum
+                          follow-up saiu ainda
+                        </p>
+                      </li>
+                    ))}
+                </ul>
               )}
             </Bloco>
           </div>

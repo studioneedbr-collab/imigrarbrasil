@@ -1069,6 +1069,17 @@ export class SupabaseRepository implements Repository {
     return count ?? 0;
   }
 
+  async listToquesDoPeriodo(de: string, ate: string): Promise<ToqueDeFollowup[]> {
+    const { data } = await this.db
+      .from("followup_toques")
+      .select("*")
+      .gte("criado_em", de)
+      .lte("criado_em", ate)
+      .order("criado_em", { ascending: false })
+      .limit(5000);
+    return ((data as Record<string, any>[] | null) ?? []).map(mapToque);
+  }
+
   async listLeadsComToqueVencido(agora: Date = new Date()) {
     const { data } = await this.db
       .from("leads")

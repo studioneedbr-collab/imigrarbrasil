@@ -9,7 +9,7 @@ import { carregarLeadsDaFila } from "@/lib/fila/carregar";
 import { montarMeus, diasParado } from "@/lib/operacao/meus";
 import { DIAS_PARA_CONSIDERAR_PARADO } from "@/lib/operacao/limites";
 import { diasRestantes, faixaDoPrazo, type LeadDaFila } from "@/lib/fila/ordenacao";
-import { desde } from "@/lib/domain/rotulos";
+import { desde, rotuloContato } from "@/lib/domain/rotulos";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +151,10 @@ export default async function MeusAtendimentosPage() {
   ]);
 
   const meus = montarMeus(leads, lembretes, session?.sub ?? null, agora);
+  // Parado E sem motivo registrado. Só os que já estão parados: pedir o motivo de espera
+  // de um caso que se mexeu ontem seria burocracia, e burocracia dispensável é o que faz
+  // um campo obrigatório ser preenchido com qualquer coisa.
+  const semMotivoDeEspera = meus.parados.filter((l) => !l.esperaMotivo);
   const total = meus.comigo.length + meus.aguardandoCliente.length + meus.agendados.length;
 
   return (
@@ -254,6 +258,39 @@ export default async function MeusAtendimentosPage() {
       >
         <Lista leads={meus.agendados} agora={agora} />
       </Bloco>
+
+      {/* CASO PARADO SEM MOTIVO DE ESPERA É PENDÊNCIA, NÃO É CASO PARADO.
+          A diferença muda o que se faz em seguida: com motivo registrado o silêncio é o
+          processo funcionando (a pessoa está na fila do consulado) e o sistema escreve
+          sozinho; sem motivo, ninguém escreve nada e o caso apodrece parecendo normal. */}
+      {semMotivoDeEspera.length > 0 ? (
+        <Card className="overflow-hidden ring-1 ring-[#9A6212]/25">
+          <div className="border-b border-ib-line bg-[#9A6212]/[0.06] px-5 py-3">
+            <h2 className="text-sm font-semibold text-ib-ink">
+              Parados sem dizer o que estamos esperando
+            </h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-ib-slate">
+              Enquanto ninguém registrar o motivo da espera, nenhum follow-up é escrito
+              para estes casos — o sistema não inventa um recado genérico.
+            </p>
+          </div>
+          <ul className="divide-y divide-ib-line">
+            {semMotivoDeEspera.map((l) => (
+              <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <Link
+                  href={`/dashboard/leads/${l.id}`}
+                  className="min-w-0 text-sm font-medium text-ib-ink hover:underline"
+                >
+                  {rotuloContato(l).texto}
+                </Link>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-[#9A6212]">
+                  {diasParado(l, agora)} dias parado
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <Bloco
         titulo={`Parados há mais de ${DIAS_PARA_CONSIDERAR_PARADO} dias`}

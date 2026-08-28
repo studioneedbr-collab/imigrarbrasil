@@ -269,6 +269,8 @@ export interface Repository {
   atualizarToque(id: string, patch: Partial<ToqueDeFollowup>): Promise<ToqueDeFollowup>;
   /** Quantos follow-ups já saíram HOJE por esta instância. É o teto diário. */
   contarToquesEnviadosHoje(instanciaId: string | null, agora?: Date): Promise<number>;
+  /** Todos os toques de um período. É o que as métricas de follow-up somam. */
+  listToquesDoPeriodo(de: string, ate: string): Promise<ToqueDeFollowup[]>;
   /** Os casos cujo próximo toque já venceu. A varredura do cron começa aqui. */
   listLeadsComToqueVencido(agora?: Date): Promise<Lead[]>;
 

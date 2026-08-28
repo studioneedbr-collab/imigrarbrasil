@@ -35,12 +35,17 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     repo.listAcessos(500).catch(() => []),
     repo.listLembretes({ leadId: lead.id }).catch(() => []),
   ]);
+  // Banco sem a migration 029 não tem a tabela de toques: o caso continua abrindo, com a
+  // linha do tempo sem os follow-ups. Uma tela de caso que não abre é pior do que uma
+  // linha do tempo incompleta.
+  const toques = await repo.listToques(lead.id).catch(() => []);
   const reclassificacoes = todasReclass.filter((r) => r.leadId === lead.id);
   const linhaDoTempo = montarLinhaDoTempo({
     lead,
     reclassificacoes,
     acessos: acessosRecentes.filter((a) => a.alvoId === lead.id),
     lembretes,
+    toques,
   });
 
   await registrarAcesso(auth.session, "abriu_lead", { tipo: "lead", id: lead.id }, req);

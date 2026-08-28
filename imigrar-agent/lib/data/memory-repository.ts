@@ -595,6 +595,9 @@ export class MemoryRepository implements Repository {
         Date.parse(t.enviadoEm) >= inicio.getTime(),
     ).length;
   }
+  async listToquesDoPeriodo(de: string, ate: string) {
+    return this.toques.filter((t) => t.criadoEm >= de && t.criadoEm <= ate);
+  }
   async listLeadsComToqueVencido(agora: Date = new Date()) {
     return Array.from(this.leads.values())
       .filter((l) => l.proximoToqueEm && Date.parse(l.proximoToqueEm) <= agora.getTime())
