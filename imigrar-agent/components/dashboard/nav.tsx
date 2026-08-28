@@ -45,6 +45,16 @@ const navGroups: NavGroup[] = [
   {
     section: "Agente",
     links: [
+      // O mapa vem ANTES de treinar de propósito: quem chega para ajustar o
+      // comportamento da Ana precisa primeiro ver o comportamento que existe — metade
+      // dos pedidos de "muda o prompt" some quando se descobre que a decisão não é do
+      // prompt, é de um portão em código.
+      { href: "/dashboard/mapa", label: "Mapa do atendimento", icon: "activity" },
+      // O mapa vem ANTES de treinar de propósito: quem chega para ajustar o
+      // comportamento da Ana precisa primeiro ver o comportamento que existe — metade
+      // dos pedidos de "muda o prompt" some quando se descobre que a decisão não é do
+      // prompt, é de um portão em código.
+      { href: "/dashboard/mapa", label: "Mapa do atendimento", icon: "activity" },
       { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear" },
       // A fila de sombra. Fica no menu, e não escondida dentro das conversas, porque na
       // fase de testes ela é o trabalho: cada rascunho ali é uma resposta esperando um
