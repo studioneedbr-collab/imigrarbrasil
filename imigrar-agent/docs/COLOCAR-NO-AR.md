@@ -150,7 +150,7 @@ outra operação faz este agente responder pelo WhatsApp da outra empresa.
 4. Configurar o webhook `on-message-received` como:
 
    ```
-   https://SEU-DOMINIO/api/webhook/whatsapp?token=<WEBHOOK_VERIFY_TOKEN>
+   https://agente.imigrarbrasil.com.br/api/webhook/whatsapp?token=<WEBHOOK_VERIFY_TOKEN>
    ```
 
    O `?token=` não é opcional. Em produção, sem ele o webhook rejeita tudo — é o que
@@ -178,7 +178,7 @@ ao número aparece em **Conversas** em poucos segundos.
    Preencher `CRON_SECRET`.
 5. Redeploy (variável nova só vale no deploy seguinte).
 
-**Conferir:** `https://SEU-DOMINIO/api/health` responde
+**Conferir:** `https://agente.imigrarbrasil.com.br/api/health` responde
 
 ```json
 {"ok":true,"repo":"supabase","persistent":true,"agent":"deepseek",
@@ -191,7 +191,7 @@ Qualquer `false` aí é um passo acima que não terminou.
 
 ## 7. Primeiro acesso
 
-`https://SEU-DOMINIO/setup` cria o administrador (senha de no mínimo 12 caracteres). A
+`https://agente.imigrarbrasil.com.br/setup` cria o administrador (senha de no mínimo 12 caracteres). A
 tela **se tranca sozinha** depois do primeiro usuário — daí em diante, novos usuários
 saem de `/dashboard/users`.
 
