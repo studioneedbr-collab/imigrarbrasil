@@ -39,7 +39,30 @@ export function semCamposDePrazo<T extends Partial<Lead>>(patch: T): T {
 // chega — se ele pudesse mexer nisso, um card arrastado à mão para "aguardando certidão"
 // voltaria sozinho para a coluna anterior no próximo "oi" da pessoa.
 
-export const CAMPOS_SO_DE_HUMANO = ["relogioData", "funilId", "etapaId"] as const;
+//
+// A ETAPA COMERCIAL entra na mesma lista, e é o caso mais caro de todos: valor proposto,
+// valor contratado, validade da proposta e categoria da perda são números que viram
+// relatório de faturamento. Um modelo inferindo "acho que ficou uns três mil" a partir de
+// uma frase do cliente escreveria receita no painel do escritório.
+
+export const CAMPOS_SO_DE_HUMANO = [
+  "relogioData",
+  "funilId",
+  "apoioIds",
+  // A espera também: o motivo é escolhido por quem pausa o caso, e o agente reescrevendo
+  // "proximoToqueEm" a cada mensagem que chega apagaria a régua que alguém montou à mão.
+  "esperaMotivo",
+  "esperaDesde",
+  "proximoToqueEm",
+  "toquesNoMotivo",
+  "etapaId",
+  "propostaEnviadaEm",
+  "propostaValor",
+  "propostaServico",
+  "propostaValidade",
+  "valorContratado",
+  "motivoPerdaCategoria",
+] as const;
 
 export function semCamposSoDeHumano<T extends Partial<Lead>>(patch: T): T {
   const limpo = { ...patch };

@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
 import type { Repository } from "@/lib/data/repository";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
-import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm, FunilCrm, EtapaCrm } from "@/lib/domain/types";
+import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm, FunilCrm, EtapaCrm, ToqueDeFollowup,
+} from "@/lib/domain/types";
+import type { ModeloFollowup } from "@/lib/followup/modelos";
 import { eFiltrada } from "@/lib/domain/types";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
 import type { DbConversation, DbMessage } from "@/lib/supabase/types";
@@ -27,6 +29,8 @@ const mapConversation = (r: DbConversation): Conversation => ({
   followupSentAt: (r as unknown as Record<string, any>).followup_sent_at ?? null,
   reopenedAt: (r as unknown as Record<string, any>).reopened_at ?? null,
   optOutAt: (r as unknown as Record<string, any>).opt_out_at ?? null,
+  optOutMensagem: (r as unknown as Record<string, any>).opt_out_mensagem ?? null,
+  noFollowupMensagem: (r as unknown as Record<string, any>).no_followup_mensagem ?? null,
   noFollowupAt: (r as unknown as Record<string, any>).no_followup_at ?? null,
   idioma: (r as unknown as Record<string, any>).idioma ?? null,
   instanciaId: (r as unknown as Record<string, any>).instancia_id ?? null,
@@ -42,7 +46,8 @@ const mapInstancia = (r: Record<string, any>): ZapiInstancia => ({
   baseUrl: r.base_url, ativo: Boolean(r.ativo),
   ativadoPor: r.ativado_por ?? null, ativadoEm: r.ativado_em ?? null,
   modoDesligado: r.modo_desligado as ModoDesligado, respostaFixa: r.resposta_fixa ?? null,
-  slaMinutos: r.sla_minutos ?? 30, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
+  slaMinutos: r.sla_minutos ?? 30, tetoFollowupsDia: r.teto_followups_dia ?? null,
+  criadoEm: r.criado_em, atualizadoEm: r.atualizado_em,
 });
 
 const mapRascunho = (r: Record<string, any>): RascunhoAgente => ({
@@ -224,10 +229,17 @@ export class SupabaseRepository implements Repository {
     return ((data as DbConversation[] | null) ?? []).map(mapConversation)
       .filter((c) => !c.optOutAt && !c.noFollowupAt);
   }
-  async marcarOptOut(id: string, tipo: "bloquear" | "sem_followup") {
+  async marcarOptOut(id: string, tipo: "bloquear" | "sem_followup", mensagem?: string) {
     const campo = tipo === "bloquear" ? "opt_out_at" : "no_followup_at";
+    const campoMsg = tipo === "bloquear" ? "opt_out_mensagem" : "no_followup_mensagem";
     const { error } = await this.db.from("conversations")
-      .update({ [campo]: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        [campo]: new Date().toISOString(),
+        // Recortada: é prova do pedido, não é o histórico da conversa (que já está em
+        // `messages`). Guardar mensagem inteira aqui duplicaria dado pessoal sem motivo.
+        ...(mensagem ? { [campoMsg]: mensagem.slice(0, 500) } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
     // Falhar aqui em silêncio seria o pior caso: o cliente pediu para parar e o sistema
     // acharia que registrou. Sobe o erro — quem chama loga e decide.
@@ -380,8 +392,16 @@ export class SupabaseRepository implements Repository {
       tem_prazo_correndo: patch.temPrazoCorrendo, prazo_tipo: patch.prazoTipo,
       classificacao: patch.classificacao,
       atendimento_status: patch.atendimentoStatus, motivo_perda: patch.motivoPerda,
-      responsavel_id: patch.responsavelId, assumido_em: patch.assumidoEm,
+      motivo_perda_categoria: patch.motivoPerdaCategoria,
+      // A ETAPA COMERCIAL. Só chega aqui pelo caminho da tela — o do agente passa por
+      // `semCamposSoDeHumano` e perde estes campos antes de virar linha.
+      proposta_enviada_em: patch.propostaEnviadaEm, proposta_valor: patch.propostaValor,
+      proposta_servico: patch.propostaServico, proposta_validade: patch.propostaValidade,
+      valor_contratado: patch.valorContratado,
+      responsavel_id: patch.responsavelId, apoio_ids: patch.apoioIds, assumido_em: patch.assumidoEm,
       funil_id: patch.funilId, etapa_id: patch.etapaId,
+      espera_motivo: patch.esperaMotivo, espera_desde: patch.esperaDesde,
+      proximo_toque_em: patch.proximoToqueEm, toques_no_motivo: patch.toquesNoMotivo,
     };
     Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
     return row;
@@ -802,8 +822,19 @@ export class SupabaseRepository implements Repository {
       prazoConfirmadoEm: r.prazo_confirmado_em ?? null,
       classificacao: r.classificacao ?? null, classificacaoIa: r.classificacao_ia ?? null,
       atendimentoStatus: r.atendimento_status ?? "novo", motivoPerda: r.motivo_perda ?? null,
-      responsavelId: r.responsavel_id ?? null, assumidoEm: r.assumido_em ?? null,
+      motivoPerdaCategoria: r.motivo_perda_categoria ?? null,
+      propostaEnviadaEm: r.proposta_enviada_em ?? null,
+      // `numeric` volta como string do PostgREST. Sem o Number aqui, "1500.00" + "800.00"
+      // vira "1500.00800.00" na primeira soma de faturamento.
+      propostaValor: r.proposta_valor == null ? null : Number(r.proposta_valor),
+      propostaServico: r.proposta_servico ?? null,
+      propostaValidade: r.proposta_validade ?? null,
+      valorContratado: r.valor_contratado == null ? null : Number(r.valor_contratado),
+      responsavelId: r.responsavel_id ?? null, apoioIds: r.apoio_ids ?? [],
+      assumidoEm: r.assumido_em ?? null,
       funilId: r.funil_id ?? null, etapaId: r.etapa_id ?? null,
+      esperaMotivo: r.espera_motivo ?? null, esperaDesde: r.espera_desde ?? null,
+      proximoToqueEm: r.proximo_toque_em ?? null, toquesNoMotivo: r.toques_no_motivo ?? 0,
       resgatadoEm: r.resgatado_em ?? null, resgatadoPor: r.resgatado_por ?? null,
     };
   }
@@ -921,6 +952,134 @@ export class SupabaseRepository implements Repository {
   async cancelPendingFollowups(conversationId: string) {
     await this.db.from("followup_queue").update({ status: "cancelled" }).eq("conversation_id", conversationId).eq("status", "pending");
   }
+  // ─── O FOLLOW-UP POR MOTIVO DE ESPERA (migration 029) ───
+
+  async listModelosFollowup(): Promise<ModeloFollowup[]> {
+    const { data } = await this.db.from("followup_modelos").select("*").order("motivo").order("idioma");
+    return ((data as Record<string, any>[] | null) ?? []).map(mapModelo);
+  }
+
+  async salvarModeloFollowup(
+    modelo: Omit<ModeloFollowup, "id"> & { id?: string },
+    autor: string,
+  ): Promise<ModeloFollowup> {
+    const row = {
+      motivo: modelo.motivo,
+      idioma: modelo.idioma,
+      texto: modelo.texto,
+      variantes: modelo.variantes,
+      envio: modelo.envio,
+      ativo: modelo.ativo,
+      criado_por: autor,
+      atualizado_em: new Date().toISOString(),
+    };
+    // Upsert por (motivo, idioma) e não por id: quem edita um modelo pela tela está
+    // sempre respondendo "o que dizemos a quem espera X, em Y" — e duas linhas para a
+    // mesma pergunta seriam uma escolha silenciosa entre elas a cada disparo.
+    const { data, error } = await this.db
+      .from("followup_modelos")
+      .upsert(row, { onConflict: "motivo,idioma" })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapModelo(data as Record<string, any>);
+  }
+
+  async apagarModeloFollowup(id: string) {
+    await this.db.from("followup_modelos").delete().eq("id", id);
+  }
+
+  async listToques(leadId: string): Promise<ToqueDeFollowup[]> {
+    const { data } = await this.db
+      .from("followup_toques")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("criado_em", { ascending: false });
+    return ((data as Record<string, any>[] | null) ?? []).map(mapToque);
+  }
+
+  async listToquesPendentes(): Promise<ToqueDeFollowup[]> {
+    const { data } = await this.db
+      .from("followup_toques")
+      .select("*, conversations(contact_name, whatsapp_number)")
+      // Rascunho E tarefa: os dois são trabalho de acompanhamento esperando uma pessoa,
+      // e separá-los em duas telas é como um dos dois deixa de ser feito.
+      .in("status", ["rascunho", "tarefa"])
+      .order("criado_em", { ascending: true });
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
+      ...mapToque(r),
+      contato: r.conversations
+        ? { nome: r.conversations.contact_name ?? null, whatsappNumber: r.conversations.whatsapp_number ?? null }
+        : null,
+    }));
+  }
+
+  async registrarToque(toque: Omit<ToqueDeFollowup, "id" | "criadoEm" | "contato">) {
+    const { data, error } = await this.db
+      .from("followup_toques")
+      .insert({
+        lead_id: toque.leadId ?? null,
+        conversation_id: toque.conversationId,
+        instancia_id: toque.instanciaId ?? null,
+        motivo: toque.motivo,
+        idioma: toque.idioma ?? null,
+        modelo_id: toque.modeloId ?? null,
+        canal: toque.canal,
+        texto: toque.texto,
+        status: toque.status,
+        toque: toque.toque,
+        aprovado_por: toque.aprovadoPor ?? null,
+        enviado_em: toque.enviadoEm ?? null,
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapToque(data as Record<string, any>);
+  }
+
+  async atualizarToque(id: string, patch: Partial<ToqueDeFollowup>) {
+    const row: Record<string, unknown> = {
+      status: patch.status,
+      texto: patch.texto,
+      aprovado_por: patch.aprovadoPor,
+      enviado_em: patch.enviadoEm,
+      respondido_em: patch.respondidoEm,
+    };
+    Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
+    const { data, error } = await this.db
+      .from("followup_toques")
+      .update(row)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapToque(data as Record<string, any>);
+  }
+
+  async contarToquesEnviadosHoje(instanciaId: string | null, agora: Date = new Date()) {
+    const inicio = new Date(agora);
+    inicio.setUTCHours(0, 0, 0, 0);
+    let q = this.db
+      .from("followup_toques")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "enviado")
+      .gte("enviado_em", inicio.toISOString());
+    q = instanciaId ? q.eq("instancia_id", instanciaId) : q.is("instancia_id", null);
+    const { count } = await q;
+    return count ?? 0;
+  }
+
+  async listLeadsComToqueVencido(agora: Date = new Date()) {
+    const { data } = await this.db
+      .from("leads")
+      .select("*")
+      .not("proximo_toque_em", "is", null)
+      .lte("proximo_toque_em", agora.toISOString())
+      .order("proximo_toque_em", { ascending: true })
+      .limit(200);
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapLead(r));
+  }
+
   async getConfig<T = unknown>(key: string) {
     const { data } = await this.db.from("agent_config").select("value").eq("key", key).maybeSingle();
     return ((data?.value as T) ?? null);
@@ -967,6 +1126,7 @@ export class SupabaseRepository implements Repository {
     if (patch.modoDesligado !== undefined) db.modo_desligado = patch.modoDesligado;
     if (patch.respostaFixa !== undefined) db.resposta_fixa = patch.respostaFixa;
     if (patch.slaMinutos !== undefined) db.sla_minutos = patch.slaMinutos;
+    if (patch.tetoFollowupsDia !== undefined) db.teto_followups_dia = patch.tetoFollowupsDia;
     // `ativo` não aparece nesta lista de propósito: quem liga é definirAtivacaoInstancia,
     // que exige o autor. Um "salvar configurações" não pode ligar produção de raspão.
     const { data, error } = await this.db.from("zapi_instancias").update(db).eq("id", id).select("*").single();
@@ -1157,4 +1317,38 @@ export class SupabaseRepository implements Repository {
       setor: r.setor ?? null, active: r.active, createdAt: r.created_at,
     }));
   }
+}
+
+// ─── MAPEAMENTO DO FOLLOW-UP POR MOTIVO ───
+
+function mapModelo(r: Record<string, any>): ModeloFollowup {
+  return {
+    id: r.id,
+    motivo: r.motivo,
+    idioma: r.idioma,
+    texto: r.texto,
+    variantes: r.variantes ?? [],
+    envio: r.envio ?? "rascunho",
+    ativo: r.ativo ?? true,
+  };
+}
+
+function mapToque(r: Record<string, any>): ToqueDeFollowup {
+  return {
+    id: r.id,
+    leadId: r.lead_id ?? null,
+    conversationId: r.conversation_id,
+    instanciaId: r.instancia_id ?? null,
+    motivo: r.motivo,
+    idioma: r.idioma ?? null,
+    modeloId: r.modelo_id ?? null,
+    canal: r.canal ?? "whatsapp",
+    texto: r.texto,
+    status: r.status,
+    toque: r.toque ?? 1,
+    aprovadoPor: r.aprovado_por ?? null,
+    enviadoEm: r.enviado_em ?? null,
+    respondidoEm: r.respondido_em ?? null,
+    criadoEm: r.criado_em,
+  };
 }

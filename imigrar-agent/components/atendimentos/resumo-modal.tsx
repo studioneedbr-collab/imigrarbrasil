@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChipIdioma, Nacionalidade } from "@/components/fila/linha";
 import { QualidadeDoLead } from "@/components/atendimentos/qualidade";
 import { Selecao } from "@/components/dashboard/campos";
@@ -12,9 +13,12 @@ import {
   CLASSIFICACAO_LABEL,
   PRAZO_TIPO_LABEL,
   desde,
+  paraQuando,
   rotuloContato,
 } from "@/lib/domain/rotulos";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
+import { PausarCaso } from "@/components/followup/pausar";
+import { MOTIVO_ESPERA_LABEL, type MotivoEspera } from "@/lib/followup/motivos";
 import {
   diasDoRelogio,
   diasRestantes,
@@ -76,6 +80,10 @@ export function ResumoDoLead({
     return () => document.removeEventListener("keydown", aoTeclar);
   }, [onFechar]);
 
+  const router = useRouter();
+  // "Agendar follow-up" abre dentro do próprio resumo. Mandar para outra tela para dizer
+  // "estamos esperando o consulado" é o tipo de ida e volta que faz o campo ficar vazio.
+  const [agendando, setAgendando] = useState(false);
   const contato = rotuloContato(lead);
   const prazo = lead.prazoDataLimite ? diasRestantes(lead.prazoDataLimite, agora) : null;
   const relogio = relogioApertado(lead, agora) ? diasDoRelogio(lead, agora) : null;
@@ -203,6 +211,54 @@ export function ResumoDoLead({
               </span>
             </Campo>
           </dl>
+
+          {/* ── A ESPERA ──
+               O que este caso está esperando e quando é o próximo toque. É a informação
+               que separa "parado" de "esquecido", e sem ela quem organiza o quadro reabre
+               casos que já têm data marcada. */}
+          <div className="rounded-lg border border-ib-line bg-white px-3 py-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ib-slate">
+                Espera
+              </p>
+              <button
+                type="button"
+                onClick={() => setAgendando((v) => !v)}
+                className="text-[11px] font-semibold text-ib-carimbo underline"
+              >
+                {agendando ? "fechar" : lead.esperaMotivo ? "mudar" : "agendar follow-up"}
+              </button>
+            </div>
+            {lead.esperaMotivo ? (
+              <p className="mt-1 text-[13px] leading-snug text-ib-ink">
+                {MOTIVO_ESPERA_LABEL[lead.esperaMotivo as MotivoEspera] ?? lead.esperaMotivo}
+                {lead.proximoToqueEm ? (
+                  <span className="text-ib-slate">
+                    {" · "}próximo toque {paraQuando(lead.proximoToqueEm, agora)}
+                  </span>
+                ) : null}
+              </p>
+            ) : (
+              <p className="mt-1 text-[13px] leading-snug text-ib-slate">
+                Ninguém disse o que estamos esperando neste caso — então nenhum follow-up é
+                escrito para ele.
+              </p>
+            )}
+            {agendando ? (
+              <div className="mt-2">
+                <PausarCaso
+                  leadId={lead.id}
+                  motivoAtual={lead.esperaMotivo}
+                  proximoToqueEm={lead.proximoToqueEm}
+                  toquesNoMotivo={lead.toquesNoMotivo}
+                  aoMudar={() => {
+                    setAgendando(false);
+                    router.refresh();
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
 
           {/* ── A QUALIDADE. Completude e prioridade, que são eixos diferentes: o caso
                mais urgente do painel costuma ser o de ficha mais vazia, porque acabou de

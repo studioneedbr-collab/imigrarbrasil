@@ -19,7 +19,16 @@ function lead(p: Partial<LeadDaFila> = {}): LeadDaFila {
 
 describe("colunas do quadro", () => {
   it("são os status do atendimento, na ordem do trabalho", () => {
-    expect(COLUNAS).toEqual(["novo", "em_atendimento", "agendado", "fechado", "perdido"]);
+    // "proposta enviada" está entre "em atendimento" e "reunião agendada" porque é essa a
+    // ordem no escritório: alguém assume, manda o orçamento e só então marca a reunião.
+    expect(COLUNAS).toEqual([
+      "novo",
+      "em_atendimento",
+      "proposta_enviada",
+      "agendado",
+      "fechado",
+      "perdido",
+    ]);
   });
 
   it("distribui cada lead na sua coluna e trata status ausente como novo", () => {
@@ -95,7 +104,7 @@ describe("transições do arrasto", () => {
   });
 
   it("toda transição possível vira uma ação que o endpoint já conhece", () => {
-    const conhecidas = ["assumir", "agendar", "fechar", "perder", "reabrir"];
+    const conhecidas = ["assumir", "propor", "agendar", "fechar", "perder", "reabrir"];
     for (const de of COLUNAS) {
       for (const para of COLUNAS) {
         const t = transicao(de, para);

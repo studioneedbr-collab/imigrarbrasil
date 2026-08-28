@@ -51,7 +51,7 @@ export default async function CrmPage() {
       <PageHeader
         eyebrow="CRM"
         title="Onde cada caso está"
-        description="Arraste o card para mudar de etapa. Cada etapa aponta para um status do atendimento — é o que faz a coluna nova continuar valendo para a fila e para o desfecho. Quem tem prazo processual sobe dentro da coluna, mas é a Fila que ordena por urgência."
+        description="Cada coluna é uma etapa do trabalho; a Fila continua sendo quem ordena por urgência."
         actions={
           <Link href="/dashboard" className={btnGhost}>
             <Icon name="bolt" className="h-4 w-4" />

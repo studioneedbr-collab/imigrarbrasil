@@ -24,6 +24,7 @@ import type { AtendimentoStatus, EtapaCrm, FunilCrm } from "@/lib/domain/types";
 const IMPLICA: Record<AtendimentoStatus, string> = {
   novo: "caso ainda sem dono; aparece na fila como novo",
   em_atendimento: "trabalho em aberto; conta como atendimento ativo",
+  proposta_enviada: "o orçamento está com a pessoa; EXIGE valor e validade ao mover",
   agendado: "há reunião marcada com a pessoa",
   fechado: "desfecho: encerra o caso e sai da fila",
   perdido: "desfecho: encerra o caso e EXIGE motivo ao mover",

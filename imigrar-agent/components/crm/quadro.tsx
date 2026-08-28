@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { CardDoAtendimento } from "@/components/atendimentos/card";
 import { ResumoDoLead } from "@/components/atendimentos/resumo-modal";
 import { GerenciarEtapas } from "@/components/crm/etapas";
+import {
+  DialogoDeMovimento,
+  type CorpoDoMovimento,
+  type TipoDeMovimento,
+} from "@/components/crm/movimento";
 import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
@@ -59,7 +64,13 @@ export default function QuadroCrm({
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const [visiveis, setVisiveis] = useState<Record<string, number>>({});
-  const [perda, setPerda] = useState<{ lead: LeadDaFila; etapa: EtapaCrm; motivo: string } | null>(null);
+  // O movimento que parou para perguntar. Três colunas pedem dados antes de gravar —
+  // ver components/crm/movimento.tsx.
+  const [perguntando, setPerguntando] = useState<{
+    lead: LeadDaFila;
+    etapa: EtapaCrm;
+    tipo: TipoDeMovimento;
+  } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [criandoFunil, setCriandoFunil] = useState(false);
@@ -96,7 +107,7 @@ export default function QuadroCrm({
    * não pelo nome dela: é o que faz uma etapa nova chamada "aguardando certidão" herdar
    * as regras de "em atendimento" sem uma linha de código a mais.
    */
-  async function mover(lead: LeadDaFila, etapa: EtapaCrm, motivo?: string) {
+  async function mover(lead: LeadDaFila, etapa: EtapaCrm, extra?: CorpoDoMovimento) {
     const de = lead.atendimentoStatus ?? "novo";
     const mesmaEtapa = lead.etapaId === etapa.id && lead.funilId === etapa.funilId;
     if (mesmaEtapa) return;
@@ -121,7 +132,7 @@ export default function QuadroCrm({
       body: JSON.stringify({
         acao,
         para: t?.para,
-        motivo,
+        ...extra,
         etapaId: etapa.id,
         funilId: etapa.funilId,
       }),
@@ -138,11 +149,22 @@ export default function QuadroCrm({
     router.refresh();
   }
 
-  /** "Perdido" para aqui e pede o motivo antes de gravar — o endpoint recusa sem ele. */
+  /**
+   * Onde o arrasto para e pergunta. Proposta, fechamento e perda afirmam um FATO que só
+   * existe se alguém digitar — e o endpoint recusa os três sem os dados, então perguntar
+   * aqui é o que evita um erro vermelho depois de um gesto que pareceu ter dado certo.
+   */
   function pedirOuMover(lead: LeadDaFila, etapa: EtapaCrm) {
     const de = lead.atendimentoStatus ?? "novo";
     const t = de === etapa.status ? null : transicao(de, etapa.status);
-    if (t?.exigeMotivo) setPerda({ lead, etapa, motivo: "" });
+    const tipo: TipoDeMovimento | null = t?.exigeProposta
+      ? "propor"
+      : t?.exigeValor
+        ? "fechar"
+        : t?.exigeMotivo
+          ? "perder"
+          : null;
+    if (tipo) setPerguntando({ lead, etapa, tipo });
     else void mover(lead, etapa);
   }
 
@@ -171,6 +193,7 @@ export default function QuadroCrm({
     const base: { nome: string; status: AtendimentoStatus; ajuda: string }[] = [
       { nome: "Novo", status: "novo", ajuda: "Chegou e ninguém pegou." },
       { nome: "Em atendimento", status: "em_atendimento", ajuda: "Alguém do time está com a bola." },
+      { nome: "Proposta enviada", status: "proposta_enviada", ajuda: "O orçamento está com a pessoa, esperando resposta." },
       { nome: "Reunião agendada", status: "agendado", ajuda: "Reunião marcada com a pessoa." },
       { nome: "Fechado", status: "fechado", ajuda: "Virou cliente ou o assunto se resolveu." },
       { nome: "Perdido", status: "perdido", ajuda: "Não virou atendimento — com o motivo registrado." },
@@ -299,9 +322,12 @@ export default function QuadroCrm({
           Este funil ainda não tem etapas. {podeDesenhar ? "Crie a primeira em “Editar etapas”." : "Peça a um advogado para desenhá-lo."}
         </p>
       ) : (
-        <div
-          className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]"
-        >
+        /* QUADRO KANBAN ROLA NA HORIZONTAL — NÃO QUEBRA LINHA.
+           Com grid, a quinta coluna caía para uma segunda fileira e PERDIDO aparecia
+           embaixo de NOVO, como se fosse continuação dela. Um quadro de etapas se lê da
+           esquerda para a direita: a ordem das colunas É a informação. Largura fixa e
+           rolagem lateral mantêm essa leitura com cinco colunas ou com doze. */
+        <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
           {colunas.map((coluna) => {
             const limite = visiveis[coluna.etapa.id] ?? POR_PAGINA;
             const mostrando = coluna.leads.slice(0, limite);
@@ -316,7 +342,7 @@ export default function QuadroCrm({
                 }}
                 onDragLeave={() => setSobre((s) => (s === coluna.etapa.id ? null : s))}
                 onDrop={() => soltar(coluna.etapa)}
-                className={`flex min-h-[8rem] flex-col rounded-xl border bg-ib-papel/50 transition ${
+                className={`flex min-h-[8rem] w-[17rem] shrink-0 snap-start flex-col rounded-xl border bg-ib-papel/50 transition ${
                   sobre === coluna.etapa.id ? "border-ib-mar bg-ib-bruma" : "border-ib-line"
                 }`}
               >
@@ -404,40 +430,17 @@ export default function QuadroCrm({
         />
       ) : null}
 
-      {perda ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ib-ink/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-            <h2 className="text-sm font-semibold text-ib-ink">Por que este caso foi perdido?</h2>
-            <p className="mt-1 text-xs leading-relaxed text-ib-slate">
-              É o que alguém vai ler daqui a seis meses tentando entender por que{" "}
-              {perda.lead.contactName ?? "esta pessoa"} não virou atendimento.
-            </p>
-            <textarea
-              autoFocus
-              rows={3}
-              value={perda.motivo}
-              onChange={(e) => setPerda({ ...perda, motivo: e.target.value })}
-              className="mt-3 w-full resize-y rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button type="button" className={btnGhost} onClick={() => setPerda(null)}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className={btnPrimary}
-                disabled={!perda.motivo.trim()}
-                onClick={() => {
-                  const { lead, etapa, motivo } = perda;
-                  setPerda(null);
-                  void mover(lead, etapa, motivo.trim());
-                }}
-              >
-                Marcar como perdido
-              </button>
-            </div>
-          </div>
-        </div>
+      {perguntando ? (
+        <DialogoDeMovimento
+          tipo={perguntando.tipo}
+          nomeDoContato={perguntando.lead.contactName ?? "esta pessoa"}
+          aoCancelar={() => setPerguntando(null)}
+          aoConfirmar={(corpo) => {
+            const { lead, etapa } = perguntando;
+            setPerguntando(null);
+            void mover(lead, etapa, corpo);
+          }}
+        />
       ) : null}
     </div>
   );

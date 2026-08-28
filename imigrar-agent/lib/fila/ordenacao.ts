@@ -23,6 +23,7 @@ import type { AmbienteInstancia, Classificacao, Lead } from "@/lib/domain/types"
 import { eFiltrada } from "@/lib/domain/types";
 import { diaEmBrasilia } from "@/lib/dashboard/periodo";
 import { slaHumanoEstourado } from "@/lib/agent/expediente";
+import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 
 /** O lead como a fila o lê: o registro + quando foi o último contato daquela conversa. */
 export interface LeadDaFila extends Lead {
@@ -182,6 +183,10 @@ export function montarFila(leads: LeadDaFila[], agora: Date = new Date()): Fila 
     // existe para auditar o que o agente descartou, e um ensaio ali é ruído que faz a
     // amostragem mentir. Ensaio se olha na tela de sombra, não na fila do time.
     if (lead.ambiente === "teste") continue;
+    // GRUPO NÃO É PESSOA. O webhook parou de criar estes leads, mas os que já entraram
+    // continuam no banco — e um card cujo "nome" é o JID de um grupo é trabalho alocado
+    // para ninguém. Ler o próprio número conserta o passado sem UPDATE em produção.
+    if (eConversaDeGrupo(lead.whatsappNumber)) continue;
 
     if (eFiltrada(lead.classificacao)) {
       filtradas.push(lead);

@@ -43,7 +43,7 @@ const etapasJuridico: EtapaCrm[] = [
 describe("o funil padrão", () => {
   it("tem uma etapa por status, na ordem do trabalho", () => {
     expect(etapasPadrao().map((e) => e.status)).toEqual([
-      "novo", "em_atendimento", "agendado", "fechado", "perdido",
+      "novo", "em_atendimento", "proposta_enviada", "agendado", "fechado", "perdido",
     ]);
   });
 

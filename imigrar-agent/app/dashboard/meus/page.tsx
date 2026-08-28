@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/guard";
 import { Card, PageHeader } from "@/components/dashboard/ui";
 import { LinhaDaFila } from "@/components/fila/linha";
 import ConcluirLembrete from "./_concluir";
+import FilaDeFollowup from "@/components/followup/fila-de-hoje";
 import { carregarLeadsDaFila } from "@/lib/fila/carregar";
 import { montarMeus, diasParado } from "@/lib/operacao/meus";
 import { DIAS_PARA_CONSIDERAR_PARADO } from "@/lib/operacao/limites";
@@ -143,9 +144,10 @@ function Lista({ leads, agora }: { leads: LeadDaFila[]; agora: Date }) {
 export default async function MeusAtendimentosPage() {
   const agora = new Date();
   const session = await getSession();
-  const [leads, lembretes] = await Promise.all([
+  const [leads, lembretes, toques] = await Promise.all([
     carregarLeadsDaFila(),
     getRepository().listLembretes({ apenasPendentes: true }).catch(() => []),
+    getRepository().listToquesPendentes().catch(() => []),
   ]);
 
   const meus = montarMeus(leads, lembretes, session?.sub ?? null, agora);
@@ -158,6 +160,12 @@ export default async function MeusAtendimentosPage() {
         title="Meus atendimentos"
         description="O que está com você, separado por quem precisa agir. A fila mostra quem chegou; esta tela mostra quem está esperando."
       />
+
+      {/* FOLLOW-UPS DE HOJE vêm antes até da faixa de números: é o único trabalho desta
+          tela que leva um minuto e some da lista quando é feito. Enterrado embaixo, ele
+          acumula — e uma fila de rascunhos acumulada faz o follow-up parar de existir sem
+          ninguém ter desligado nada. */}
+      <FilaDeFollowup toques={toques} />
 
       <Faixa
         itens={[

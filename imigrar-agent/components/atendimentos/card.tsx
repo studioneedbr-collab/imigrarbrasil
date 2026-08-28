@@ -1,5 +1,6 @@
 import { ChipIdioma, Nacionalidade } from "@/components/fila/linha";
-import { AINDA_NAO_AJUDA, PRAZO_TIPO_LABEL, desde, rotuloContato } from "@/lib/domain/rotulos";
+import { AINDA_NAO_AJUDA, PRAZO_TIPO_LABEL, desde, paraQuando, rotuloContato } from "@/lib/domain/rotulos";
+import { MOTIVO_ESPERA_LABEL, type MotivoEspera } from "@/lib/followup/motivos";
 import {
   diasDoRelogio,
   diasRestantes,
@@ -71,12 +72,19 @@ export function CardDoAtendimento({
         <ChipIdioma idioma={lead.idioma} />
         <span
           title={contato.conhecido ? contato.texto : AINDA_NAO_AJUDA}
-          className={`min-w-0 flex-1 truncate text-sm font-semibold ${
+          className={`min-w-0 truncate text-sm font-semibold ${
             contato.conhecido ? "text-ib-ink" : "text-ib-slate"
           }`}
         >
           {contato.texto}
         </span>
+        {/* SEM NOME AINDA. O telefone no lugar do nome é provisório, e precisa parecer
+            provisório: sem esta marca o card afirma que a pessoa se chama "+55 33…". */}
+        {!contato.conhecido ? (
+          <span className="shrink-0 rounded bg-ib-papel px-1 py-0.5 text-[10px] font-medium text-ib-slate ring-1 ring-inset ring-ib-line">
+            sem nome ainda
+          </span>
+        ) : null}
       </div>
 
       <p className="mt-1 truncate text-xs text-ib-slate">
@@ -114,6 +122,20 @@ export function CardDoAtendimento({
             </span>
           ) : null}
         </div>
+      ) : null}
+
+      {/* ─── O TOQUE AGENDADO ───
+          Discreto de propósito. Não é urgência: é a informação de que este caso NÃO está
+          esquecido, que é o oposto do que um card parado comunica. Sem ela, quem organiza
+          o quadro reabre casos que já têm data marcada. */}
+      {lead.esperaMotivo && lead.proximoToqueEm ? (
+        <p
+          title={MOTIVO_ESPERA_LABEL[lead.esperaMotivo as MotivoEspera] ?? lead.esperaMotivo}
+          className="mt-1.5 truncate text-[11px] text-ib-slate"
+        >
+          <span aria-hidden="true">↻</span> toque {paraQuando(lead.proximoToqueEm, agora)} ·{" "}
+          {MOTIVO_ESPERA_LABEL[lead.esperaMotivo as MotivoEspera] ?? lead.esperaMotivo}
+        </p>
       ) : null}
 
       <p className="mt-2 flex items-center justify-between gap-2 text-[11px] text-ib-slate">

@@ -13,6 +13,8 @@ import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
 import { decidirAtendimento, mensagemAgenteDesligado } from "@/lib/agent/ativacao";
 import { lerChaveGeral, resolverInstancia } from "@/lib/agent/estado";
 import { configDaInstancia } from "@/lib/whatsapp/config";
+import { origemDaMensagem } from "@/lib/whatsapp/remetente";
+import { registrarRespostaDoContato } from "@/lib/followup/resposta";
 
 // Agrupamento: no WhatsApp o cliente costuma mandar a frase quebrada em várias
 // mensagens. Esperamos este intervalo; se chegar outra nesse meio, esta requisição
@@ -49,6 +51,14 @@ interface ZApiWebhookBody {
   chatName?: string;
   isFromMe?: boolean;
   fromMe?: boolean;
+  // DE ONDE VEIO. Grupo, lista de transmissão, status e canal chegam por este mesmo
+  // webhook e NÃO são atendimento — ver lib/whatsapp/remetente.ts.
+  isGroup?: boolean;
+  isNewsletter?: boolean;
+  isStatusReply?: boolean;
+  broadcast?: boolean;
+  participantPhone?: string;
+  participantLid?: string;
   message?: { conversation?: string };
   text?: { message?: string };
   // Resposta de clique em botão/lista (formatos variam conforme a Z-API).
@@ -195,6 +205,22 @@ export async function POST(req: NextRequest) {
   if (body.isFromMe || body.fromMe) {
     console.log("[webhook:diag] saída: fromMe");
     return NextResponse.json({ ok: true });
+  }
+
+  // GRUPO, TRANSMISSÃO, STATUS E CANAL NÃO VIRAM ATENDIMENTO.
+  //
+  // Isto vem ANTES de qualquer escrita — antes de abrir conversa, gravar mensagem, criar
+  // lead ou chamar o modelo. Um grupo que virasse lead viraria card no quadro, entraria
+  // na fila de trabalho de alguém e, pior, entraria na régua de follow-up: mensagem
+  // automática não solicitada para dezenas de pessoas de uma vez, saindo do único número
+  // do escritório. É o caminho mais curto para o número ser denunciado e derrubado.
+  //
+  // Silêncio total, e de propósito: responder "não atendo por aqui" dentro do grupo já
+  // seria a Ana falando em público.
+  const origem = origemDaMensagem(body);
+  if (origem !== "individual") {
+    console.log("[webhook:diag] saída: remetente não é conversa individual —", origem);
+    return NextResponse.json({ ok: true, ignorado: origem });
   }
 
   const phone = (body.phone ?? "").trim();
@@ -347,6 +373,15 @@ export async function POST(req: NextRequest) {
     // Cliente respondeu → cancela qualquer follow-up pendente (ele voltou à conversa).
     await repo.cancelPendingFollowups(conv.id).catch(() => {});
 
+    // A PESSOA VOLTOU A FALAR. Zera a sequência de follow-up, cancela o rascunho que
+    // esperava aprovação (foi escrito para o silêncio dela) e fecha o par
+    // pergunta/resposta dos toques já enviados — é desse par que sai a taxa de resposta
+    // por motivo e por idioma. Nunca derruba o atendimento: falhar aqui é perder um
+    // número, e responder à pessoa vale mais.
+    await registrarRespostaDoContato(repo, conv.id).catch((e) =>
+      console.error("[webhook] não zerei a régua de follow-up:", e instanceof Error ? e.message : e),
+    );
+
     // PEDIU PARA PARAR. Vem ANTES de qualquer resposta: o que derruba o WhatsApp da
     // empresa é taxa de bloqueio/denúncia, e o caminho mais curto para uma denúncia é
     // insistir com quem acabou de pedir para parar. A leitura é determinística — deixar
@@ -354,7 +389,7 @@ export async function POST(req: NextRequest) {
     const optOut = detectarOptOut(text);
     if (optOut) {
       await repo
-        .marcarOptOut(conv.id, optOut)
+        .marcarOptOut(conv.id, optOut, text)
         .catch((e) =>
           console.error(
             "[webhook] NÃO consegui registrar o opt-out (rodou a migration 016?):",
