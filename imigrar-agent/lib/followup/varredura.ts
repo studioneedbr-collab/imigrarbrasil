@@ -48,7 +48,6 @@ export async function varrerEspera(
   agora: Date = new Date(),
 ): Promise<ResultadoDaVarredura> {
   const rodada = novaRodada();
-  const rodada = novaRodada();
 
   const [vencidos, modelos, instancias, pendentes] = await Promise.all([
     repo.listLeadsComToqueVencido(agora).catch(() => []),
