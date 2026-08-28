@@ -35,6 +35,12 @@ export async function runAgent(params: {
   // Tools a NÃO oferecer nesta chamada (ex.: bloquear o encaminhamento na 1ª mensagem,
   // para a Ana acolher antes de despachar quem só mandou "oi").
   blockTools?: string[];
+  /**
+   * MODO SOMBRA. Desce daqui até `executeTool`, e é isso que impede o ensaio de mandar
+   * WhatsApp para o advogado e de agendar follow-up para a pessoa. O flag existia em
+   * `respondToConversation` e parava lá — as tools rodavam para valer.
+   */
+  sombra?: boolean;
 }): Promise<AgentRunResult> {
   if (useDeepseek) {
     try {
@@ -64,7 +70,11 @@ export async function runAgent(params: {
     }
   }
   return {
-    ...(await runFallback({ history: params.history, conversationId: params.conversationId })),
+    ...(await runFallback({
+      history: params.history,
+      conversationId: params.conversationId,
+      sombra: params.sombra,
+    })),
     source: "fallback" as const,
   };
 }

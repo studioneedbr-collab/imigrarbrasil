@@ -364,6 +364,10 @@ export async function respondToConversation(
     history,
     conversationId,
     blockTools,
+    // O flag desce até `executeTool`. Sem isto ele parava aqui: a resposta não era gravada,
+    // mas as tools rodavam para valer e o "ensaio" mandava WhatsApp para o advogado e
+    // agendava follow-up para a pessoa.
+    sombra: opts.sombra,
   });
 
   // Botões de resposta rápida (enviar_opcoes): a pergunta da tool vira uma mensagem
@@ -422,13 +426,19 @@ export async function respondToConversation(
     proximoRetorno: janela.dentroDoExpediente ? undefined : janela.quando,
   });
   if (impasse?.acao === "encaminhar") {
-    await executeTool("transferir_para_humano", {
-      conversation_id: conversationId,
-      reason: impasse.motivo,
-      summary: lastUserText,
-      setor: impasse.setor,
-      priority: impasse.priority,
-    }).catch((err) => console.error("[anti-loop] transferir:", err instanceof Error ? err.message : err));
+    // O terceiro caminho até a tool — e o mais fácil de esquecer, porque não passa pelo
+    // runner. Em sombra ele também não pode acordar ninguém.
+    await executeTool(
+      "transferir_para_humano",
+      {
+        conversation_id: conversationId,
+        reason: impasse.motivo,
+        summary: lastUserText,
+        setor: impasse.setor,
+        priority: impasse.priority,
+      },
+      { sombra: opts.sombra },
+    ).catch((err) => console.error("[anti-loop] transferir:", err instanceof Error ? err.message : err));
     toolCalls.push({ name: "transferir_para_humano", input: { setor: impasse.setor, reason: impasse.motivo }, result: { ok: true, antiLoop: true } });
     reply = impasse.msg;
     buttons = undefined;

@@ -160,7 +160,37 @@ async function getSetorNotify(): Promise<Record<string, string>> {
   }
 }
 
-export async function executeTool(name: string, input: unknown): Promise<unknown> {
+/**
+ * MODO SOMBRA: A ANA PENSA IGUAL E NÃO TOCA NO MUNDO.
+ *
+ * O modo sombra promete que nada é enviado — e não cumpria. `respondToConversation`
+ * protegia três coisas (não gravava a resposta, não mudava o status, não mexia no relógio)
+ * e as TOOLS rodavam normalmente, porque o flag nunca chegava até aqui. Duas delas falam
+ * para fora:
+ *
+ *   transferir_para_humano  →  manda WhatsApp para o advogado (`TEAM_WHATSAPP`)
+ *   agendar_followup        →  agenda mensagem que o cron entrega À PESSOA horas depois
+ *
+ * Ou seja: um ensaio acordava o time e mandava mensagem para o cliente. E há um caminho
+ * que chega em sombra sem ninguém escolher — instância não reconhecida (ver
+ * `decidirAtendimento`) —, então um webhook apontado para o lugar errado passava a falar
+ * com gente por um canal que o painel nem sabia qual era.
+ *
+ * O QUE CONTINUA RODANDO EM SOMBRA, de propósito: a leitura do material oficial, a
+ * gravação da ficha e — dentro do encaminhamento — a AVALIAÇÃO do portão. Nenhuma delas
+ * sai do sistema, e todas mudam o que a Ana escreveria. Se o portão recusasse só em
+ * produção, o rascunho deixaria de ser um ensaio fiel e viraria ficção.
+ */
+export interface ExecuteToolOpts {
+  /** Verdadeiro no modo sombra: efeito que sai do sistema é suprimido. */
+  sombra?: boolean;
+}
+
+export async function executeTool(
+  name: string,
+  input: unknown,
+  opts: ExecuteToolOpts = {},
+): Promise<unknown> {
   const repo = getRepository();
   switch (name) {
     case "registrar_dados_lead": {
@@ -246,6 +276,20 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
           };
         }
       }
+      // EM SOMBRA PARA AQUI. O portão acima JÁ foi avaliado — se ele recusasse, a recusa
+      // teria voltado ao modelo e o rascunho seria outro, que é o ensaio fiel. O que não
+      // acontece daqui para baixo é o que sai do sistema: marcar a conversa como
+      // transferida no painel e acordar o advogado no WhatsApp dele.
+      //
+      // O retorno diz `ok: true` de propósito: é o que a tool responderia de verdade, e é
+      // isso que faz a Ana escrever o rascunho que ela escreveria. Quem revisa precisa ver
+      // a mensagem real, não uma versão que ela só escreveu porque a tool falhou.
+      if (opts.sombra) {
+        // eslint-disable-next-line no-console
+        console.log(`[transfer:sombra] encaminhamento ENSAIADO, nada enviado (conversa ${i.conversation_id})`);
+        return { ok: true, transferred: true, setor, sombra: true };
+      }
+
       // ENCAMINHAR ≠ ASSUMIR. Aqui só se abre o chamado e se avisa o setor; ninguém
       // pegou a conversa ainda, então `assumedBy` fica vazio e a Ana CONTINUA
       // atendendo a pessoa até um atendente abrir o chat no painel e responder.
@@ -331,6 +375,12 @@ export async function executeTool(name: string, input: unknown): Promise<unknown
     case "agendar_followup": {
       const i = followupSchema.parse(input);
       const scheduledAt = new Date(Date.now() + i.delay_hours * 3600_000).toISOString();
+      // EM SOMBRA NÃO SE AGENDA NADA. Este é o efeito mais traiçoeiro do modo: o envio não
+      // acontece agora, acontece pelo cron horas depois — quando ninguém mais liga a
+      // mensagem que chegou ao cliente com o ensaio de ontem.
+      if (opts.sombra) {
+        return { ok: true, scheduled_at: scheduledAt, sombra: true };
+      }
       const f = await repo.scheduleFollowup(i.conversation_id, i.message, scheduledAt);
       return { ok: true, followup_id: f.id, scheduled_at: scheduledAt };
     }

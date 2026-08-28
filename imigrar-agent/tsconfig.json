@@ -17,7 +17,22 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
+
+    // SEM `baseUrl`, de propósito. Se ele reaparecer aqui, foi engano — leia antes de repor.
+    //
+    // Entrada relativa em `paths` resolve contra a pasta DESTE arquivo desde o TS 4.4,
+    // então `baseUrl: "."` não fazia diferença nenhuma: `"@/*": ["./*"]` aponta para o
+    // mesmo lugar com ou sem ele. O que ele fazia era só uma coisa — ser marcado como erro
+    // no editor, porque está em rota de remoção no TypeScript 7. O `tsc` 5.9 da linha de
+    // comando ainda aceita, então o build passava e só o editor reclamava. É também a
+    // forma que o `create-next-app` gera hoje.
+    //
+    // CUIDADO AO LER O COMENTÁRIO NO TOPO DE `middleware.ts`: ele credita ao `baseUrl` a
+    // correção da falha de deploy no Edge ("referencing unsupported modules"). Não é ele.
+    // O que resolve aquilo é o import RELATIVO em todo o grafo do middleware, e quem
+    // garante isso é `tests/middleware-edge.test.ts`, que percorre o grafo inteiro e falha
+    // se um `@/` reaparecer. Verificado: com e sem `baseUrl`, o bundle do middleware sai
+    // com exatamente o mesmo tamanho.
     "paths": {
       "@/*": ["./*"]
     }

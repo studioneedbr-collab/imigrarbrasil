@@ -167,12 +167,35 @@ export async function POST(req: NextRequest) {
   let instancia = okQuery ? null : await resolverInstancia(body.instanceId).catch(() => null);
   if (!okQuery) {
     const clientToken = instancia?.clientToken || (await getZapiConfig()).clientToken;
-    const okHeader = clientToken.length > 0 && incomingToken.length > 0 && safeEqual(incomingToken, clientToken);
-    if (secret) {
-      if (!okHeader) return new NextResponse("Unauthorized", { status: 401 });
-    } else if (clientToken && incomingToken && !safeEqual(incomingToken, clientToken)) {
-      return new NextResponse("Invalid client token", { status: 401 });
+
+    // SEM SEGREDO NENHUM CONFIGURADO, A ROTA RECUSA — ela não fica aberta.
+    //
+    // Esta era a brecha: com `WEBHOOK_VERIFY_TOKEN` ausente E nenhum Client-Token, as
+    // duas guardas abaixo eram puladas e a requisição seguia. Não é hipótese — é o
+    // estado do projeto até a Z-API entrar, e nele qualquer um que soubesse a URL
+    // injetava conversa e lead na fila (inclusive com prazo correndo, que é o topo do
+    // bloco 1) e queimava o saldo do modelo. Com a Z-API ligada seria pior: a resposta
+    // sai para o `phone` que veio no corpo, ou seja, envio para número arbitrário pelo
+    // WhatsApp da empresa — o caminho mais curto para o bloqueio que a regra de antiban
+    // existe para evitar.
+    //
+    // 503 e não 401 de propósito: isto não é requisição forjada, é instalação pela
+    // metade. Quem lê o log precisa saber qual dos dois é.
+    if (!secret && !clientToken) {
+      console.error(
+        "[webhook] RECUSADO: nem WEBHOOK_VERIFY_TOKEN nem Client-Token da Z-API estão " +
+          "configurados. Enquanto isso não for resolvido, nenhuma mensagem é processada.",
+      );
+      return new NextResponse("Webhook sem autenticação configurada", { status: 503 });
     }
+
+    // Daqui para baixo existe segredo: provar quem é passa a ser obrigatório. Antes,
+    // header ausente com Client-Token configurado passava batido (`incomingToken &&`
+    // curto-circuitava a comparação) — quem mandava prova errada era barrado e quem não
+    // mandava prova nenhuma entrava.
+    const okHeader =
+      clientToken.length > 0 && incomingToken.length > 0 && safeEqual(incomingToken, clientToken);
+    if (!okHeader) return new NextResponse("Unauthorized", { status: 401 });
   }
   if (!instancia) instancia = await resolverInstancia(body.instanceId).catch(() => null);
 

@@ -496,9 +496,16 @@ function isConfidentialAsk(text: string, termos: string[]): boolean {
 export async function runFallback({
   history,
   conversationId,
+  sombra,
 }: {
   history: AgentTurn[];
   conversationId: string;
+  /**
+   * Modo sombra. Vale aqui também, e não só no caminho do modelo: quando o DeepSeek cai,
+   * o ensaio passa por este motor — e ele chama a MESMA tool de encaminhamento. Sem o
+   * flag, uma queda do provedor durante o modo sombra acordava o advogado no WhatsApp.
+   */
+  sombra?: boolean;
 }): Promise<AgentRunResult> {
   const repo = getRepository();
   const toolCalls: ToolCallTrace[] = [];
@@ -543,7 +550,7 @@ export async function runFallback({
       setor: "comercial" as const,
       priority: EMERGENCIA.test(lastRaw) ? ("urgent" as const) : ("normal" as const),
     };
-    const result = await executeTool("transferir_para_humano", input).catch((err) => ({
+    const result = await executeTool("transferir_para_humano", input, { sombra }).catch((err) => ({
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }));

@@ -103,11 +103,14 @@ export async function runDeepseek({
   history,
   conversationId,
   blockTools,
+  sombra,
 }: {
   systemPrompt: string;
   history: AgentTurn[];
   conversationId: string;
   blockTools?: string[];
+  /** Modo sombra: as tools são avaliadas, mas nada que saia do sistema acontece. */
+  sombra?: boolean;
 }): Promise<AgentRunResult> {
   const toolCalls: ToolCallTrace[] = [];
   const tools = blockTools?.length
@@ -140,7 +143,7 @@ export async function runDeepseek({
       const input = { ...parsed, conversation_id: conversationId };
       let result: unknown;
       try {
-        result = await executeTool(call.function.name, input);
+        result = await executeTool(call.function.name, input, { sombra });
       } catch (err) {
         result = { error: err instanceof Error ? err.message : String(err) };
       }
