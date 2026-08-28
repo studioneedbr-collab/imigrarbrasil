@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **27/08/2026**.
+Última atualização: **27/08/2026, noite** (CRM, mapa do atendimento e a limpeza do que ainda era da Shine Rio).
 
 ---
 
@@ -50,7 +50,23 @@ O que **já foi removido** (branch `fila-de-prazos`, 26/08):
 O que **sobrou de propósito**: as tabelas antigas continuam no banco (o app não as lê), e
 alguns campos legados do lead foram **reaproveitados** com leitura deste domínio —
 `client_type` guardava tipo de cliente e hoje espelha a nacionalidade, `contract_duration`
-virou a situação documental. Está documentado no código onde acontece.
+virou a situação documental, e `setor: "comercial"` (a chave gravada em todo lead) é o
+destino do **time jurídico** — a tela lê "Jurídico". Está documentado no código onde
+acontece.
+
+**A segunda limpeza (27/08, noite)** pegou o que tinha sobrado na INTERFACE, que é onde
+custa caro: quem está aprendendo a operar o painel aprende errado. Saíram o simulador que
+imitava o WhatsApp com um botão "Abrir proposta em PDF ↗" (ferramenta que só existia no
+produto de portaria), os cenários de teste "quero 2 porteiros na Barra" e "sou da
+distribuidora G7", os setores de transferência RH / Departamento Pessoal / Suporte (times
+que não existem neste escritório — transferir para setor inexistente é transferir para
+lugar nenhum) e o "score 43" do funil comercial no dossiê da conversa.
+
+> **O que ainda é da base antiga, e fica registrado:** as chaves de `setor`
+> (`comercial`, `operacional`, `rh`, `departamento_pessoal`) continuam no banco e na API;
+> só o rótulo mudou. `LeadStage` (`novo`, `qualificado`, `orcado`, `ganho`…) segue existindo
+> e **não é o que o CRM usa** — o CRM anda pelo `atendimento_status` (§9). Trocar essas
+> chaves exige migration e backfill; até lá, quem ler o banco cru precisa saber disso.
 
 ---
 
@@ -139,7 +155,9 @@ Não é lixeira. Alguém revisa por amostragem se a Ana está descartando gente 
 
 ## 5. Métricas: tempo do time, não receita
 
-Não existe gráfico de faturamento, ticket médio ou previsão. O que se mede:
+Não existe gráfico de faturamento, ticket médio ou previsão. Seis abas — visão geral, quem
+procura, desfecho, prazos, agente e custo —, filtro de período (7/30/90 dias e *tudo*) e
+filtro por **nacionalidade**, que o custo também respeita. O que se mede:
 
 - conversas atendidas no período, **por idioma**;
 - quantas foram **filtradas** — *o número que justifica o projeto*;
@@ -147,7 +165,19 @@ Não existe gráfico de faturamento, ticket médio ou previsão. O que se mede:
 - **taxa de resgate** — *o número que protege o projeto*;
 - taxa de reclassificação (quanto o humano discorda da IA);
 - tempo até o primeiro contato humano, **separado para os casos com prazo**;
-- **prazos perdidos** — precisa ser zero, e fica visível.
+- **prazos perdidos** — precisa ser zero, e fica visível em todas as abas;
+- de onde vem a gente (nacionalidade), onde ela está, e a modalidade provável;
+- desfecho: fechados, perdidos, em aberto, taxa de fechamento e **por que os casos foram
+  perdidos** (a soma dos motivos que o CRM exige na hora de mover o card);
+- prazos: sinalizados, confirmados e a **taxa de confirmação** — sinalizado sem confirmar é
+  caso sem contador, e ninguém sabe quantos dias sobram.
+
+> **O filtro de período parecia quebrado e não estava.** 7, 30 e 90 dias mostravam a mesma
+> coisa porque a operação é nova: todo caso do banco cabe dentro de sete dias. Só que filtro
+> que não muda nada é indistinguível de filtro que não funciona, e a diferença não pode
+> depender de o usuário adivinhar. Por isso a faixa de cima **declara o recorte**: quantos
+> casos existem ao todo, quantos entraram no período, de que data a que data — e diz, com
+> todas as letras, quando o painel inteiro cabe no período escolhido.
 
 > **Por que a taxa de resgate é a métrica mais importante.** Um agente que filtra demais
 > parece ótimo nos números: pouca conversa chegando ao time, todo mundo elogiando a
@@ -208,10 +238,36 @@ das cartilhas oficiais e da legislação. **Sem material, ela não responde** �
 a informação e oferece o encaminhamento. Inventar regra migratória é o único erro grave que
 existe aqui: a pessoa toma decisão de vida com o que ela disser.
 
+**O que ela NUNCA esquece** (`lib/agent/material-oficial.ts`): o RAG é **condicional** — só
+injeta trecho quando a mensagem pede pesquisa. Saudação, "e aí, dá pra fazer?" e pergunta
+sobre honorário não disparam busca nenhuma, e é exatamente aí que ela escorregava: numa
+conversa real afirmou, em espanhol, que o passaporte carimbado em Pacaraima da pessoa
+*"significa que tu entrada quedó registrada de forma regular"* — parecer sobre o caso
+concreto, dito por um escritório de advocacia a alguém que vai decidir a vida em cima.
+
+Então seis regras invioláveis e a lista do acervo entram em **todo** prompt, por último,
+inclusive por cima de um `system_prompt` cru gravado à mão e depois de a equipe reescrever a
+persona inteira: sem parecer sobre o caso concreto · sem inventar fonte · prazo se confirma
+com documento · sem honorário nem promessa de resultado · gratuidade (DPU) existe e se diz ·
+documento da pessoa é dado sensível. **Não são editáveis na tela** — mudam com uma versão
+nova, e a aba "Material oficial" do treinar mostra o texto exato para quem for conferir.
+Este bloco é a prevenção; o verificador de saída (`verificador-de-saida.ts`) é a rede que
+corta a frase depois de escrita.
+
 **O dossiê se preenche sozinho** (`lib/agent/triagem.ts` + `lead-capture.ts`): leitura
 determinística a todo turno, em português, espanhol e inglês. Existe porque o modelo esquece
 de chamar a tool, e aí o painel ficava em "Coletando…" enquanto a pessoa já tinha contado
-tudo.
+tudo. O **objetivo** também é deduzido — "recebi uma multa" não é o objetivo; o objetivo é
+resolver a multa, e é isso que o advogado precisa ler. Derivado do sinal de prazo ou do
+caminho migratório reconhecido, nunca chutado: sem nenhum dos dois, o campo continua vazio.
+
+**E ela para de reperguntar** (`buildDadosConhecidosBlock`): o bloco de dados conhecidos
+listava os seis campos herdados da base comercial. Nacionalidade própria, localização,
+objetivo, intenção declarada, vínculo familiar e a **data limite JÁ confirmada por um
+humano** não chegavam até ele — o atendente ligava, confirmava a data da multa, gravava na
+ficha, e na mensagem seguinte a Ana perguntava de novo se havia algum prazo. Quem chega com
+medo e repete a mesma resposta pela terceira vez desiste do atendimento. Número de documento
+continua fora: os campos já são gravados sem ele.
 
 **Idioma**: detectado e gravado no contato. Importa em dois lugares que o prompt não alcança
 — o follow-up automático (que sairia sempre em português) e o atendente humano, que precisa
@@ -362,7 +418,73 @@ resolução de instância) · `app/api/agente/*` · `components/agente/*` ·
 
 ---
 
-## 9. Stack e estrutura
+## 9. O CRM — funis e etapas que o escritório desenha
+
+Até 27/08 isto era "o Quadro": cinco colunas fixas, escritas em código (novo, em
+atendimento, agendado, fechado, perdido). Elas descrevem o que o SISTEMA sabe de um caso —
+e não descrevem o trabalho. Entre "em atendimento" e "fechado" cabem semanas de "esperando
+a certidão consular", "protocolo enviado", "exigência a cumprir", e tudo isso ficava
+empilhado numa coluna só, indistinguível.
+
+**A regra que sustenta o CRM inteiro: ETAPA É NOME, STATUS É DOMÍNIO.**
+
+O escritório cria quantas etapas quiser, com o vocabulário dele, e cada etapa aponta para
+um dos cinco `atendimento_status`. É essa amarração que faz uma coluna nova continuar
+valendo para a fila de prazos, para o encerramento e para o "perdido exige motivo". Se a
+etapa fosse um estado paralelo, o primeiro efeito seria silencioso e grave: um caso
+"fechado" parado numa etapa de espera, fora da fila, invisível.
+
+- **Vários funis**, um por vez na tela. "Multa correndo" e "visto de trabalho de quem
+  ainda está fora" não são o mesmo trabalho. Caso sem funil pertence ao **padrão** — nunca
+  aparece em dois quadros, porque caso contado duas vezes é trabalho alocado duas vezes.
+- **Arrastar não ganhou caminho de escrita novo**: continua virando uma ação de
+  `POST /api/leads/[id]/atendimento` (motivo obrigatório em perdido, responsável gravado,
+  agente calado, tudo no log de acesso). Quando a etapa de destino tem o MESMO status da
+  atual, a ação é `mover` e só a etapa muda — e o servidor reconfere que a etapa
+  corresponde à ação antes de gravar as duas coisas.
+- **Nada some.** Apagar etapa ou funil não apaga caso: o lead volta a ser distribuído pelo
+  status (`on delete set null`). Quem nunca foi movido à mão aparece na primeira etapa do
+  status dele, e é por isso que um funil recém-criado abre CHEIO em vez de abrir vazio
+  parecendo perda de dados.
+- **Quem desenha**: advogado e administrador (a mesma régua de quem exporta). Um funil não
+  é preferência pessoal — é o desenho que a equipe inteira lê.
+- **O agente não mexe**: `funilId` e `etapaId` entram em `CAMPOS_SO_DE_HUMANO`. Sem isso um
+  card arrastado à mão voltaria sozinho no próximo "oi" da pessoa.
+
+Código: `lib/crm/funil.ts` · `components/crm/` · `app/api/crm/` · migration `026`.
+Endereço: `/dashboard/crm` (o antigo `/dashboard/atendimentos` redireciona).
+
+---
+
+## 10. O mapa do atendimento
+
+`/dashboard/mapa`. A tela que responde a pergunta da terceira semana de uso — **"se a
+pessoa disser X, o que a Ana faz?"** —, que sempre teve resposta espalhada por doze
+arquivos e três mil linhas de comentário.
+
+Treze etapas, da mensagem chegando no webhook até o caso virar trabalho na fila, cada uma
+com as bifurcações à vista (`se … → então …`), o porquê de existir e o arquivo onde mora.
+
+**O que o mapa ensina e nenhuma outra tela ensinava:** a cor separa *portão* e *rede*
+(código determinístico, que decide sem perguntar ao modelo) de *modelo*. O mapa inteiro
+tem **uma única caixa com um LLM escrevendo**. Quem olha um agente imagina que ele decide
+tudo; é o contrário — ele escreve dentro de um corredor estreito, e o corredor é o resto do
+desenho. Metade dos pedidos de "muda o prompt" vira outra conversa depois disso.
+
+A seção "se a pessoa disser X" marca cada linha com a **origem**: `em código` (muda com uma
+versão nova) ou `configurado` (muda em Treinar o agente, e as linhas configuradas são lidas
+do que está gravado). Sem essa marca, alguém perde meia hora tentando editar na tela uma
+decisão que está no `transfer-gate`.
+
+> **Mapa que mente é pior do que mapa nenhum.** Um fluxograma feito à parte dura uma
+> sprint: o código muda, o desenho não, e passa a existir uma fonte errada com aparência de
+> oficial. Por isso o mapa é DADO (`lib/agent/mapa.ts`), cada etapa aponta o arquivo onde
+> mora, e `tests/mapa.test.ts` falha se um arquivo citado sumir, se as classificações
+> divergirem do domínio ou se aparecer uma segunda caixa de modelo.
+
+---
+
+## 11. Stack e estrutura
 
 **Next.js 14** (App Router, TS, Tailwind) · **Supabase** (Postgres + pgvector) ·
 **Vitest** · **DeepSeek** (LLM) · **Z-API** (WhatsApp) · **OpenAI** (embeddings do RAG e
@@ -371,7 +493,13 @@ transcrição de áudio) · deploy na **Vercel**.
 ```
 imigrar-agent/      a aplicação (painel, webhook, agente)
   IDENTIDADE.md       paleta, tipografia e a faixa MRZ — ler antes de mexer em tela
+  scripts/migrar.mjs  `npm run migrar`: aplica só o que falta e grava em schema_migrations
   supabase/migrations/
+  lib/agent/material-oficial.ts   as regras que entram em TODO prompt (não editáveis)
+  lib/agent/mapa.ts               o mapa do atendimento, como dado
+  lib/crm/funil.ts                funis, etapas e a montagem do quadro
+  components/dashboard/campos.tsx seleção e data do sistema (sem controle nativo)
+  components/atendimentos/qualidade.tsx  completude + prioridade do lead
 ingestao/           pipeline Python que vira base vetorial (não precisa de pip)
 material-oficial/   as 7 cartilhas + legislação — a fonte de tudo que a Ana afirma
 marca/              logotipos originais do cliente
@@ -384,37 +512,60 @@ Os PDFs têm o nome do `id` que já têm em `ingestao/fontes.json`. Os scripts d
 **Identidade visual:** teal `#009687` é identidade, azul `#005EC4` é ação. Amostrados do
 logotipo, pixel a pixel. Densidade acima de espaço em branco — é ferramenta de uso diário.
 
+**Não se usa controle nativo do navegador** (`components/dashboard/campos.tsx`). `<select>` e
+`<input type="date">` mudam de cara em cada máquina, e num painel onde a data é prazo
+processual "onde eu clico para escolher o dia" não pode ser pergunta nova a cada computador.
+Também não cabe explicação: quase toda escolha aqui precisa da linha que diz o que ela
+implica ("perdido exige motivo", "isto não é prazo processual"), e `<option>` é texto puro.
+`Selecao` e `CampoData` cobrem isso, com teclado inteiro; o campo de data aceita **digitar**
+(quem tem a notificação na mão digita `27082026` e segue) e **data pela metade invalida o
+valor guardado** — antes o campo mostrava `27/08/202` e o formulário salvava a data velha, em
+silêncio. Confirmação destrutiva usa `ConfirmDialog`, nunca `window.confirm`.
+
 ---
 
-## 10. Estado da infraestrutura (27/08/2026, noite)
+## 12. Estado da infraestrutura (27/08/2026, noite)
 
 > **O painel está NO AR e funcionando**: https://agente.imigrarbrasil.com.br
 > Login: `studioneedbr@gmail.com`. A senha foi redefinida direto no banco em 27/08 —
 > **peça a senha atual a quem redefiniu e troque**. Não existe tela de trocar senha
-> (ver seção 11): hoje o único caminho é `update users set password_hash` com o mesmo
+> (ver seção 13): hoje o único caminho é `update users set password_hash` com o mesmo
 > formato scrypt de `lib/auth/password.ts`.
 
 **Supabase** — projeto `myfmqkgpnpmvlmvaewiq`. Estava **completamente vazio** até 26/08.
 
-**Aplicadas e conferidas contra o banco:**
-`004` (setup consolidado) · `005` users · `006` funcionarios · `007` hardening ·
-`008` conversation_status · `009` atendimento humano e mídia · `010` users_setor ·
-`014` leads setor+stage · `016` opt-out · `017` rag_chunks · `018` idioma ·
-`019` fila de prazos · `020` saúde da operação · `021` ficha mínima · `022` relógio (data)
+**AS MIGRATIONS RODAM SOZINHAS AGORA.** `npm run migrar` lê `supabase/migrations`, aplica na
+ordem só o que falta, grava cada arquivo em `schema_migrations` e roda cada um numa
+transação. Precisa de `DATABASE_URL` (a conexão direta com o Postgres, não a
+`service_role` — o PostgREST não executa DDL). Sem esse registro, "o que falta neste banco?"
+só se responde conferindo tabela por tabela, que foi o que custou caro com a `024`.
 
-**Falta aplicar: `023` ativação do agente.** Conferido em 27/08: as tabelas
-`zapi_instancias` e `rascunhos_agente` não existem no banco. Sem ela o webhook cai numa
-instância sintética (produção continua respondendo, nada quebra), mas o painel de
-instâncias fica vazio e o **modo sombra não grava nada**.
+**Estado do banco em 27/08, conferido em `schema_migrations`: as 26 migrations aplicadas**,
+da `001` à `026_crm_funis.sql`. Isso inclui a `023` (ativação e modo sombra), a `024` (custo
+e vocabulário), a `025` (parecer barrado e telefone normalizado) e a `026` (funis, etapas e
+`leads.funil_id` / `leads.etapa_id`).
 
-**Puladas de propósito:**
+> Nota histórica: `001`, `002` e `003` estavam marcadas como "puladas de propósito" — a
+> `004` as substitui. O runner as aplicou por serem idempotentes (`create table if not
+> exists`), e o banco continua no formato consolidado da `004`. `011`, `012`, `013` e `015`
+> são catálogo de funções e pisos da CCT de limpeza do Rio: dado da Shine Rio, que o app não
+> lê mais; `services_catalog` e `function_pricing` seguem criadas e vazias.
 
-- `001`, `002`, `003` — a própria `004` diz que as substitui e contém a união das colunas.
-  Rodar a `001` antes criaria as tabelas no formato antigo e a `004` passaria batido,
-  deixando `stage`, `score` e `cliente_id` de fora.
-- `011`, `012`, `013`, `015` e os seeds da `004` — catálogo de funções e pisos da CCT de
-  limpeza do Rio. Dado da Shine Rio, que o app não lê mais. `services_catalog` e
-  `function_pricing` ficaram criadas e vazias.
+**A `026` pode rodar depois do código sem estrago.** Sem ela o CRM abre com o funil padrão
+que vive em código (`lib/crm/funil.ts`) e as cinco colunas de sempre; o botão de desenhar
+etapas fica desligado, porque criar etapa num funil que não existe no banco daria erro a
+cada clique, e arrastar continua funcionando — o que move o card é o `atendimento_status`,
+que não mudou.
+
+**Outros achados do banco em 27/08:**
+
+- `rag_chunks` com **1.723 trechos** indexados — o acervo está carregado.
+- `agent_config` tinha **uma única chave** (`chave_geral`). Ou seja: ninguém nunca
+  conseguiu salvar nada em Treinar o agente, e o agente rodou o tempo todo nos padrões de
+  código. A causa provável era a mensagem de erro: *"Falha ao salvar o treinamento. Confira
+  os campos obrigatórios"* numa tela de sete abas com dezenas de campos. Agora o erro
+  **nomeia o campo** (`objections › 3 › resposta — ...`), a gravação confere bloco a bloco
+  e não promete "nada foi alterado" quando metade já foi.
 
 ### As QUATRO causas empilhadas que impediam o deploy (todas resolvidas)
 
@@ -531,10 +682,20 @@ Três achados que valem revisão:
    pergunta à conta se ela consegue responder, e a faixa distingue *"a captação está
    parada"* de *"o agente não está pensando"*.
 
-### Git
+### Git e deploy
 
-`origin/main` está em **`b22c0a6`**, e esse commit foi verificado num worktree limpo:
-typecheck limpo, build compilando, 523 testes passando.
+`origin/main` está em **`c458ed0`** (27/08, noite), verificado antes de subir: `tsc
+--noEmit` limpo, `next lint` 0 erros/0 warnings, `next build` compilando e **695 testes
+passando**.
+
+> ⚠️ **O deploy não está automatizado a partir deste repositório.** Em 27/08, a conta
+> Vercel acessível pelo CLI (`cassio-bispos-projects`) NÃO tem projeto da Imigrar Brasil —
+> só `vapogold`, `shine-rio-agent` (que é outro produto: "Shine Rio · Centro de Operações
+> do Agente"), `sistemagestao` e `aboutique`. Também não existe `.vercel/` linkado na pasta.
+> Ou o projeto vive em outra conta/time, ou o site em produção
+> (`agente.imigrarbrasil.com.br`) é servido por um deploy feito de outro lugar.
+> **Antes de prometer "está no ar", descubra qual é o projeto** — `vercel project ls` na
+> conta certa, depois `vercel link` dentro de `imigrar-agent/`.
 
 > ⚠️ **`git push origin main` estava respondendo "up-to-date" sem enviar nada.** Cinco
 > commits ficaram presos localmente sem nenhum erro visível. O que funciona é o refspec
@@ -549,7 +710,7 @@ typecheck limpo, build compilando, 523 testes passando.
 
 ---
 
-## 11. O que falta
+## 13. O que falta
 
 **Bloqueado esperando terceiros**
 
@@ -564,7 +725,7 @@ typecheck limpo, build compilando, 523 testes passando.
 - [ ] **Z-API — a instância do 4664.** É o único bloqueio para virar operação de verdade:
       sem ela nenhuma pessoa real consegue escrever para a Ana
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
-- [ ] **aplicar a migration `023`** no Supabase de produção (ver §10)
+- [ ] **aplicar a migration `023`** no Supabase de produção (ver §12)
 
 **Feito depois da v1 (26/08, noite)**
 
@@ -582,6 +743,32 @@ typecheck limpo, build compilando, 523 testes passando.
       conversa, com o comportamento de desligado explícito e auditado
 - [x] **Modo sombra** — a Ana responde contra conversa real sem enviar nada, e cada
       descarte ou edição vira dado
+- [x] **Migrations automáticas** — `npm run migrar` + `schema_migrations` (§12)
+
+**Feito em 27/08, noite (a rodada de acabamento)**
+
+- [x] **O CRM** (§9) — funis e etapas que o escritório cria, com etapa apontando para
+      status; o antigo "Quadro" virou `/dashboard/crm`
+- [x] **O mapa do atendimento** (§10) — `/dashboard/mapa`
+- [x] **A tela do caso parou de rolar** — cabeça fixa (prazo, cartão de qualidade, ações)
+      e o resto em abas: ficha, retornos, classificação e histórico no mesmo espaço, com a
+      rolagem acontecendo DENTRO do painel. Prazo confirmado encolhe para uma linha
+- [x] **Seleção e data do sistema** (§11) — nada mais nativo do navegador
+- [x] **Qualidade do lead** — completude (ficha mínima) e prioridade, que são eixos
+      diferentes; substituiu o "score 43" herdado do funil comercial no dossiê da conversa,
+      e entrou no resumo do card do CRM. Antes a conversa dizia "2/5" com uma lista escrita
+      à mão enquanto a ficha do domínio tinha seis itens — duas contas da mesma coisa
+- [x] **Métricas com abas e filtro de nacionalidade** (§5), com o recorte declarado
+- [x] **As regras invioláveis em todo prompt** (§7) e a aba "Material oficial" no treinar
+- [x] **Treinar o agente: o erro diz o campo** — e a descoberta de que `agent_config`
+      tinha uma chave só, ou seja, ninguém nunca conseguiu salvar (§12)
+- [x] **A ficha deduz o objetivo e a Ana para de reperguntar** (§7)
+- [x] **Resto da Shine Rio removido da interface** — simulador refeito (era mock de
+      WhatsApp com "Abrir proposta em PDF"), cenários de teste de portaria trocados por
+      imigração, setores de transferência (RH/DP/Suporte → Jurídico, Atendimento,
+      Documentação, Financeiro, Diretoria), "Comercial" agora se lê **Jurídico**, remetente
+      padrão do Brevo. A aba **Ensaios foi removida**
+- [x] **Meus atendimentos** — faixa de números no topo e bloco vazio virando uma linha
 
 **Segurando de propósito até as primeiras cem conversas**
 
@@ -598,7 +785,13 @@ de descobrir, em três semanas, que metade não era necessária.
 - [ ] **Filtros salvos, mapa de origem, métricas por versão de prompt**
 - [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco
 - [ ] **Dashboard e CRM por pessoa** — escopo a fechar
-- [ ] **Treinar o agente** — as 7 abas ainda são da base comercial
+- [x] **Treinar o agente** — as abas deixaram de ser da base comercial; falta a
+      **primeira gravação de verdade** (§12: `agent_config` ainda só tem `chave_geral`).
+      Enquanto ninguém salvar, o agente segue nos padrões de código — que funcionam, mas
+      não são o que a equipe escreveria
+- [ ] **Métricas em PDF** — pedido de 27/08, escopo a confirmar: hoje a exportação é de
+      leads, em planilha, e o pedido pode ser "exportar a tela de métricas"
+- [ ] **Descobrir o projeto Vercel** deste painel e linkar a pasta (§12, Git e deploy)
 - [ ] **Integrações** — DeepSeek de verdade; Brevo fora do caminho. *(A Z-API virou o
       painel de instâncias — feito.)*
 
@@ -615,17 +808,23 @@ de descobrir, em três semanas, que metade não era necessária.
 - **silêncio total só em teste** — em produção, do outro lado tem alguém que escreveu
   pedindo ajuda;
 - **conversa de teste não conta** em métrica nenhuma nem na fila de trabalho;
-- resposta de sombra **não entra no histórico** enquanto não for enviada de verdade.
+- resposta de sombra **não entra no histórico** enquanto não for enviada de verdade;
+- **etapa é nome, status é domínio** — etapa de CRM nunca vira um estado paralelo, e apagar
+  etapa ou funil não apaga caso nenhum;
+- as **regras do material oficial entram em todo prompt** e não se editam pela tela;
+- **`funilId` e `etapaId` são só de humano** — o agente não move card;
+- **nada de `<select>`, `<input type="date">` ou `window.confirm` nativos** na interface.
 
 ---
 
-## 12. Rodar
+## 14. Rodar
 
 ```bash
 npm run setup     # instala em imigrar-agent/
 npm run dev       # http://localhost:3000
-npm test          # 561 testes
+npm test          # 695 testes
 npm run typecheck
+npm run migrar    # aplica no banco só as migrations que faltam (precisa de DATABASE_URL)
 ```
 
 Primeiro acesso: `/setup` cria o primeiro admin e se tranca depois. Sem

@@ -54,15 +54,18 @@ usuário — daí em diante, novos usuários saem de `/dashboard/users`.
 **`repo: memory` significa que o admin some quando você reinicia o `npm run dev`.**
 Os dados vivem no processo. É aceitável para navegar no painel e mexer em tela;
 para ter persistência de verdade, configure o Supabase no `.env.local` e aplique
-as migrations de `imigrar-agent/supabase/migrations/`.
+as migrations com `npm --prefix imigrar-agent run migrar` (aplica só o que falta e grava em
+`schema_migrations`; precisa da `DATABASE_URL`, que é a conexão direta com o Postgres — a
+`service_role` fala com o PostgREST e não executa DDL).
 
 ### Testes
 
-`npm test` — 466 testes, 45 arquivos, todos passando. Cobrem webhook, sessão, transbordo e
+`npm test` — 695 testes, todos passando. Cobrem webhook, sessão, transbordo e
 anti-loop, o atendimento do domínio (gatilhos de transbordo jurídico, "não inventar
 informação migratória", "não falar de honorários", triagem de nacionalidade/onde a pessoa
-está/o que ela procura), a recuperação do material oficial e a detecção de idioma — e,
-separada em `lib/comercial/`, a precificação herdada que serve às telas do painel.
+está/o que ela procura), a recuperação do material oficial e a detecção de idioma, o CRM (funis e etapas) e o mapa do
+atendimento — este último com um teste que falha se o mapa passar a apontar para arquivo que
+não existe mais, porque mapa que mente é pior do que mapa nenhum.
 
 ## Estado por fase
 
