@@ -194,8 +194,18 @@ export function idiomaDaConversa(
  */
 export function buildIdiomaBlock(gravado?: string | null): string {
   if (!gravado || gravado === "pt") return "";
-  const nome = NOME_DO_IDIOMA[gravado] ?? gravado;
+  // O NOME, E NÃO O CÓDIGO. Desde que `lib/agent/idioma-modelo.ts` entrou como última
+  // instância, o código gravado pode ser qualquer um do ISO 639-1 — inclusive um que a
+  // tabela de rótulos ainda não tenha. Escrever "vem falando sw" no prompt não instrui
+  // ninguém: o modelo lê uma sigla e não uma língua. Sem o nome, a frase passa a nomear
+  // o que ela é de fato, um código, e aí o modelo sabe o que fazer com ela.
+  const conhecido = NOME_DO_IDIOMA[gravado];
+  const nome = conhecido ?? `o idioma de código ISO 639-1 "${gravado}"`;
+  // Dois slots, e não um: "Continue em ${nome}" só funciona com o nome nu ("em espanhol").
+  // Com o rótulo de emergência sairia "Continue em o idioma de código" — e uma frase
+  // capenga no system prompt instrui pior do que uma frase a menos.
+  const continue_ = conhecido ? `Continue em ${conhecido}` : "Continue nesse mesmo idioma";
   return `\n\n════════ IDIOMA DESTE CONTATO ════════
-Esta pessoa vem falando ${nome} nesta conversa. Continue em ${nome}, mesmo que o material oficial que você recebeu esteja em português — traduza o conteúdo, nunca devolva o trecho em português.
+Esta pessoa vem falando ${nome} nesta conversa. ${continue_}, mesmo que o material oficial que você recebeu esteja em português — traduza o conteúdo, nunca devolva o trecho em português.
 Se a mensagem de agora vier em outra língua, siga a língua de agora: ela trocou, e você troca junto. Não comente a troca.`;
 }

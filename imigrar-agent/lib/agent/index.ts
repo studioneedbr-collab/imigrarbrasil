@@ -10,7 +10,9 @@ import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
-import { buildIdiomaBlock, idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
+import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
+import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
+import { useDeepseek } from "@/lib/env";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -263,7 +265,17 @@ export async function respondToConversation(
   // A conversa inteira, e não só a última mensagem: no WhatsApp quase toda mensagem é
   // curta demais para o detector decidir sozinha, e uma conversa inteira em espanhol
   // acabava atendida em português. Ver `idiomaDaConversa`.
-  const idiomaDetectado = idiomaDaConversa(lastUserText, allUserText, convBefore?.idioma);
+  // E QUANDO A HEURÍSTICA NÃO CONHECE A LÍNGUA? Ela é escrita à mão e cobre o que este
+  // atendimento mais vê. Alemão, italiano, turco, suaíli e wolof caíam em `undefined` —
+  // a resposta do turno saía certa (é a REGRA ABSOLUTA 1 do prompt), mas o contato ficava
+  // sem idioma gravado, e aí o follow-up automático saía em português e a fila mostrava o
+  // chip vazio. Aí, e só aí, o modelo é consultado. Ver lib/agent/idioma-modelo.ts.
+  const idiomaDetectado = await idiomaDaConversaOuModelo(
+    lastUserText,
+    allUserText,
+    convBefore?.idioma,
+    { conversationId, habilitado: useDeepseek },
+  );
   systemPrompt += buildIdiomaBlock(idiomaDetectado ?? convBefore?.idioma);
   if (idiomaDetectado) await registrarIdioma(conversationId, idiomaDetectado);
 
