@@ -169,6 +169,50 @@ export function anunciaEncaminhamento(frase: string): boolean {
   return ANUNCIA_ENCAMINHAMENTO.some((re) => re.test(t));
 }
 
+// ─── UMA PERGUNTA POR MENSAGEM ───
+//
+// O prompt sempre disse "UMA pergunta por vez, nunca duas". Numa conversa real de 28/08 a
+// Ana escreveu "qual é o seu nome e de onde você é?" e, logo depois, "você está no Brasil
+// agora, certo? Me conta também como foi essa multa — você recebeu algum papel da Polícia
+// Federal?".
+//
+// A pessoa respondeu "sim". Sim para qual? "Está no Brasil" e "recebeu o papel da PF" são
+// fatos diferentes, e o segundo decide se existe prazo correndo. O que entra na ficha a
+// partir daí é suposição com cara de informação — e quem lê é o advogado.
+//
+// A REGRA PIOROU JUSTAMENTE QUANDO AS MENSAGENS ENCURTARAM: pedido para ser breve, o
+// modelo comprime fundindo perguntas. Por isso ela deixou de ser só uma linha do prompt.
+//
+// O CORTE É CONSERVADOR: mantém a PRIMEIRA pergunta e derruba as seguintes. A primeira é
+// a que a Ana escolheu fazer, e a que vem antes na leitura de quem recebe. As outras
+// voltam no turno seguinte — aí com a resposta da primeira na mão.
+
+/** A frase é uma pergunta? */
+function ehPergunta(frase: string): boolean {
+  return frase.includes("?");
+}
+
+/**
+ * Frases-pergunta além da primeira. Devolve os índices a remover.
+ *
+ * Só conta frase com "?": uma pergunta indireta ("me conta como foi") não é ambígua do
+ * mesmo jeito — a pessoa responde a ela ou à explícita, e ficar caçando isso por regex
+ * derrubaria mensagem boa. O sinal que importa é o ponto de interrogação repetido.
+ */
+export function perguntasExcedentes(frases: string[]): number[] {
+  const indices: number[] = [];
+  let jaTemUma = false;
+  for (let i = 0; i < frases.length; i++) {
+    if (!ehPergunta(frases[i])) continue;
+    if (!jaTemUma) {
+      jaTemUma = true;
+      continue;
+    }
+    indices.push(i);
+  }
+  return indices;
+}
+
 /**
  * A revisão completa de um turno.
  *
@@ -185,9 +229,20 @@ export function revisarTurno(
 
   const frases = emFrases(texto);
   const cortes: string[] = [];
+
+  // Calculado sobre as frases que SOBREVIVEM aos outros cortes, e não sobre o texto
+  // bruto: se a primeira pergunta for cortada por dar parecer, quem passa a ser "a
+  // primeira" é a seguinte — e ela tem de ficar, senão a mensagem sai sem pergunta
+  // nenhuma e a conversa morre ali.
+  const sobreviventes = frases.filter(
+    (f) => !f.trim() || !(qualificaSituacao(f) || (!opts.encaminhou && anunciaEncaminhamento(f))),
+  );
+  const excedentes = new Set(perguntasExcedentes(sobreviventes).map((i) => sobreviventes[i]));
+
   const mantidas = frases.filter((f) => {
     if (!f.trim()) return true;
-    const proibida = qualificaSituacao(f) || (!opts.encaminhou && anunciaEncaminhamento(f));
+    const proibida =
+      qualificaSituacao(f) || (!opts.encaminhou && anunciaEncaminhamento(f)) || excedentes.has(f);
     if (proibida) {
       cortes.push(f.trim());
       return false;
