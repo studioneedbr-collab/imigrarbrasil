@@ -112,6 +112,9 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
       .catch(() => setMeEmail(null));
   }, []);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [erroExcluir, setErroExcluir] = useState<string | null>(null);
+  /** null = papel ainda não conhecido. Excluir conversa é privilégio de administrador. */
+  const [ehAdmin, setEhAdmin] = useState<boolean | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Resposta manual (assumir a conversa) + pausar/retomar a IA
@@ -119,6 +122,20 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [iaToggling, setIaToggling] = useState(false);
+
+  // Quem está olhando. Só administrador pode excluir a conversa — ver o botão abaixo.
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { role?: string } | null) => {
+        if (vivo) setEhAdmin(d?.role === "admin");
+      })
+      .catch(() => vivo && setEhAdmin(false));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   async function doTransfer() {
     if (!pessoa.trim()) {
@@ -145,15 +162,33 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
     }
   }
 
+  /*
+   * FALHA SILENCIOSA ERA O PIOR DESFECHO POSSÍVEL.
+   *
+   * O catch fechava o diálogo e zerava o "excluindo", e nada mais. Quem clicava em
+   * Excluir, confirmava e não tinha permissão via a janela fechar e a conversa continuar
+   * ali — sem erro, sem explicação, como se o botão não estivesse ligado em lugar nenhum.
+   * A exclusão exige administrador (a rota faz `requireAdmin`), e isso precisa ser dito.
+   */
   async function doDelete() {
     setDeleting(true);
+    setErroExcluir(null);
     try {
       const res = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          res.status === 403
+            ? "Só um administrador pode excluir conversas. Peça a quem administra o painel."
+            : res.status === 404
+              ? "Esta conversa já não existe."
+              : "A exclusão falhou no servidor. Tente de novo em instantes.",
+        );
+      }
       router.push("/dashboard/conversations");
-    } catch {
+    } catch (err) {
       setDeleting(false);
       setPendingDelete(false);
+      setErroExcluir(err instanceof Error ? err.message : "A exclusão falhou.");
     }
   }
 
@@ -384,19 +419,40 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
               <Icon name="users" className="h-3.5 w-3.5" />
               Transferir p/ humano
             </button>
-            <button
-              type="button"
-              onClick={() => setPendingDelete(true)}
-              aria-label="Excluir conversa"
-              title="Excluir conversa"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-ib-line bg-white px-3 py-1.5 text-xs font-medium text-ib-slate shadow-sm transition hover:border-ib-danger/30 hover:bg-ib-danger/5 hover:text-ib-danger"
-            >
-              <Icon name="trash" className="h-3.5 w-3.5" />
-              Excluir
-            </button>
+            {/* A rota faz `requireAdmin`. Mostrar a ação para quem ela vai recusar é
+                convidar a pessoa a percorrer o diálogo de confirmação até o 403. */}
+            {ehAdmin ? (
+              <button
+                type="button"
+                onClick={() => setPendingDelete(true)}
+                aria-label="Excluir conversa"
+                title="Excluir conversa"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ib-line bg-white px-3 py-1.5 text-xs font-medium text-ib-slate shadow-sm transition hover:border-ib-danger/30 hover:bg-ib-danger/5 hover:text-ib-danger"
+              >
+                <Icon name="trash" className="h-3.5 w-3.5" />
+                Excluir
+              </button>
+            ) : null}
           </div>
         }
       />
+
+      {erroExcluir ? (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-xl border border-ib-danger/20 bg-ib-danger/5 px-4 py-3 text-sm text-ib-danger"
+        >
+          <span>{erroExcluir}</span>
+          <button
+            type="button"
+            onClick={() => setErroExcluir(null)}
+            aria-label="Fechar aviso"
+            className="shrink-0 rounded px-1 text-ib-danger/70 transition hover:text-ib-danger"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         {/* LEFT — live chat */}

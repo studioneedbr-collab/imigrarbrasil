@@ -58,6 +58,18 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * ERRO DE EXCLUIR NÃO É ERRO DE CARREGAR.
+   *
+   * Os dois dividiam o mesmo `error`, e o bloco que o desenha começa com "Não foi
+   * possível carregar as conversas:". Uma exclusão recusada saía como
+   * "Não foi possível carregar as conversas: Não foi possível excluir a conversa." —
+   * duas frases que se contradizem, nenhuma delas verdadeira, e a lista continuava ali
+   * na tela desmentindo a primeira. Agora cada falha tem o seu lugar e o seu motivo.
+   */
+  const [erroExcluir, setErroExcluir] = useState<string | null>(null);
+  /** null = ainda não sabemos o papel. Excluir conversa é privilégio de administrador. */
+  const [ehAdmin, setEhAdmin] = useState<boolean | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "all">("all");
   const [page, setPage] = useState(1);
@@ -68,20 +80,54 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
     const c = pendingDelete;
     if (!c) return;
     setDeleting(true);
+    setErroExcluir(null);
     const snapshot = conversations;
     setConversations((prev) => (prev ? prev.filter((x) => x.id !== c.id) : prev));
     try {
       const res = await fetch(`/api/conversations/${c.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // O motivo importa: 403 é uma regra da casa, não uma falha. Dizer "não foi
+        // possível" para quem simplesmente não tem permissão manda a pessoa tentar de
+        // novo, recarregar a página e abrir chamado — três voltas até descobrir que o
+        // sistema está funcionando exatamente como foi desenhado.
+        throw new Error(
+          res.status === 403
+            ? "Só um administrador pode excluir conversas. Peça a quem administra o painel."
+            : res.status === 404
+              ? "Esta conversa já não existe. Atualize a lista."
+              : "A exclusão falhou no servidor. Tente de novo em instantes.",
+        );
+      }
       setPendingDelete(null);
-    } catch {
+    } catch (err) {
       setConversations(snapshot);
-      setError("Não foi possível excluir a conversa.");
+      setErroExcluir(err instanceof Error ? err.message : "A exclusão falhou.");
       setPendingDelete(null);
     } finally {
       setDeleting(false);
     }
   }
+
+  /*
+   * O BOTÃO NÃO PODE PROMETER O QUE A ROTA RECUSA.
+   *
+   * `DELETE /api/conversations/[id]` exige administrador, mas a lixeira aparecia para
+   * todo mundo. Quem é atendente via o ícone, abria o diálogo de confirmação, confirmava
+   * — e só então levava um 403. Oferecer uma ação e negá-la no último passo é pior do que
+   * não a oferecer: a pessoa acha que quebrou alguma coisa.
+   */
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { role?: string } | null) => {
+        if (vivo) setEhAdmin(d?.role === "admin");
+      })
+      .catch(() => vivo && setEhAdmin(false));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -184,6 +230,25 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
           ) : null
         }
       />
+
+      {/* Falha ao EXCLUIR: fica acima da lista, que continua ali e utilizável. Some
+          sozinho quando a pessoa fecha, porque não é um estado da tela — é um recado. */}
+      {erroExcluir ? (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-xl border border-ib-danger/20 bg-ib-danger/5 px-4 py-3 text-sm text-ib-danger"
+        >
+          <span>{erroExcluir}</span>
+          <button
+            type="button"
+            onClick={() => setErroExcluir(null)}
+            aria-label="Fechar aviso"
+            className="shrink-0 rounded px-1 text-ib-danger/70 transition hover:text-ib-danger"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-ib-danger/20 bg-ib-danger/5 px-4 py-3 text-sm text-ib-danger">
@@ -321,18 +386,22 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                       {fmtDateShort(c.createdAt)} · {fmtTime(c.createdAt)}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPendingDelete(c);
-                        }}
-                        aria-label="Excluir conversa"
-                        title="Excluir conversa"
-                        className="inline-flex items-center justify-center rounded-lg border border-ib-line bg-white px-2 py-1.5 text-ib-slate transition hover:border-ib-danger/30 hover:bg-ib-danger/5 hover:text-ib-danger"
-                      >
-                        <Icon name="trash" className="h-3.5 w-3.5" />
-                      </button>
+                      {/* Enquanto o papel não chegou, nada aparece: um botão que pisca e
+                          some é pior do que um que demora um instante. */}
+                      {ehAdmin ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDelete(c);
+                          }}
+                          aria-label="Excluir conversa"
+                          title="Excluir conversa"
+                          className="inline-flex items-center justify-center rounded-lg border border-ib-line bg-white px-2 py-1.5 text-ib-slate transition hover:border-ib-danger/30 hover:bg-ib-danger/5 hover:text-ib-danger"
+                        >
+                          <Icon name="trash" className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
