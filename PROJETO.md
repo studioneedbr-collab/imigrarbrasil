@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **27/08/2026, noite** (CRM, mapa do atendimento e a limpeza do que ainda era da Shine Rio).
+Última atualização: **28/08/2026, madrugada** (a Z-API no ar e o primeiro WhatsApp real atendido — ver seção 12).
 
 ---
 
@@ -21,6 +21,8 @@ Junto vem um **painel interno**, onde o time trabalha os casos que a Ana levanto
 26/08/2026 que **é ele quem confirma os prazos**.
 
 **O número:** `11 91985-4664`. É a linha que a Ana atende — tudo será concentrado nela.
+Ainda **não é o que está no ar**: em 28/08 a instância Z-API estava pareada num número
+pessoal. Ver a pendência viva na seção 12.
 Quando precisa, o Walter puxa o contato para o número pessoal dele de advogado.
 
 > ⚠️ **Pendência conhecida.** O aviso de "prazo a confirmar" **não pode ir para o 4664**,
@@ -524,7 +526,7 @@ silêncio. Confirmação destrutiva usa `ConfirmDialog`, nunca `window.confirm`.
 
 ---
 
-## 12. Estado da infraestrutura (27/08/2026, noite)
+## 12. Estado da infraestrutura (28/08/2026, madrugada)
 
 > **O painel está NO AR e funcionando**: https://agente.imigrarbrasil.com.br
 > Login: `studioneedbr@gmail.com`. A senha foi redefinida direto no banco em 27/08 —
@@ -611,9 +613,12 @@ Já configuradas: `NEXT_PUBLIC_SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (pela
 nativa do Supabase), `AUTH_SECRET`, `NEXT_PUBLIC_APP_URL`, `DEEPSEEK_API_KEY`,
 `DEEPSEEK_BASE_URL`.
 
-Faltam: **`ZAPI_INSTANCE_ID` / `ZAPI_TOKEN` / `ZAPI_CLIENT_TOKEN`** e
-**`WEBHOOK_VERIFY_TOKEN`** (sem eles não existe WhatsApp), **`TEAM_WHATSAPP`** (o aviso de
-prazo a confirmar) e `CRON_SECRET`.
+Configuradas em 28/08: **`ZAPI_INSTANCE_ID` / `ZAPI_TOKEN` / `ZAPI_CLIENT_TOKEN`** e
+**`WEBHOOK_VERIFY_TOKEN`** — é o que ligou o WhatsApp. Também entrou a `OPENAI_API_KEY`,
+que acendeu o RAG e a transcrição de áudio.
+
+Faltam: **`TEAM_WHATSAPP`** (o aviso de prazo a confirmar — depende do Walter mandar o
+número pessoal de advogado) e `CRON_SECRET`.
 
 Regra do tipo: se vaza e alguém usa contra você, é **Secret**. Nada que comece com
 `NEXT_PUBLIC_` deve ser Secret — essas variáveis são embutidas no JavaScript do navegador.
@@ -624,15 +629,19 @@ no ar.
 ⚠️ Se as variáveis do Supabase estiverem só em **Production**, os deploys de *preview*
 rodam em memória: painel abre, fila vazia, tudo some no refresh.
 
-### O estado do agente (27/08)
+### O estado do agente (28/08, madrugada)
 
 ```
 supabase: true    banco no ar, persistente
 deepseek: true    conta com saldo, respondendo de verdade
-rag:      false   DESLIGADO POR DECISÃO — ver abaixo
-audio:    false   idem
-zapi:     false   ← o único que falta para virar operação de verdade
+rag:      true    a OPENAI_API_KEY entrou — os 1.723 trechos saíram da prateleira
+audio:    true    idem, pela mesma chave
+zapi:     true    ← o WhatsApp está no ar (leia a seção seguinte antes de comemorar)
 ```
+
+A decisão de 27/08 ("só DeepSeek, sem OpenAI") foi revista na prática: a chave entrou, e
+com ela o RAG e a transcrição. O parágrafo abaixo, escrito quando `rag` era `false`,
+fica como registro do raciocínio — e da conta que já estava paga.
 
 **Decisão de 27/08: só DeepSeek por enquanto, sem OpenAI.** Consequências, para não haver
 surpresa:
@@ -661,6 +670,60 @@ surpresa:
 (saldo 5,00 → 4,99). Cerca de US$ 0,003 por turno. O custo é pelo tamanho do prompt, então
 conversa longa fica mais cara por mensagem — e vai subir quando o RAG entrar, porque ele
 injeta trechos das cartilhas no prompt.
+
+### A Z-API entrou no ar (28/08, madrugada)
+
+Primeira mensagem de WhatsApp de verdade atendida pela Ana, ponta a ponta:
+
+```
+03:24:18  cliente   Oi
+03:24:25  Ana       Boa noite! Aqui é a Ana, da Imigrar Brasil. Como posso te ajudar?
+```
+
+Sete segundos. O caminho inteiro funcionando: Z-API → webhook → banco → DeepSeek → Z-API
+de volta.
+
+**As três coisas que estavam erradas**, todas encontradas por medição e não por leitura:
+
+1. **O Client-Token não era o que parecia.** O primeiro valor tentado foi recusado com
+   `{"error":"Client-Token not allowed"}`. O que vale é o token de segurança **da conta**
+   (Z-API → Segurança), e ele tem letras não-hexadecimais nas pontas que é fácil tomar por
+   enfeite e cortar na hora de copiar. Sem ele, nenhuma chamada sai e nenhuma entra.
+2. **O `WEBHOOK_VERIFY_TOKEN` da Vercel não batia com o `?token=` da URL na Z-API.** Todo
+   POST da Z-API voltava 401 e nada chegava — sintoma: "mandei e não apareceu nada", sem
+   erro em lugar nenhum. Os dois valores têm de ser idênticos, e o diagnóstico é um
+   `curl -o /dev/null -w "%{http_code}"` no webhook com o token na URL.
+3. **A mensagem de teste saía do próprio aparelho pareado.** Aí ela chega marcada
+   `fromMe` e o webhook descarta de propósito, para a Ana não responder a si mesma. Teste
+   de WhatsApp precisa de um SEGUNDO celular; não existe testar consigo mesmo.
+
+**A ordem importa, e não é a intuitiva.** Cadastre o `WEBHOOK_VERIFY_TOKEN` na Vercel
+ANTES de apontar a URL do webhook na Z-API. [route.ts](imigrar-agent/app/api/webhook/whatsapp/route.ts)
+só fecha a porta quando existe `WEBHOOK_VERIFY_TOKEN` **ou** `ZAPI_CLIENT_TOKEN`; sem
+nenhum dos dois ele aceita qualquer POST, e ficou assim, aberto e verificado em produção,
+durante a janela entre um passo e outro.
+
+**O webhook é por instância.** Só o campo "Ao receber" (`on-message-received`) é usado — os
+outros eventos o código descarta. Não existe endpoint da Z-API para LER essa configuração
+(`GET /webhooks` responde `NOT_FOUND`), então a conferência é no painel ou por teste real.
+E, ao trocar de instância, ela não migra junto: tem de ser configurada de novo.
+
+> ⚠️ **PENDÊNCIA VIVA: a Ana está no número errado.** A instância `3F736BC3…` está pareada
+> em **55 33 9168-2135 (Cássio Bispo)** — um número pessoal, em uso para outras coisas —, e
+> não no `11 91985-4664`. Como não existe palavra-chave de ativação, **qualquer pessoa que
+> mandar mensagem para esse número é atendida pela Ana**, com o nome e a foto do Cássio.
+> Enquanto o repareamento no 4664 não acontece, a saída é tirar a URL do campo "Ao receber".
+>
+> Quando o número definitivo entrar: mudam `ZAPI_INSTANCE_ID` e `ZAPI_TOKEN` na Vercel (o
+> Client-Token é da conta e continua o mesmo) e o webhook precisa ser configurado na
+> instância nova.
+
+> **Gatilho de ativação — desenhado e adiado.** A ideia de a Ana só responder depois de uma
+> palavra-chave ("Olá Ana") nasceu justamente de ela estar num número pessoal. Foi adiada em
+> 28/08 por ser trabalho em cima de algo que vai mudar: no 4664 dedicado, todo mundo que
+> escreve é cliente, e o gatilho deixa de ser necessário. O lugar de implementá-lo, se
+> voltar a fazer falta, é [lib/agent/ativacao.ts](imigrar-agent/lib/agent/ativacao.ts), que
+> já concentra a decisão de responder ou calar.
 
 ### O primeiro atendimento real (27/08, simulador em produção)
 
