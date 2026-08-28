@@ -12,11 +12,13 @@
 import type { AtendimentoStatus } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { contaComoOperacaoReal } from "@/lib/domain/ambiente";
+import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 import { relogioApertado, temPrazo, ultimaAtividade, type LeadDaFila } from "@/lib/fila/ordenacao";
 
 export const COLUNAS: AtendimentoStatus[] = [
   "novo",
   "em_atendimento",
+  "proposta_enviada",
   "agendado",
   "fechado",
   "perdido",
@@ -52,6 +54,10 @@ export function montarKanban(leads: LeadDaFila[], agora: Date = new Date()): Col
     // organiza o quadro está decidindo o que a equipe pega hoje — um ensaio ali não é
     // ruído inofensivo, é trabalho alocado para uma pessoa que não existe.
     if (!contaComoOperacaoReal(lead.ambiente)) continue;
+    // GRUPO NÃO É PESSOA. O webhook parou de criar estes leads, mas os que já entraram
+    // continuam no banco — e um card cujo "nome" é o JID de um grupo é trabalho alocado
+    // para ninguém. Ler o próprio número conserta o passado sem UPDATE em produção.
+    if (eConversaDeGrupo(lead.whatsappNumber)) continue;
     if (eFiltrada(lead.classificacao)) continue;
     const status = lead.atendimentoStatus ?? "novo";
     // Status desconhecido (coluna removida, dado antigo) cai em "novo" em vez de sumir:
@@ -100,7 +106,13 @@ function peso(lead: LeadDaFila, agora: Date): number {
 // tudo continue no log de acesso — três coisas que um `update` no drop apagaria em
 // silêncio.
 
-export type AcaoAtendimento = "assumir" | "agendar" | "fechar" | "perder" | "reabrir";
+export type AcaoAtendimento =
+  | "assumir"
+  | "propor"
+  | "agendar"
+  | "fechar"
+  | "perder"
+  | "reabrir";
 
 export interface Transicao {
   acao: AcaoAtendimento;
@@ -108,6 +120,20 @@ export interface Transicao {
   para?: AtendimentoStatus;
   /** O motivo é obrigatório: a coluna "Perdido" sem porquê não se lê seis meses depois. */
   exigeMotivo?: boolean;
+  /**
+   * A proposta é obrigatória ao entrar em "proposta enviada": data, valor, serviço e
+   * validade. Uma coluna de propostas em que não se sabe de quanto é cada uma responde a
+   * mesma pergunta que a coluna anterior já respondia — e é justamente a pergunta do
+   * dinheiro que ela existe para responder.
+   */
+  exigeProposta?: boolean;
+  /**
+   * Fechar exige dizer QUANTO foi contratado — ou dizer explicitamente que não houve
+   * contrato. Deixar o campo simplesmente em branco produz a pior das três respostas:
+   * não dá para distinguir "fechou sem valor" de "esqueceram de preencher", e a soma do
+   * mês fica errada sem ninguém perceber.
+   */
+  exigeValor?: boolean;
 }
 
 /**
@@ -120,6 +146,8 @@ export function transicao(
 ): Transicao | null {
   if (de === para) return null;
   switch (para) {
+    case "proposta_enviada":
+      return { acao: "propor", exigeProposta: true };
     case "em_atendimento":
       // Vindo de "novo" é alguém pegando o caso: assumir grava o responsável e marca o
       // relógio do primeiro contato. Vindo de um desfecho é reabertura, e reabrir não
@@ -128,7 +156,7 @@ export function transicao(
     case "agendado":
       return { acao: "agendar" };
     case "fechado":
-      return { acao: "fechar" };
+      return { acao: "fechar", exigeValor: true };
     case "perdido":
       return { acao: "perder", exigeMotivo: true };
     case "novo":

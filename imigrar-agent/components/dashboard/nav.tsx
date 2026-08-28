@@ -54,6 +54,14 @@ const navGroups: NavGroup[] = [
         nota: "os casos que são seus",
       },
       { href: "/dashboard/crm", label: "CRM", icon: "activity", nota: "o funil, por etapa" },
+      // Fica no trabalho de hoje, e não em configuração, porque um motivo sem modelo no
+      // idioma de alguém não dá erro: dá silêncio. Só quem passa por aqui descobre.
+      {
+        href: "/dashboard/followup",
+        label: "Modelos de follow-up",
+        icon: "chat",
+        nota: "o que dizemos a quem espera",
+      },
     ],
   },
   {

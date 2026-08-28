@@ -4,11 +4,12 @@ import { getSession } from "@/lib/auth/guard";
 import { Card, PageHeader } from "@/components/dashboard/ui";
 import { LinhaDaFila } from "@/components/fila/linha";
 import ConcluirLembrete from "./_concluir";
+import FilaDeFollowup from "@/components/followup/fila-de-hoje";
 import { carregarLeadsDaFila } from "@/lib/fila/carregar";
 import { montarMeus, diasParado } from "@/lib/operacao/meus";
 import { DIAS_PARA_CONSIDERAR_PARADO } from "@/lib/operacao/limites";
 import { diasRestantes, faixaDoPrazo, type LeadDaFila } from "@/lib/fila/ordenacao";
-import { desde } from "@/lib/domain/rotulos";
+import { desde, rotuloContato } from "@/lib/domain/rotulos";
 
 export const dynamic = "force-dynamic";
 
@@ -143,12 +144,17 @@ function Lista({ leads, agora }: { leads: LeadDaFila[]; agora: Date }) {
 export default async function MeusAtendimentosPage() {
   const agora = new Date();
   const session = await getSession();
-  const [leads, lembretes] = await Promise.all([
+  const [leads, lembretes, toques] = await Promise.all([
     carregarLeadsDaFila(),
     getRepository().listLembretes({ apenasPendentes: true }).catch(() => []),
+    getRepository().listToquesPendentes().catch(() => []),
   ]);
 
   const meus = montarMeus(leads, lembretes, session?.sub ?? null, agora);
+  // Parado E sem motivo registrado. Só os que já estão parados: pedir o motivo de espera
+  // de um caso que se mexeu ontem seria burocracia, e burocracia dispensável é o que faz
+  // um campo obrigatório ser preenchido com qualquer coisa.
+  const semMotivoDeEspera = meus.parados.filter((l) => !l.esperaMotivo);
   const total = meus.comigo.length + meus.aguardandoCliente.length + meus.agendados.length;
 
   return (
@@ -158,6 +164,12 @@ export default async function MeusAtendimentosPage() {
         title="Meus atendimentos"
         description="O que está com você, separado por quem precisa agir. A fila mostra quem chegou; esta tela mostra quem está esperando."
       />
+
+      {/* FOLLOW-UPS DE HOJE vêm antes até da faixa de números: é o único trabalho desta
+          tela que leva um minuto e some da lista quando é feito. Enterrado embaixo, ele
+          acumula — e uma fila de rascunhos acumulada faz o follow-up parar de existir sem
+          ninguém ter desligado nada. */}
+      <FilaDeFollowup toques={toques} />
 
       <Faixa
         itens={[
@@ -246,6 +258,39 @@ export default async function MeusAtendimentosPage() {
       >
         <Lista leads={meus.agendados} agora={agora} />
       </Bloco>
+
+      {/* CASO PARADO SEM MOTIVO DE ESPERA É PENDÊNCIA, NÃO É CASO PARADO.
+          A diferença muda o que se faz em seguida: com motivo registrado o silêncio é o
+          processo funcionando (a pessoa está na fila do consulado) e o sistema escreve
+          sozinho; sem motivo, ninguém escreve nada e o caso apodrece parecendo normal. */}
+      {semMotivoDeEspera.length > 0 ? (
+        <Card className="overflow-hidden ring-1 ring-[#9A6212]/25">
+          <div className="border-b border-ib-line bg-[#9A6212]/[0.06] px-5 py-3">
+            <h2 className="text-sm font-semibold text-ib-ink">
+              Parados sem dizer o que estamos esperando
+            </h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-ib-slate">
+              Enquanto ninguém registrar o motivo da espera, nenhum follow-up é escrito
+              para estes casos — o sistema não inventa um recado genérico.
+            </p>
+          </div>
+          <ul className="divide-y divide-ib-line">
+            {semMotivoDeEspera.map((l) => (
+              <li key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                <Link
+                  href={`/dashboard/leads/${l.id}`}
+                  className="min-w-0 text-sm font-medium text-ib-ink hover:underline"
+                >
+                  {rotuloContato(l).texto}
+                </Link>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-[#9A6212]">
+                  {diasParado(l, agora)} dias parado
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <Bloco
         titulo={`Parados há mais de ${DIAS_PARA_CONSIDERAR_PARADO} dias`}

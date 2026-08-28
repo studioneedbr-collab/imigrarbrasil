@@ -4,7 +4,9 @@ import type {
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
   ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
+  ToqueDeFollowup,
 } from "@/lib/domain/types";
+import type { ModeloFollowup } from "@/lib/followup/modelos";
 import { eFiltrada } from "@/lib/domain/types";
 import { ambienteDaConversa } from "@/lib/domain/ambiente";
 import { semCamposDePrazo, semCamposSoDeHumano } from "@/lib/data/prazo";
@@ -127,11 +129,17 @@ export class MemoryRepository implements Repository {
         && new Date(c.lastMessageAt ?? c.updatedAt).getTime() < cutoff,
     );
   }
-  async marcarOptOut(id: string, tipo: "bloquear" | "sem_followup") {
+  async marcarOptOut(id: string, tipo: "bloquear" | "sem_followup", mensagem?: string) {
     const c = this.conversations.get(id);
     if (!c) return;
     const campo = tipo === "bloquear" ? "optOutAt" : "noFollowupAt";
-    this.conversations.set(id, { ...c, [campo]: now(), updatedAt: now() });
+    const campoMsg = tipo === "bloquear" ? "optOutMensagem" : "noFollowupMensagem";
+    this.conversations.set(id, {
+      ...c,
+      [campo]: now(),
+      ...(mensagem ? { [campoMsg]: mensagem.slice(0, 500) } : {}),
+      updatedAt: now(),
+    });
   }
   async getInactiveConversations() {
     const cutoff = Date.now() - 24 * 3600 * 1000;
@@ -523,6 +531,77 @@ export class MemoryRepository implements Repository {
     for (const f of this.followups) {
       if (f.conversationId === conversationId && f.status === "pending") f.status = "cancelled";
     }
+  }
+
+  // ─── O FOLLOW-UP POR MOTIVO DE ESPERA ───
+
+  private modelosFollowup: ModeloFollowup[] = [];
+  private toques: ToqueDeFollowup[] = [];
+
+  async listModelosFollowup() {
+    return [...this.modelosFollowup];
+  }
+  async salvarModeloFollowup(modelo: Omit<ModeloFollowup, "id"> & { id?: string }) {
+    // Um por (motivo, idioma) — dois seriam uma escolha silenciosa entre eles a cada
+    // disparo, e ninguém saberia qual texto a pessoa recebeu.
+    const i = this.modelosFollowup.findIndex(
+      (m) => m.motivo === modelo.motivo && m.idioma === modelo.idioma,
+    );
+    const salvo: ModeloFollowup = { ...modelo, id: modelo.id ?? this.modelosFollowup[i]?.id ?? id("modelo") };
+    if (i >= 0) this.modelosFollowup[i] = salvo;
+    else this.modelosFollowup.push(salvo);
+    return salvo;
+  }
+  async apagarModeloFollowup(modeloId: string) {
+    this.modelosFollowup = this.modelosFollowup.filter((m) => m.id !== modeloId);
+  }
+
+  async listToques(leadId: string) {
+    return this.toques
+      .filter((t) => t.leadId === leadId)
+      .sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
+  }
+  async listToquesPendentes() {
+    return this.toques
+      .filter((t) => t.status === "rascunho" || t.status === "tarefa")
+      .sort((a, b) => Date.parse(a.criadoEm) - Date.parse(b.criadoEm))
+      .map((t) => ({
+        ...t,
+        contato: {
+          nome: this.conversations.get(t.conversationId)?.contactName ?? null,
+          whatsappNumber: this.conversations.get(t.conversationId)?.whatsappNumber ?? null,
+        },
+      }));
+  }
+  async registrarToque(toque: Omit<ToqueDeFollowup, "id" | "criadoEm" | "contato">) {
+    const salvo: ToqueDeFollowup = { ...toque, id: id("toque"), criadoEm: now() };
+    this.toques.push(salvo);
+    return salvo;
+  }
+  async atualizarToque(toqueId: string, patch: Partial<ToqueDeFollowup>) {
+    const i = this.toques.findIndex((t) => t.id === toqueId);
+    if (i < 0) throw new Error("Toque não encontrado.");
+    this.toques[i] = { ...this.toques[i], ...patch };
+    return this.toques[i];
+  }
+  async contarToquesEnviadosHoje(instanciaId: string | null, agora: Date = new Date()) {
+    const inicio = new Date(agora);
+    inicio.setUTCHours(0, 0, 0, 0);
+    return this.toques.filter(
+      (t) =>
+        t.status === "enviado" &&
+        (t.instanciaId ?? null) === instanciaId &&
+        t.enviadoEm != null &&
+        Date.parse(t.enviadoEm) >= inicio.getTime(),
+    ).length;
+  }
+  async listToquesDoPeriodo(de: string, ate: string) {
+    return this.toques.filter((t) => t.criadoEm >= de && t.criadoEm <= ate);
+  }
+  async listLeadsComToqueVencido(agora: Date = new Date()) {
+    return Array.from(this.leads.values())
+      .filter((l) => l.proximoToqueEm && Date.parse(l.proximoToqueEm) <= agora.getTime())
+      .sort((a, b) => Date.parse(a.proximoToqueEm!) - Date.parse(b.proximoToqueEm!));
   }
 
   async getConfig<T = unknown>(key: string) { return (this.config.get(key) as T) ?? null; }

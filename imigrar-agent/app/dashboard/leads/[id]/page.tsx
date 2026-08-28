@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, Icon, Skeleton, btnGhost, btnPrimary, fmtTime } from "@/components/dashboard/ui";
-import { CampoData, Selecao } from "@/components/dashboard/campos";
+import { BRL, Card, Icon, Skeleton, btnGhost, btnPrimary, fmtTime } from "@/components/dashboard/ui";
+import { CampoData, Selecao, paraBr } from "@/components/dashboard/campos";
+import { DialogoDeMovimento, type TipoDeMovimento } from "@/components/crm/movimento";
+import { PausarCaso } from "@/components/followup/pausar";
 import { ChipIdioma, ContadorPrazo } from "@/components/fila/linha";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import {
@@ -14,6 +16,7 @@ import {
   CLASSIFICACAO_LABEL,
   INTENCAO_AJUDA,
   INTENCAO_LABEL,
+  MOTIVO_PERDA_LABEL,
   PRAZO_TIPO_LABEL,
   porQueImporta,
 } from "@/lib/domain/rotulos";
@@ -563,11 +566,11 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
 function Acoes({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }) {
   const { lead } = detalhe;
   const [ocupado, setOcupado] = useState<string | null>(null);
-  const [motivo, setMotivo] = useState("");
-  const [pedindoMotivo, setPedindoMotivo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [perguntando, setPerguntando] = useState<TipoDeMovimento | null>(null);
+  const [editandoTime, setEditandoTime] = useState(false);
 
-  async function acao(nome: "assumir" | "agendar" | "fechar" | "perder", extra?: object) {
+  async function acao(nome: string, extra?: object) {
     setOcupado(nome);
     setErro(null);
     const r = await fetch(`/api/leads/${lead.id}/atendimento`, {
@@ -580,12 +583,15 @@ function Acoes({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }
       setErro((await r.json().catch(() => ({}))).error ?? "Não foi possível concluir.");
       return;
     }
-    setPedindoMotivo(false);
-    setMotivo("");
+    setPerguntando(null);
+    setEditandoTime(false);
     aoSalvar();
   }
 
   const responsavel = detalhe.usuarios.find((u) => u.id === lead.responsavelId);
+  const apoio = (lead.apoioIds ?? [])
+    .map((id) => detalhe.usuarios.find((u) => u.id === id))
+    .filter(Boolean) as { id: string; nome: string }[];
 
   return (
     <Card className="p-4">
@@ -595,6 +601,47 @@ function Acoes({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }
           ? `com ${responsavel.nome} desde ${lead.assumidoEm ? fmtTime(lead.assumidoEm) : "—"}`
           : "ninguém assumiu ainda"}
       </p>
+      {apoio.length ? (
+        <p className="mt-0.5 text-xs text-ib-slate">
+          No caso também: {apoio.map((u) => u.nome).join(", ")}
+        </p>
+      ) : null}
+
+      {/* ── QUEM CUIDA DESTE CASO ──
+          O caso troca de mãos (férias, plantão, alguém que entende de refúgio entra no
+          meio) e quase sempre tem mais de uma pessoa dentro. Antes isso vivia em
+          "Observações internas", que ninguém lê antes de ligar para o cliente. */}
+      <button
+        type="button"
+        onClick={() => setEditandoTime((v) => !v)}
+        className="mt-1 text-xs font-semibold text-ib-carimbo underline"
+      >
+        {editandoTime ? "fechar" : responsavel ? "trocar responsável ou incluir alguém" : "definir responsável"}
+      </button>
+
+      {editandoTime ? (
+        <TimeDoCaso
+          usuarios={detalhe.usuarios}
+          responsavelId={lead.responsavelId ?? null}
+          apoioIds={lead.apoioIds ?? []}
+          salvando={ocupado === "responsaveis"}
+          aoSalvar={(responsavelId, apoioIds) => acao("responsaveis", { responsavelId, apoioIds })}
+        />
+      ) : null}
+
+      {/* ─── A ESPERA ───
+          Onde se diz o que estamos esperando. É o dado do qual todo o follow-up depende:
+          sem ele o sistema só sabe escrever a mensagem genérica de vendas, que para quem
+          está na fila de um consulado é a prova de que ninguém aqui sabe do caso dela. */}
+      <div className="mt-3">
+        <PausarCaso
+          leadId={lead.id}
+          motivoAtual={lead.esperaMotivo}
+          proximoToqueEm={lead.proximoToqueEm}
+          toquesNoMotivo={lead.toquesNoMotivo}
+          aoMudar={aoSalvar}
+        />
+      </div>
 
       <div className="mt-2.5 grid grid-cols-2 gap-2">
         {/* O nome da ação se mantém do botão até a confirmação. */}
@@ -606,61 +653,155 @@ function Acoes({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => void }
         >
           {ocupado === "assumir" ? "Assumindo atendimento…" : "Assumir atendimento"}
         </button>
+        {/* A ETAPA ONDE O DINHEIRO APARECE. Ela vem ANTES de "agendar reunião" porque é
+            essa a ordem no escritório: alguém assume, manda o orçamento e só então marca
+            a reunião. */}
+        <button
+          type="button"
+          onClick={() => setPerguntando("propor")}
+          disabled={ocupado !== null}
+          className={`${btnGhost} col-span-2`}
+        >
+          Registrar proposta enviada
+        </button>
         <button type="button" onClick={() => acao("agendar")} disabled={ocupado !== null} className={btnGhost}>
           {ocupado === "agendar" ? "Agendando…" : "Agendar reunião"}
         </button>
-        <button type="button" onClick={() => acao("fechar")} disabled={ocupado !== null} className={btnGhost}>
-          {ocupado === "fechar" ? "Fechando…" : "Marcar como fechado"}
+        <button
+          type="button"
+          onClick={() => setPerguntando("fechar")}
+          disabled={ocupado !== null}
+          className={btnGhost}
+        >
+          Marcar como fechado
         </button>
       </div>
 
-      {pedindoMotivo ? (
-        <div className="mt-3 space-y-2 rounded-lg border border-ib-line bg-ib-papel/60 p-3">
-          <label className="block text-xs font-semibold text-ib-ink" htmlFor="motivo-perda">
-            Por que este caso foi perdido?
-          </label>
-          <input
-            id="motivo-perda"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="não respondeu, contratou outro escritório, desistiu…"
-            className="w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          />
-          <p className="text-[11px] leading-relaxed text-ib-slate">
-            É o que se lê daqui a seis meses, quando alguém perguntar por que estes casos
-            não viraram atendimento.
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => acao("perder", { motivo })}
-              disabled={ocupado !== null || !motivo.trim()}
-              className={btnPrimary}
-            >
-              {ocupado === "perder" ? "Marcando como perdido…" : "Marcar como perdido"}
-            </button>
-            <button type="button" onClick={() => setPedindoMotivo(false)} className={btnGhost}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setPedindoMotivo(true)}
-          className="mt-2 text-xs font-semibold text-ib-slate underline hover:text-ib-danger"
-        >
-          Marcar como perdido
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => setPerguntando("perder")}
+        className="mt-2 text-xs font-semibold text-ib-slate underline hover:text-ib-danger"
+      >
+        Marcar como perdido
+      </button>
 
-      {lead.motivoPerda ? (
-        <p className="mt-2 text-xs text-ib-slate">Perdido: {lead.motivoPerda}</p>
+      {/* ── O QUE JÁ FOI REGISTRADO ── */}
+      {lead.propostaEnviadaEm ? (
+        <p className="mt-2 text-xs text-ib-slate">
+          Proposta de {lead.propostaServico ?? "serviço não informado"}
+          {lead.propostaValor != null ? ` · ${BRL(lead.propostaValor)}` : " · sem valor fechado"}
+          {" · enviada em "}
+          {fmtTime(lead.propostaEnviadaEm)}
+          {lead.propostaValidade ? ` · vale até ${paraBr(lead.propostaValidade)}` : ""}
+        </p>
+      ) : null}
+      {lead.atendimentoStatus === "fechado" ? (
+        <p className="mt-2 text-xs text-ib-slate">
+          {lead.valorContratado != null
+            ? `Contratado: ${BRL(lead.valorContratado)}`
+            : "Fechado sem contrato."}
+        </p>
+      ) : null}
+      {lead.motivoPerda || lead.motivoPerdaCategoria ? (
+        <p className="mt-2 text-xs text-ib-slate">
+          Perdido
+          {lead.motivoPerdaCategoria ? ` (${MOTIVO_PERDA_LABEL[lead.motivoPerdaCategoria]})` : ""}
+          {lead.motivoPerda ? `: ${lead.motivoPerda}` : "."}
+        </p>
       ) : null}
       {erro ? <p className="mt-2 text-xs font-medium text-ib-danger">{erro}</p> : null}
+
+      {perguntando ? (
+        <DialogoDeMovimento
+          tipo={perguntando}
+          nomeDoContato={lead.contactName ?? "esta pessoa"}
+          aoCancelar={() => setPerguntando(null)}
+          aoConfirmar={(corpo) => acao(perguntando, corpo)}
+        />
+      ) : null}
     </Card>
   );
 }
+
+/**
+ * QUEM CUIDA DESTE CASO — um dono e, opcionalmente, quem mais está dentro.
+ *
+ * O dono é um só de propósito. Uma lista sem dono é uma lista em que ninguém responde
+ * pelo caso, e "Meus atendimentos" precisa de um filtro que não faça o mesmo atendimento
+ * aparecer como pendência de quatro pessoas ao mesmo tempo.
+ */
+function TimeDoCaso({
+  usuarios,
+  responsavelId,
+  apoioIds,
+  salvando,
+  aoSalvar,
+}: {
+  usuarios: { id: string; nome: string }[];
+  responsavelId: string | null;
+  apoioIds: string[];
+  salvando: boolean;
+  aoSalvar: (responsavelId: string | null, apoioIds: string[]) => void;
+}) {
+  const [dono, setDono] = useState<string | null>(responsavelId);
+  const [apoio, setApoio] = useState<string[]>(apoioIds);
+
+  const alternar = (id: string) =>
+    setApoio((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]));
+
+  return (
+    <div className="mt-2 space-y-3 rounded-lg border border-ib-line bg-ib-papel/60 p-3">
+      <Selecao
+        label="Responsável"
+        valor={dono}
+        onChange={(v) => {
+          setDono(v);
+          // Quem vira dono sai do apoio: aparecer nos dois lugares faria o nome do caso
+          // ser lido duas vezes e não significaria nada a mais.
+          setApoio((a) => a.filter((x) => x !== v));
+        }}
+        opcoes={usuarios.map((u) => ({ valor: u.id, rotulo: u.nome }))}
+        ajuda="Um só. É o nome que aparece no card e por quem “Meus atendimentos” filtra."
+      />
+
+      <fieldset>
+        <legend className="text-xs font-semibold text-ib-ink">Quem mais está no caso</legend>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-ib-slate">
+          Enxergam e trabalham no caso, mas ele não conta como pendência deles.
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {usuarios
+            .filter((u) => u.id !== dono)
+            .map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                aria-pressed={apoio.includes(u.id)}
+                onClick={() => alternar(u.id)}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                  apoio.includes(u.id)
+                    ? "bg-ib-carimbo text-white"
+                    : "bg-white text-ib-slate ring-1 ring-inset ring-ib-line hover:text-ib-ink"
+                }`}
+              >
+                {u.nome}
+              </button>
+            ))}
+        </div>
+      </fieldset>
+
+      <button
+        type="button"
+        disabled={salvando}
+        onClick={() => aoSalvar(dono, apoio)}
+        className={`${btnPrimary} w-full`}
+      >
+        {salvando ? "Salvando…" : "Salvar quem cuida do caso"}
+      </button>
+    </div>
+  );
+}
+
 
 /* ─────────────────────────────────── Ficha ───────────────────────────────── */
 

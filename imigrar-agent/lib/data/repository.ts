@@ -3,7 +3,9 @@ import type {
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
   ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
+  ToqueDeFollowup,
 } from "@/lib/domain/types";
+import type { ModeloFollowup } from "@/lib/followup/modelos";
 import type { ActivityMessage } from "@/lib/notifications/new-messages";
 
 export interface Repository {
@@ -30,7 +32,16 @@ export interface Repository {
    * neste número; `sem_followup` só impede as mensagens automáticas. Nunca é revertido
    * por código — só o próprio contato voltando a escrever (e aí quem puxou foi ele).
    */
-  marcarOptOut(id: string, tipo: "bloquear" | "sem_followup"): Promise<void>;
+  marcarOptOut(
+    id: string,
+    tipo: "bloquear" | "sem_followup",
+    /**
+     * A MENSAGEM QUE ORIGINOU O PEDIDO. Sem ela, seis meses depois ninguém consegue
+     * dizer se o contato foi silenciado porque pediu ou porque uma regex casou com uma
+     * frase parecida — e é essa diferença que separa cumprir a LGPD de alegar que cumpriu.
+     */
+    mensagem?: string,
+  ): Promise<void>;
 
   addMessage(
     conversationId: string,
@@ -231,6 +242,37 @@ export interface Repository {
   listPendingFollowups(): Promise<Followup[]>;
   updateFollowupStatus(id: string, status: FollowupStatus): Promise<void>;
   cancelPendingFollowups(conversationId: string): Promise<void>;
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // O FOLLOW-UP POR MOTIVO DE ESPERA — migration 029.
+  //
+  // Separado do `Followup` acima de propósito. Aquele é o lembrete pontual que a própria
+  // Ana agenda no meio de uma conversa ("me chama semana que vem"). Este é a régua do
+  // escritório: sabe o que se está esperando, em que língua se fala com a pessoa, quantas
+  // vezes já se tocou nela e quando parar.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  listModelosFollowup(): Promise<ModeloFollowup[]>;
+  salvarModeloFollowup(
+    modelo: Omit<ModeloFollowup, "id"> & { id?: string },
+    autor: string,
+  ): Promise<ModeloFollowup>;
+  apagarModeloFollowup(id: string): Promise<void>;
+
+  /** Os toques de um caso, do mais novo para o mais antigo. É a linha do tempo. */
+  listToques(leadId: string): Promise<ToqueDeFollowup[]>;
+  /** A fila de aprovação: o que está escrito esperando alguém dizer enviar, editar ou pular. */
+  listToquesPendentes(): Promise<ToqueDeFollowup[]>;
+  registrarToque(
+    toque: Omit<ToqueDeFollowup, "id" | "criadoEm" | "contato">,
+  ): Promise<ToqueDeFollowup>;
+  atualizarToque(id: string, patch: Partial<ToqueDeFollowup>): Promise<ToqueDeFollowup>;
+  /** Quantos follow-ups já saíram HOJE por esta instância. É o teto diário. */
+  contarToquesEnviadosHoje(instanciaId: string | null, agora?: Date): Promise<number>;
+  /** Todos os toques de um período. É o que as métricas de follow-up somam. */
+  listToquesDoPeriodo(de: string, ate: string): Promise<ToqueDeFollowup[]>;
+  /** Os casos cujo próximo toque já venceu. A varredura do cron começa aqui. */
+  listLeadsComToqueVencido(agora?: Date): Promise<Lead[]>;
 
   getConfig<T = unknown>(key: string): Promise<T | null>;
   setConfig(key: string, value: unknown): Promise<void>;

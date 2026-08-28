@@ -101,3 +101,33 @@ export function conversaParaReaproveitar(
     .sort((a, b) => b.em - a.em);
   return abertas[0]?.c ?? null;
 }
+
+/**
+ * O NÚMERO COMO GENTE LÊ — `+55 33 99940-2577`, não `553399402577`.
+ *
+ * Enquanto a conversa não revela o nome, o telefone ocupa o lugar dele no card. Doze
+ * dígitos colados não se leem como telefone: leem-se como código de sistema, e quem bate
+ * o olho no quadro não reconhece que ali dá para ligar agora.
+ *
+ * Fora do Brasil não se inventa formato. Agrupar um número angolano com a régua brasileira
+ * produziria uma grafia errada com cara de certa — pior do que os dígitos crus. Nesses
+ * casos sai só o `+` e o número, que já é o suficiente para discar.
+ */
+export function formatarTelefone(bruto: string | null | undefined): string {
+  const texto = (bruto ?? "").trim();
+  if (!texto) return "";
+  if (texto.startsWith(SIM_PREFIX)) return texto;
+  const d = normalizarTelefone(texto);
+  if (!d) return texto;
+
+  if (d.startsWith("55")) {
+    const semDdi = d.slice(2);
+    const ddd = semDdi.slice(0, 2);
+    const resto = semDdi.slice(2);
+    // 9 dígitos = celular com o nono; 8 = fixo ou celular antigo. Qualquer outro
+    // tamanho não é número brasileiro válido e sai sem máscara, para não mentir.
+    if (resto.length === 9) return `+55 ${ddd} ${resto.slice(0, 5)}-${resto.slice(5)}`;
+    if (resto.length === 8) return `+55 ${ddd} ${resto.slice(0, 4)}-${resto.slice(4)}`;
+  }
+  return `+${d}`;
+}

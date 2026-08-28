@@ -5,7 +5,9 @@
 // detalhe, na aba de filtradas e nas métricas — quatro grafias diferentes da mesma
 // coisa é como um time deixa de confiar no painel.
 
-import type { AtendimentoStatus, Classificacao, Intencao, PrazoTipo } from "@/lib/domain/types";
+import type { AtendimentoStatus, Classificacao, Intencao, MotivoPerda, PrazoTipo } from "@/lib/domain/types";
+import { formatarTelefone } from "@/lib/whatsapp/telefone";
+import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 
 export const CLASSIFICACAO_LABEL: Record<Classificacao, string> = {
   QUENTE_PRAZO: "Prazo correndo",
@@ -31,9 +33,27 @@ export const CLASSIFICACAO_AJUDA: Record<Classificacao, string> = {
 export const ATENDIMENTO_LABEL: Record<AtendimentoStatus, string> = {
   novo: "Novo",
   em_atendimento: "Em atendimento",
+  proposta_enviada: "Proposta enviada",
   agendado: "Reunião agendada",
   fechado: "Fechado",
   perdido: "Perdido",
+};
+
+/**
+ * POR QUE O CASO NÃO VIROU ATENDIMENTO — as seis respostas que se somam.
+ *
+ * As duas últimas não são fracasso comercial e por isso vêm escritas de um jeito que não
+ * se lê como fracasso: encaminhar alguém à Defensoria é o atendimento certo, e contar
+ * isso junto com "perdemos no preço" faria a conversão do escritório mentir para baixo
+ * todo mês.
+ */
+export const MOTIVO_PERDA_LABEL: Record<MotivoPerda, string> = {
+  preco: "Preço",
+  outro_escritorio: "Foi para outro escritório",
+  resolveu_sozinho: "Resolveu sozinho",
+  sumiu: "Sumiu",
+  perfil_dpu: "Perfil DPU",
+  fora_de_escopo: "Fora de escopo",
 };
 
 export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = {
@@ -70,6 +90,28 @@ export function desde(iso: string | null | undefined, agora: Date = new Date()):
   if (d < 30) return `há ${d} ${d === 1 ? "dia" : "dias"}`;
   const m = Math.floor(d / 30);
   return `há ${m} ${m === 1 ? "mês" : "meses"}`;
+}
+
+/**
+ * O MESMO RELÓGIO, OLHANDO PARA A FRENTE — "hoje", "amanhã", "em 12 dias".
+ *
+ * `desde` devolve "agora" para qualquer data futura, o que é certo quando se mede
+ * silêncio e errado quando se mostra um compromisso: um toque marcado para daqui a três
+ * semanas apareceria no card como se estivesse acontecendo neste segundo.
+ */
+export function paraQuando(iso: string | null | undefined, agora: Date = new Date()): string {
+  if (!iso) return "—";
+  const ms = Date.parse(iso) - agora.getTime();
+  if (!Number.isFinite(ms)) return "—";
+  // Vencido é o estado que mais importa aqui: é o follow-up que ninguém tratou.
+  if (ms < 0) return "vencido";
+  const h = Math.floor(ms / 3_600_000);
+  if (h < 12) return "hoje";
+  const d = Math.round(ms / 86_400_000);
+  if (d <= 1) return "amanhã";
+  if (d < 30) return `em ${d} dias`;
+  const m = Math.round(d / 30);
+  return `em ${m} ${m === 1 ? "mês" : "meses"}`;
 }
 
 // ─── O VAZIO TEM QUE SER LEGÍVEL ───
@@ -111,17 +153,25 @@ function ehIdentificadorTecnico(valor: string): boolean {
   return valor.includes(":");
 }
 
-/** O nome do contato, ou o traço. "Contato sem nome" ocupava a linha inteira sem dizer nada. */
+/**
+ * O nome do contato, ou o telefone, ou o traço — nessa ordem.
+ *
+ * O telefone entra FORMATADO (`+55 33 99940-2577`). Cru, ele aparecia no card exatamente
+ * onde vai o nome e lia-se como identificador de sistema; formatado, lê-se como o que é —
+ * alguém para quem dá para ligar agora. Quem consome esta função tem `conhecido: false`
+ * para marcar na tela que o nome ainda não se sabe: é a diferença entre "esta pessoa se
+ * chama +55 33…" e "ainda não perguntamos o nome dela".
+ */
 export function rotuloContato(
   lead: { contactName?: string | null; whatsappNumber?: string | null },
 ): { texto: string; conhecido: boolean } {
   const nome = (lead.contactName ?? "").trim();
   if (nome) return { texto: nome, conhecido: true };
   const numero = (lead.whatsappNumber ?? "").trim();
-  if (!numero || ehIdentificadorTecnico(numero)) {
+  if (!numero || ehIdentificadorTecnico(numero) || eConversaDeGrupo(numero)) {
     return { texto: AINDA_NAO, conhecido: false };
   }
-  return { texto: numero, conhecido: false };
+  return { texto: formatarTelefone(numero) || AINDA_NAO, conhecido: false };
 }
 
 // ─── POR QUE ESTE CASO IMPORTA (OU NÃO) ───

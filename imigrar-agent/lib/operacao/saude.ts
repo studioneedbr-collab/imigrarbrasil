@@ -55,6 +55,15 @@ export interface SaudeDaOperacao {
   semResposta: number;
   /** Lembretes cuja data já passou e ninguém tratou. */
   lembretesVencidos: number;
+  /**
+   * FOLLOW-UPS ESCRITOS E NÃO TRATADOS — rascunhos esperando aprovação e tarefas
+   * (ligar, escrever à mão) que ninguém pegou.
+   *
+   * Entra na faixa porque a falha aqui é silenciosa: o sistema continua escrevendo, a
+   * fila continua crescendo, e nada quebra. O que acontece é que o follow-up para de
+   * existir sem ninguém ter desligado coisa nenhuma.
+   */
+  followupsPendentes: number;
   conferidoEm: string;
 }
 
@@ -71,7 +80,7 @@ export interface SaudeDaOperacao {
  * frase aqui não acrescenta informação — acrescenta ruído, e ensina a ignorar os dois.
  */
 export interface ItemDeAlarme {
-  chave: "whatsapp" | "transcricao" | "llm" | "sem_resposta" | "silencio";
+  chave: "whatsapp" | "transcricao" | "llm" | "sem_resposta" | "silencio" | "followup";
   rotulo: string;
   valor: string;
   href?: string;
@@ -115,6 +124,14 @@ export function itensDeAlarme(s: SaudeDaOperacao): ItemDeAlarme[] {
       rotulo: "sem resposta",
       valor: String(s.semResposta),
       href: "/dashboard/conversations",
+    });
+  }
+  if (s.followupsPendentes > 0) {
+    itens.push({
+      chave: "followup",
+      rotulo: "follow-ups não tratados",
+      valor: String(s.followupsPendentes),
+      href: "/dashboard/meus",
     });
   }
   if (s.silencioNoExpediente) {
@@ -164,8 +181,16 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
   // Tudo em paralelo, e cada consulta com seu próprio catch: esta função roda em TODA
   // página do painel. Se o alarme ficar lento ou quebrar, ele leva o painel junto — e um
   // indicador de saúde que derruba a operação é uma piada de mau gosto.
-  const [whatsapp, ia, recentes, falhasTranscricao, falhasLlm, lembretes, semResposta] =
-    await Promise.all([
+  const [
+    whatsapp,
+    ia,
+    recentes,
+    falhasTranscricao,
+    falhasLlm,
+    lembretes,
+    semResposta,
+    followups,
+  ] = await Promise.all([
       statusDoWhatsapp().catch(
         (): StatusWhatsapp => ({ configurado: false, conectado: false, detalhe: "Falha ao conferir a conexão." }),
       ),
@@ -177,6 +202,7 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
       repo.listEventosOperacao({ tipo: "llm_falhou", desde: ontem }).catch(() => []),
       repo.listLembretes({ apenasPendentes: true }).catch(() => []),
       repo.contarConversasSemResposta(MINUTOS_SEM_RESPOSTA_ALARME, agora).catch(() => 0),
+      repo.listToquesPendentes().catch(() => []),
     ]);
 
   const ultimaEm = recentes[0]?.createdAt ?? null;
@@ -213,6 +239,7 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
     falhas24h: { transcricao: falhasTranscricao.length, llm: falhasLlm.length },
     semResposta,
     lembretesVencidos: lembretes.filter((l) => l.quando <= hoje).length,
+    followupsPendentes: followups.length,
     conferidoEm: agora.toISOString(),
   };
 }

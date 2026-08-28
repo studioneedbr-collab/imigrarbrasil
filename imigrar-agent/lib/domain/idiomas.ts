@@ -42,6 +42,22 @@ export const NOME_DO_IDIOMA: Record<string, string> = {
   xh: "xhosa", st: "sesoto", af: "africâner", mg: "malgaxe",
 };
 
+/**
+ * OS IDIOMAS DO ESCOPO — os que esta operação realmente vê.
+ *
+ * Não é a lista do mundo (a tabela de rótulos acima é maior de propósito): é a lista que
+ * a cobertura de modelos de follow-up precisa cobrir. Um idioma que aparece aqui e não
+ * tem modelo cadastrado é um buraco visível na tela de modelos; um idioma fora daqui, que
+ * apareça um dia numa conversa, gera tarefa manual e é assim que se descobre que a lista
+ * precisa crescer.
+ *
+ * Espelha `IdiomaSuportado` em lib/agent/idioma.ts, que não pode ser importado pelo
+ * painel — aquele módulo arrasta o repositório junto.
+ */
+export const IDIOMAS_DO_ESCOPO = [
+  "pt", "es", "en", "fr", "ht", "ar", "ru", "uk", "zh", "hi", "bn",
+] as const;
+
 /** Rótulo legível de um código ISO-639-1, com o próprio código como último recurso. */
 export function nomeDoIdioma(codigo?: string | null): string | null {
   if (!codigo) return null;

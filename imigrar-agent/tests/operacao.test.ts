@@ -119,6 +119,7 @@ const saude = (patch: Partial<SaudeDaOperacao> = {}): SaudeDaOperacao => ({
   falhas24h: { transcricao: 0, llm: 0 },
   semResposta: 0,
   lembretesVencidos: 0,
+  followupsPendentes: 0,
   conferidoEm: AGORA.toISOString(),
   ...patch,
 });

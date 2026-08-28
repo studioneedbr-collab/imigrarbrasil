@@ -42,9 +42,16 @@ export interface Conversation {
   // mensagem": a Ana se despede uma vez e nunca mais fala com este número sozinha.
   // É o que evita o Bloquear + Denunciar que derruba o WhatsApp da empresa.
   optOutAt?: string | null;
+  /**
+   * A MENSAGEM QUE ORIGINOU O PEDIDO. Sem ela, seis meses depois ninguém consegue dizer
+   * se o contato foi silenciado porque pediu ou porque uma regex casou com uma frase
+   * parecida — e essa é exatamente a diferença entre cumprir a LGPD e alegar que cumpriu.
+   */
+  optOutMensagem?: string | null;
   // Disse que não tem interesse. Continua conversando (pode mudar de ideia agora), mas
   // nenhuma mensagem automática vai atrás dele depois.
   noFollowupAt?: string | null;
+  noFollowupMensagem?: string | null;
   // IDIOMA DO CONTATO (ISO-639-1: "pt", "es", "en", "ht"…). Detectado na conversa e
   // guardado aqui. Importa em dois lugares onde a regra de idioma do prompt não alcança:
   // a mensagem automática de follow-up, que sai sem ninguém por perto e ia sempre em
@@ -106,7 +113,7 @@ export interface DocumentItem {
  * Os campos de imigração — e a regra de quem pode gravar cada um — moram em
  * `LeadImigracao`, no fim deste arquivo.
  */
-export interface Lead extends LeadImigracao {
+export interface Lead extends LeadImigracao, PropostaComercial {
   id: string;
   conversationId: string;
   contactName?: string | null;
@@ -241,9 +248,64 @@ export function eFiltrada(c: Classificacao | null | undefined): boolean {
 export type AtendimentoStatus =
   | "novo"
   | "em_atendimento"
+  | "proposta_enviada"
   | "agendado"
   | "fechado"
   | "perdido";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A ETAPA ONDE O DINHEIRO APARECE
+//
+// O quadro ia de "em atendimento" direto para "reunião agendada". Só que o fluxo real do
+// escritório tem um passo entre os dois: alguém assume, ENVIA O ORÇAMENTO e só então
+// marca a reunião. A etapa em que a proposta está com o cliente simplesmente não existia
+// — e é exatamente a que mais precisa de follow-up, porque é a única em que o silêncio da
+// pessoa custa dinheiro e tem prazo de validade.
+//
+// Sem ela, três coisas eram invisíveis: quantas propostas estão em aberto, de quanto, e
+// há quantos dias. Com ela, "proposta sem resposta" vira uma coluna que se olha.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** O que o card guarda quando a proposta sai. Tudo preenchido por humano. */
+export interface PropostaComercial {
+  /** Quando o orçamento foi enviado. É daqui que a régua de follow-up conta. */
+  propostaEnviadaEm?: string | null;
+  /** Valor proposto, em reais. Nulo = a proposta saiu sem valor fechado. */
+  propostaValor?: number | null;
+  /** Que serviço foi orçado ("regularização por união estável", "defesa de multa"). */
+  propostaServico?: string | null;
+  /** Até quando a proposta vale (YYYY-MM-DD). Depois disso, ela não vale mais. */
+  propostaValidade?: string | null;
+}
+
+/**
+ * POR QUE O CASO NÃO VIROU ATENDIMENTO.
+ *
+ * Texto livre respondia a pergunta caso a caso e não respondia NENHUMA pergunta no
+ * agregado: "sumiu", "não respondeu", "parou de responder" e "silêncio" são a mesma coisa
+ * escrita de quatro jeitos, e nenhuma métrica soma isso. A categoria é obrigatória; o
+ * texto livre continua existindo ao lado dela, porque é o que se lê seis meses depois.
+ *
+ * `perfil_dpu` e `fora_de_escopo` estão aqui porque são desfechos legítimos e frequentes
+ * neste escritório — e contá-los como "perda" sem separá-los faria a taxa de conversão
+ * mentir para baixo todo mês.
+ */
+export type MotivoPerda =
+  | "preco"
+  | "outro_escritorio"
+  | "resolveu_sozinho"
+  | "sumiu"
+  | "perfil_dpu"
+  | "fora_de_escopo";
+
+export const MOTIVOS_DE_PERDA: MotivoPerda[] = [
+  "preco",
+  "outro_escritorio",
+  "resolveu_sozinho",
+  "sumiu",
+  "perfil_dpu",
+  "fora_de_escopo",
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // O CRM: FUNIS E ETAPAS
@@ -351,7 +413,40 @@ export interface LeadImigracao {
   funilId?: string | null;
   etapaId?: string | null;
   motivoPerda?: string | null;
+  /** A categoria da perda. Obrigatória quando o caso vai para "perdido" — ver MotivoPerda. */
+  motivoPerdaCategoria?: MotivoPerda | null;
+  /**
+   * O QUE FOI EFETIVAMENTE CONTRATADO, em reais. Só existe em "fechado".
+   *
+   * Sem ele não há como calcular o retorno do projeto para o cliente: dá para contar
+   * quantos casos fecharam e não dá para dizer quanto isso valeu. Nulo é um estado
+   * legítimo — nem todo caso que se fecha vira contrato (o assunto se resolveu, a pessoa
+   * foi encaminhada) —, e por isso quem fecha precisa dizer qual dos dois é.
+   */
+  valorContratado?: number | null;
+  // ─── A ESPERA ───
+  //
+  // Todo caso parado tem um motivo, e é o motivo que decide o que se escreve para a
+  // pessoa e quando. Ver lib/followup/motivos.ts. Caso parado SEM motivo registrado
+  // aparece como pendência na tela de Operação em vez de virar mensagem genérica.
+  /** O que estamos esperando. `MotivoEspera` — string aqui para não importar o módulo. */
+  esperaMotivo?: string | null;
+  /** Desde quando este caso está parado esperando isso. Alimenta o tempo médio por motivo. */
+  esperaDesde?: string | null;
+  /** Quando vence o próximo toque. É por este campo que a varredura do cron pergunta. */
+  proximoToqueEm?: string | null;
+  /** Quantos toques já saíram NESTE motivo. Zera quando a pessoa responde ou o motivo muda. */
+  toquesNoMotivo?: number;
+
   responsavelId?: string | null;
+  /**
+   * QUEM MAIS ESTÁ NO CASO. Enxergam e trabalham nele, mas o caso não conta como "meu"
+   * para eles — senão o mesmo atendimento apareceria como pendência de quatro pessoas ao
+   * mesmo tempo, e uma pendência de todo mundo não é pendência de ninguém.
+   *
+   * O dono continua sendo um só (`responsavelId`), e é ele que aparece no card.
+   */
+  apoioIds?: string[] | null;
   assumidoEm?: string | null;
   resgatadoEm?: string | null;
   resgatadoPor?: string | null;
@@ -437,7 +532,8 @@ export type TipoChamadaLlm =
   | "extracao"
   | "classificacao"
   | "transcricao"
-  | "embedding";
+  | "embedding"
+  | "traducao";
 
 export const TIPOS_DE_CHAMADA: TipoChamadaLlm[] = [
   "redacao",
@@ -445,6 +541,7 @@ export const TIPOS_DE_CHAMADA: TipoChamadaLlm[] = [
   "classificacao",
   "transcricao",
   "embedding",
+  "traducao",
 ];
 
 /** Uma chamada a provedor de IA, com o que ela custou. Uma linha por chamada. */
@@ -470,6 +567,61 @@ export interface ChamadaLlm {
   ok: boolean;
   erro?: string | null;
   criadoEm: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O FOLLOW-UP QUE SE LEMBRA DO QUE ESTAVA ESPERANDO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `rascunho`  esperando aprovação na fila do responsável
+ * `enviado`   saiu para a pessoa
+ * `pulado`    o responsável leu e recusou — é dado, não é falha
+ * `cancelado` o caso mudou antes de o toque sair (respondeu, foi fechado, pediu parar)
+ * `tarefa`    virou trabalho manual: sem modelo no idioma, ou prazo processual (que se
+ *             resolve com ligação, não com mensagem programada)
+ * `feito`     a tarefa foi cumprida
+ *
+ * `pulado` e `feito` são estados diferentes de propósito: pular é dado sobre o MODELO (um
+ * modelo pulado toda vez está errado), cumprir é dado sobre a OPERAÇÃO. Somá-los apagaria
+ * as duas leituras de uma vez.
+ */
+export type ToqueStatus =
+  | "rascunho"
+  | "enviado"
+  | "pulado"
+  | "cancelado"
+  | "tarefa"
+  | "feito";
+
+/**
+ * UM TOQUE DE FOLLOW-UP, como a linha do tempo do caso precisa lê-lo.
+ *
+ * O TEXTO FICA GRAVADO AQUI, e não só o id do modelo. Um modelo editado no mês que vem
+ * reescreveria retroativamente o que a pessoa recebeu, e a conversa passaria a mentir
+ * exatamente no lugar em que alguém vai procurar para entender por que ela parou de
+ * responder.
+ */
+export interface ToqueDeFollowup {
+  id: string;
+  leadId?: string | null;
+  conversationId: string;
+  instanciaId?: string | null;
+  /** `MotivoEspera`. */
+  motivo: string;
+  idioma?: string | null;
+  modeloId?: string | null;
+  canal: string;
+  texto: string;
+  status: ToqueStatus;
+  /** Qual toque da sequência é este (1, 2, 3). É ele que a fecha no terceiro. */
+  toque: number;
+  aprovadoPor?: string | null;
+  enviadoEm?: string | null;
+  respondidoEm?: string | null;
+  criadoEm: string;
+  /** Preenchido na leitura, para a fila não precisar de outra consulta. */
+  contato?: { nome?: string | null; whatsappNumber?: string | null } | null;
 }
 
 /**
@@ -542,6 +694,13 @@ export interface ZapiInstancia {
   respostaFixa?: string | null;
   /** Minutos de expediente até a conversa sem resposta humana subir na fila. */
   slaMinutos: number;
+  /**
+   * TETO DIÁRIO DE FOLLOW-UPS AUTOMÁTICOS desta instância.
+   *
+   * Por instância e não global: um escritório com dois números não deve ter o volume do
+   * segundo limitado pelo do primeiro, e é a instância que é banida, não a conta.
+   */
+  tetoFollowupsDia?: number | null;
   criadoEm: string;
   atualizadoEm: string;
 }

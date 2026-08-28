@@ -9,8 +9,16 @@
 // do lead, o log de acesso e o registro de reclassificação. O que faltava era juntá-los
 // em ordem e com nome de gente ao lado.
 
-import type { AccessLogEntry, Lead, Lembrete, Reclassificacao } from "@/lib/domain/types";
+import type {
+  AccessLogEntry,
+  Lead,
+  Lembrete,
+  Reclassificacao,
+  ToqueDeFollowup,
+} from "@/lib/domain/types";
 import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
+import { MOTIVO_ESPERA_LABEL, type MotivoEspera } from "@/lib/followup/motivos";
+import { nomeDoIdioma } from "@/lib/domain/idiomas";
 
 export interface EventoDaLinha {
   em: string;
@@ -24,6 +32,10 @@ export interface EventoDaLinha {
 const ACOES: Record<string, { texto: string; peso: "marco" | "normal" }> = {
   assumiu_atendimento: { texto: "assumiu o atendimento", peso: "marco" },
   assumiu_lead: { texto: "assumiu o atendimento", peso: "marco" },
+  mudou_responsaveis: { texto: "mudou quem cuida do caso", peso: "marco" },
+  enviou_proposta: { texto: "enviou proposta", peso: "marco" },
+  pausou_caso: { texto: "pausou o caso", peso: "marco" },
+  retomou_caso: { texto: "retomou o caso", peso: "marco" },
   confirmou_prazo: { texto: "confirmou o prazo", peso: "marco" },
   marcou_agendado: { texto: "agendou reunião", peso: "marco" },
   marcou_fechado: { texto: "fechou o atendimento", peso: "marco" },
@@ -38,8 +50,10 @@ export function montarLinhaDoTempo(input: {
   reclassificacoes: Reclassificacao[];
   acessos: AccessLogEntry[];
   lembretes: Lembrete[];
+  /** Os toques de follow-up deste caso. Opcional: banco sem a migration 029 não os tem. */
+  toques?: ToqueDeFollowup[];
 }): EventoDaLinha[] {
-  const { lead, reclassificacoes, acessos, lembretes } = input;
+  const { lead, reclassificacoes, acessos, lembretes, toques = [] } = input;
   const eventos: EventoDaLinha[] = [];
 
   eventos.push({ em: lead.createdAt, texto: "conversa iniciada", autor: null, peso: "marco" });
@@ -100,6 +114,52 @@ export function montarLinhaDoTempo(input: {
         em: l.feitoEm,
         texto: "concluiu o retorno agendado",
         autor: l.feitoPor ?? null,
+        peso: "normal",
+      });
+    }
+  }
+
+  // ─── OS TOQUES DE FOLLOW-UP ───
+  //
+  // Cada um entra com tudo o que a pergunta "por que ela parou de responder?" precisa:
+  // data, canal, o que estávamos esperando, EM QUE LÍNGUA, quem aprovou e o texto que
+  // saiu. O texto vem gravado no próprio toque, e não montado a partir do modelo — um
+  // modelo editado no mês que vem reescreveria retroativamente o que a pessoa recebeu, e
+  // a linha do tempo passaria a mentir exatamente onde alguém foi procurar a verdade.
+  for (const t of toques) {
+    const oQueEsperava = MOTIVO_ESPERA_LABEL[t.motivo as MotivoEspera] ?? t.motivo;
+    const lingua = nomeDoIdioma(t.idioma) ?? "idioma não identificado";
+    if (t.status === "enviado" && t.enviadoEm) {
+      eventos.push({
+        em: t.enviadoEm,
+        texto: `follow-up ${t.toque}/3 enviado por ${t.canal} em ${lingua} — ${oQueEsperava}: “${t.texto}”`,
+        autor: t.aprovadoPor ?? "automático",
+        peso: "normal",
+      });
+      if (t.respondidoEm) {
+        eventos.push({
+          em: t.respondidoEm,
+          texto: "a pessoa respondeu depois do follow-up",
+          autor: null,
+          peso: "marco",
+        });
+      }
+      continue;
+    }
+    if (t.status === "pulado") {
+      eventos.push({
+        em: t.criadoEm,
+        texto: `pulou o follow-up de ${oQueEsperava} em ${lingua}`,
+        autor: t.aprovadoPor ?? null,
+        peso: "normal",
+      });
+      continue;
+    }
+    if (t.status === "tarefa" || t.status === "feito") {
+      eventos.push({
+        em: t.criadoEm,
+        texto: `${t.status === "feito" ? "tarefa cumprida" : "virou tarefa manual"} — ${t.texto}`,
+        autor: t.aprovadoPor ?? null,
         peso: "normal",
       });
     }

@@ -4,6 +4,7 @@ import { getRepository } from "@/lib/data";
 import { sendMessage } from "@/lib/whatsapp/send";
 import { timingSafeEq } from "@/lib/auth/secret-compare";
 import { novaRodada, podeDispararAgora } from "@/lib/whatsapp/janela";
+import { varrerEspera } from "@/lib/followup/varredura";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -83,5 +84,27 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, processed: due.length, sent, restantes, janelaAberta });
+  // A VARREDURA DA ESPERA PEGA CARONA AQUI.
+  //
+  // Não por elegância: o plano Hobby da Vercel aceita poucos cron jobs, e um deploy
+  // recusado por causa de uma linha a mais no vercel.json seria um follow-up que nunca
+  // sai. A regra inteira vive em lib/followup/varredura.ts e tem rota própria
+  // (/api/cron/espera) para quem quiser disparar à mão.
+  //
+  // Ela roda DEPOIS dos lembretes agendados e nunca derruba esta resposta: os dois
+  // trabalhos são independentes, e uma falha na régua nova não pode impedir que o
+  // lembrete que a Ana marcou saia.
+  const espera = await varrerEspera(repo, new Date()).catch((e) => {
+    console.error("[cron/followups] varredura da espera falhou:", e instanceof Error ? e.message : e);
+    return null;
+  });
+
+  return NextResponse.json({
+    ok: true,
+    processed: due.length,
+    sent,
+    restantes,
+    janelaAberta,
+    espera,
+  });
 }

@@ -15,6 +15,7 @@
 import type { AtendimentoStatus, EtapaCrm, FunilCrm } from "@/lib/domain/types";
 import { eFiltrada } from "@/lib/domain/types";
 import { contaComoOperacaoReal } from "@/lib/domain/ambiente";
+import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import { COLUNAS, ordenarColuna } from "@/lib/fila/kanban";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
@@ -25,6 +26,7 @@ export const FUNIL_PADRAO_ID = "padrao";
 export const AJUDA_PADRAO: Record<AtendimentoStatus, string> = {
   novo: "Chegou e ninguém pegou.",
   em_atendimento: "Alguém do time está com a bola.",
+  proposta_enviada: "O orçamento está com a pessoa, esperando resposta.",
   agendado: "Reunião marcada com a pessoa.",
   fechado: "Virou cliente ou o assunto se resolveu.",
   perdido: "Não virou atendimento — com o motivo registrado.",
@@ -99,6 +101,10 @@ export function montarQuadro(
 
   for (const lead of leads) {
     if (!contaComoOperacaoReal(lead.ambiente)) continue;
+    // GRUPO NÃO É PESSOA. O webhook parou de criar estes leads, mas os que já entraram
+    // continuam no banco — e um card cujo "nome" é o JID de um grupo é trabalho alocado
+    // para ninguém. Ler o próprio número conserta o passado sem UPDATE em produção.
+    if (eConversaDeGrupo(lead.whatsappNumber)) continue;
     if (eFiltrada(lead.classificacao)) continue;
 
     // FUNIL. Quem não tem funil pertence ao padrão — não a todos: um caso aparecendo em

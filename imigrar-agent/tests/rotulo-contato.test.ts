@@ -17,9 +17,11 @@ describe("rótulo do contato", () => {
     });
   });
 
-  it("cai no telefone quando não há nome, marcando que não é nome", () => {
+  it("cai no telefone FORMATADO quando não há nome, marcando que não é nome", () => {
+    // Cru ("5511999998888") lia-se como código de sistema no lugar do nome. O card
+    // precisa que ali se reconheça um número para o qual dá para ligar.
     expect(rotuloContato({ whatsappNumber: "5511999998888" })).toEqual({
-      texto: "5511999998888",
+      texto: "+55 11 99999-8888",
       conhecido: false,
     });
   });
