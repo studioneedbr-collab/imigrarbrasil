@@ -405,7 +405,7 @@ Duas decisões que sustentam isso:
   conversa inteira se apoia numa coisa que não aconteceu;
 - o texto da Ana e o texto que a pessoa mandou ficam em **colunas separadas**. É o par que
   ensina — só o texto final não ensina nada, e o descarte com motivo ensina mais ainda. É
-  daqui que sai a matéria-prima da fila de revisão (§11).
+  daqui que sai a matéria-prima da fila de revisão (§12).
 
 ### Auditoria
 
@@ -453,12 +453,67 @@ etapa fosse um estado paralelo, o primeiro efeito seria silencioso e grave: um c
 - **O agente não mexe**: `funilId` e `etapaId` entram em `CAMPOS_SO_DE_HUMANO`. Sem isso um
   card arrastado à mão voltaria sozinho no próximo "oi" da pessoa.
 
-Código: `lib/crm/funil.ts` · `components/crm/` · `app/api/crm/` · migration `026`.
+### A etapa onde o dinheiro aparece (28/08)
+
+O quadro ia de "em atendimento" direto para "reunião agendada". O fluxo real do escritório
+tem um passo entre os dois: alguém assume, **envia o orçamento** e só então marca a
+reunião. A etapa em que a proposta está com o cliente não existia — e é justamente a que
+mais precisa de follow-up, porque é a única em que o silêncio da pessoa custa dinheiro e
+tem data de validade.
+
+```
+NOVO → EM ATENDIMENTO → PROPOSTA ENVIADA → REUNIÃO AGENDADA → FECHADO
+                                                              PERDIDO
+```
+
+Três coisas eram invisíveis e passaram a existir. **Proposta enviada** guarda data, valor,
+serviço e prazo de validade. **Fechado** pede o valor efetivamente contratado — ou a
+marcação explícita de que fechou *sem contrato*, porque um campo em branco não distingue
+"não houve" de "esqueceram de preencher" e a soma do mês fica errada em silêncio.
+**Perdido** ganhou categoria fechada (preço, foi para outro escritório, resolveu sozinho,
+sumiu, perfil DPU, fora de escopo) **além** do texto livre: a categoria soma, a frase se lê
+seis meses depois. Texto livre sozinho não respondia nenhuma pergunta no agregado — "sumiu",
+"não respondeu" e "parou de responder" são a mesma coisa escrita de três jeitos.
+
+`perfil_dpu` e `fora_de_escopo` estão na lista porque são desfechos legítimos e frequentes
+neste escritório. Contá-los como perda comercial faria a conversão mentir para baixo todo mês.
+
+Tudo isso é **só de humano** (`CAMPOS_SO_DE_HUMANO`), e este é o caso mais caro da lista:
+um modelo inferindo "acho que ficou uns três mil" de uma frase do cliente estaria escrevendo
+receita no painel do escritório.
+
+### Quem cuida do caso (28/08)
+
+`responsavel_id` sempre foi um só: quem assumiu primeiro. Na prática o caso troca de mãos
+(férias, plantão, alguém que entende de refúgio entra no meio) e quase sempre tem mais de
+uma pessoa dentro — quem negocia e quem protocola não são a mesma pessoa. Isso vivia em
+"Observações internas", que ninguém lê antes de ligar para o cliente.
+
+- **O dono** continua sendo um só. É o nome do card e é por ele que "Meus atendimentos"
+  filtra — uma lista sem dono é uma lista em que ninguém responde pelo caso.
+- **Quem mais está no caso** (`apoio_ids`) enxerga e trabalha, mas o caso não conta como
+  pendência deles: uma pendência de quatro pessoas não é pendência de ninguém.
+- **`assumido_em` nunca é reescrito.** Trocar o responsável amanhã não pode reiniciar o
+  "tempo até o primeiro contato humano".
+- **O agente segue o dono.** Transferir o caso move também o silêncio do agente para quem
+  assumiu — antes a conversa ficava calada em nome de quem clicou.
+
+Código: `lib/crm/funil.ts` · `components/crm/` · `app/api/crm/` · migrations `026`, `027`
+(etapa comercial) e `028` (responsáveis).
 Endereço: `/dashboard/crm` (o antigo `/dashboard/atendimentos` redireciona).
+
+> **Grupo do WhatsApp não vira lead.** O primeiro card do quadro chegou a ser
+> `12036343001452 6326-g…` — o JID de um **grupo**, o que significava que mensagem de grupo
+> estava abrindo caso e a Ana estava respondendo dentro de grupos. O corte está no webhook,
+> antes de qualquer escrita, e é *fail-closed*: grupo, lista de transmissão, status e canal
+> não abrem conversa, não criam lead e não recebem resposta. Os que já estavam no banco
+> somem da fila e do quadro pela leitura do próprio número, sem `UPDATE` em produção.
+> Precisou vir antes de qualquer automação: follow-up automático disparado num grupo é o
+> pior caso possível deste sistema. Ver `lib/whatsapp/remetente.ts`.
 
 ---
 
-## 10. O mapa do atendimento
+## 11. O mapa do atendimento
 
 `/dashboard/mapa`. A tela que responde a pergunta da terceira semana de uso — **"se a
 pessoa disser X, o que a Ana faz?"** —, que sempre teve resposta espalhada por doze
@@ -486,7 +541,7 @@ decisão que está no `transfer-gate`.
 
 ---
 
-## 11. Stack e estrutura
+## 12. Stack e estrutura
 
 **Next.js 14** (App Router, TS, Tailwind) · **Supabase** (Postgres + pgvector) ·
 **Vitest** · **DeepSeek** (LLM) · **Z-API** (WhatsApp) · **OpenAI** (embeddings do RAG e
@@ -526,7 +581,7 @@ silêncio. Confirmação destrutiva usa `ConfirmDialog`, nunca `window.confirm`.
 
 ---
 
-## 12. Estado da infraestrutura (28/08/2026, madrugada)
+## 13. Estado da infraestrutura (28/08/2026, madrugada)
 
 > **O painel está NO AR e funcionando**: https://agente.imigrarbrasil.com.br
 > Login: `studioneedbr@gmail.com`. A senha foi redefinida direto no banco em 27/08 —
@@ -773,7 +828,7 @@ passando**.
 
 ---
 
-## 13. O que falta
+## 14. O que falta
 
 **Bloqueado esperando terceiros**
 
@@ -788,7 +843,7 @@ passando**.
 - [ ] **Z-API — a instância do 4664.** É o único bloqueio para virar operação de verdade:
       sem ela nenhuma pessoa real consegue escrever para a Ana
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
-- [ ] **aplicar a migration `023`** no Supabase de produção (ver §12)
+- [ ] **aplicar a migration `023`** no Supabase de produção (ver §13)
 
 **Feito depois da v1 (26/08, noite)**
 
@@ -806,17 +861,17 @@ passando**.
       conversa, com o comportamento de desligado explícito e auditado
 - [x] **Modo sombra** — a Ana responde contra conversa real sem enviar nada, e cada
       descarte ou edição vira dado
-- [x] **Migrations automáticas** — `npm run migrar` + `schema_migrations` (§12)
+- [x] **Migrations automáticas** — `npm run migrar` + `schema_migrations` (§13)
 
 **Feito em 27/08, noite (a rodada de acabamento)**
 
 - [x] **O CRM** (§9) — funis e etapas que o escritório cria, com etapa apontando para
       status; o antigo "Quadro" virou `/dashboard/crm`
-- [x] **O mapa do atendimento** (§10) — `/dashboard/mapa`
+- [x] **O mapa do atendimento** (§11) — `/dashboard/mapa`
 - [x] **A tela do caso parou de rolar** — cabeça fixa (prazo, cartão de qualidade, ações)
       e o resto em abas: ficha, retornos, classificação e histórico no mesmo espaço, com a
       rolagem acontecendo DENTRO do painel. Prazo confirmado encolhe para uma linha
-- [x] **Seleção e data do sistema** (§11) — nada mais nativo do navegador
+- [x] **Seleção e data do sistema** (§12) — nada mais nativo do navegador
 - [x] **Qualidade do lead** — completude (ficha mínima) e prioridade, que são eixos
       diferentes; substituiu o "score 43" herdado do funil comercial no dossiê da conversa,
       e entrou no resumo do card do CRM. Antes a conversa dizia "2/5" com uma lista escrita
@@ -849,12 +904,12 @@ de descobrir, em três semanas, que metade não era necessária.
 - [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco
 - [ ] **Dashboard e CRM por pessoa** — escopo a fechar
 - [x] **Treinar o agente** — as abas deixaram de ser da base comercial; falta a
-      **primeira gravação de verdade** (§12: `agent_config` ainda só tem `chave_geral`).
+      **primeira gravação de verdade** (§13: `agent_config` ainda só tem `chave_geral`).
       Enquanto ninguém salvar, o agente segue nos padrões de código — que funcionam, mas
       não são o que a equipe escreveria
 - [ ] **Métricas em PDF** — pedido de 27/08, escopo a confirmar: hoje a exportação é de
       leads, em planilha, e o pedido pode ser "exportar a tela de métricas"
-- [ ] **Descobrir o projeto Vercel** deste painel e linkar a pasta (§12, Git e deploy)
+- [ ] **Descobrir o projeto Vercel** deste painel e linkar a pasta (§13, Git e deploy)
 - [ ] **Integrações** — DeepSeek de verdade; Brevo fora do caminho. *(A Z-API virou o
       painel de instâncias — feito.)*
 
@@ -880,7 +935,7 @@ de descobrir, em três semanas, que metade não era necessária.
 
 ---
 
-## 14. Rodar
+## 15. Rodar
 
 ```bash
 npm run setup     # instala em imigrar-agent/
