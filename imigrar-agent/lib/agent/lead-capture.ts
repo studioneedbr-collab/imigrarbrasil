@@ -101,6 +101,30 @@ export function capturarDadosDoLead(
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // O QUE ELA QUER CONSEGUIR — o campo que a ficha mostrava vazio com a resposta na tela.
+  //
+  // A ficha da Ana Rodríguez tinha "Situação documental: hola, soy venezolana y recibí una
+  // multa migratoria, no sé qué hacer" e "O que a pessoa quer conseguir:" em branco. A
+  // informação estava ali, na mesma frase: quem recebeu multa quer resolver a multa. Só
+  // que `objetivo` só era preenchido quando o modelo lembrava de chamar a tool, e o campo
+  // vazio segura o encaminhamento (é um dos seis da ficha mínima) — ou seja, a ficha
+  // ficava incompleta por falta de uma dedução que a própria frase já tinha entregue.
+  //
+  // Derivado, nunca inventado: sai do sinal de prazo (que já foi detectado no texto) ou
+  // do caminho migratório reconhecido. Sem nenhum dos dois, continua vazio — melhor um
+  // buraco honesto do que um objetivo chutado, que ninguém depois vai desconfiar.
+  if (!lead?.objetivo && !patch.objetivo) {
+    const tipo = patch.prazoTipo ?? lead?.prazoTipo;
+    const temPrazoAgora = patch.temPrazoCorrendo ?? lead?.temPrazoCorrendo;
+    const caminho =
+      patch.modalidadeProvavel ??
+      lead?.modalidadeProvavel ??
+      (patch.servicesInterested ?? lead?.servicesInterested)?.[0];
+    if (temPrazoAgora && tipo && OBJETIVO_DE_PRAZO[tipo]) patch.objetivo = OBJETIVO_DE_PRAZO[tipo];
+    else if (caminho) patch.objetivo = `Conseguir ${caminho}`;
+  }
+
   const classificacao = classificarAutomatico({ ...lead, ...patch } as Lead, textoDoCliente);
   if (classificacao && maisQuenteQue(classificacao, lead?.classificacao)) {
     patch.classificacao = classificacao;
@@ -118,6 +142,16 @@ export function capturarDadosDoLead(
 
   return Object.keys(patch).length ? patch : null;
 }
+
+/**
+ * O objetivo que se deduz de um prazo. "Recebi uma multa" não é o objetivo — o objetivo é
+ * resolver a multa, e é isso que o advogado precisa ler na ficha.
+ */
+const OBJETIVO_DE_PRAZO: Record<string, string> = {
+  multa: "Resolver uma multa migratória",
+  indeferimento: "Reverter um indeferimento",
+  notificacao_saida: "Responder a uma notificação de saída",
+};
 
 /**
  * A HEURÍSTICA SÓ ESQUENTA.

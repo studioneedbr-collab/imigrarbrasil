@@ -147,3 +147,37 @@ describe("um funil de onde não se sai", () => {
     expect(faltamDesfechos(etapasJuridico)).toEqual(["perdido"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A FICHA QUE SE PREENCHE SOZINHA.
+//
+// O caso real: a ficha da Ana Rodríguez guardou a frase inteira em "situação documental"
+// e deixou "o que a pessoa quer conseguir" em branco — com a resposta na mesma frase.
+// Campo vazio ali não é cosmético: `objetivo` é um dos seis da ficha mínima, e ficha
+// incompleta segura o encaminhamento ao time.
+// ─────────────────────────────────────────────────────────────────────────────
+import { capturarDadosDoLead } from "@/lib/agent/lead-capture";
+import type { Lead } from "@/lib/domain/types";
+
+describe("o objetivo se deduz do que a pessoa já disse", () => {
+  it("multa migratória vira o objetivo de resolvê-la", () => {
+    const p = capturarDadosDoLead(
+      "hola, soy venezolana y recibí una multa migratoria, no sé qué hacer",
+      null,
+    );
+    expect(p?.temPrazoCorrendo).toBe(true);
+    expect(p?.prazoTipo).toBe("multa");
+    expect(p?.objetivo).toBe("Resolver uma multa migratória");
+  });
+
+  it("não sobrescreve o objetivo que já existe — mão humana e tool valem mais", () => {
+    const lead = { objetivo: "Trazer a filha para o Brasil" } as Lead;
+    const p = capturarDadosDoLead("recebi uma multa migratória", lead);
+    expect(p?.objetivo).toBeUndefined();
+  });
+
+  it("sem prazo e sem caminho reconhecido, continua vazio em vez de chutar", () => {
+    const p = capturarDadosDoLead("bom dia, tudo bem?", null);
+    expect(p?.objetivo).toBeUndefined();
+  });
+});

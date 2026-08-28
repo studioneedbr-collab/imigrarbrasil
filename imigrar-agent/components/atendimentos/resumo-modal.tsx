@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ChipIdioma, Nacionalidade } from "@/components/fila/linha";
+import { QualidadeDoLead } from "@/components/atendimentos/qualidade";
+import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import {
   AINDA_NAO,
@@ -22,6 +24,7 @@ import {
   temPrazo,
   type LeadDaFila,
 } from "@/lib/fila/ordenacao";
+import type { EtapaCrm, FunilCrm } from "@/lib/domain/types";
 
 /**
  * O RESUMO DO CASO, SEM SAIR DO QUADRO.
@@ -46,12 +49,19 @@ export function ResumoDoLead({
   onFechar,
   onAssumir,
   assumindo,
+  funis,
+  etapas,
+  onMover,
 }: {
   lead: LeadDaFila;
   agora: Date;
   onFechar: () => void;
   onAssumir: (lead: LeadDaFila) => void;
   assumindo: boolean;
+  /** Do CRM. Sem eles o modal continua sendo só resumo (é como a fila o usa). */
+  funis?: FunilCrm[];
+  etapas?: EtapaCrm[];
+  onMover?: (lead: LeadDaFila, etapa: EtapaCrm) => void;
 }) {
   const caixa = useRef<HTMLDivElement>(null);
 
@@ -71,6 +81,18 @@ export function ResumoDoLead({
   const relogio = relogioApertado(lead, agora) ? diasDoRelogio(lead, agora) : null;
   const faltam = lead.fichaFaltando ?? [];
   const jaTemResponsavel = !!lead.responsavelId;
+  const statusAtual = lead.atendimentoStatus ?? "novo";
+  const podeMover = !!onMover && !!funis?.length && !!etapas?.length;
+  const etapaAtual = etapas?.find(
+    (e) => e.id === lead.etapaId && !e.arquivada && e.status === statusAtual,
+  );
+  const funilAtual =
+    funis?.find((f) => f.id === (etapaAtual?.funilId ?? lead.funilId)) ??
+    funis?.find((f) => f.padrao && !f.arquivado) ??
+    funis?.[0];
+  const doFunil = (etapas ?? [])
+    .filter((e) => e.funilId === funilAtual?.id && !e.arquivada)
+    .sort((a, b) => a.ordem - b.ordem);
 
   return (
     <div
@@ -182,28 +204,61 @@ export function ResumoDoLead({
             </Campo>
           </dl>
 
-          {/* ── O QUE AINDA FALTA. É a MESMA lista que segura o encaminhamento. ── */}
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ib-slate">
-              O que ainda falta na ficha
-            </p>
-            {faltam.length === 0 ? (
-              <p className="mt-1 text-[13px] text-ib-carimbo">
-                Ficha completa — o time jurídico consegue pegar este caso.
+          {/* ── A QUALIDADE. Completude e prioridade, que são eixos diferentes: o caso
+               mais urgente do painel costuma ser o de ficha mais vazia, porque acabou de
+               chegar. Ver components/atendimentos/qualidade.tsx. ── */}
+          <QualidadeDoLead
+            lead={{ ...lead, fichaFaltando: faltam }}
+            className="rounded-lg border border-ib-line bg-ib-papel/40 px-3 py-2.5"
+          />
+
+          {/* ── ONDE ELE ESTÁ NO CRM — e para onde vai, sem sair daqui. ── */}
+          {podeMover ? (
+            <div className="rounded-lg border border-ib-line bg-white px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ib-slate">
+                Lugar no CRM
               </p>
-            ) : (
-              <ul className="mt-1 space-y-0.5 text-[13px] leading-snug text-ib-slate">
-                {faltam.map((f) => (
-                  <li key={f} className="flex gap-1.5">
-                    <span aria-hidden="true" className="text-ib-slate/60">
-                      ·
-                    </span>
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <Selecao
+                  label="Funil"
+                  compacto
+                  valor={funilAtual?.id ?? ""}
+                  onChange={(id) => {
+                    // Trocar de funil leva o caso para a primeira etapa do funil novo que
+                    // descreva o status em que ele está: mudar de quadro não pode mudar,
+                    // de carona, se o atendimento está aberto ou fechado.
+                    const destino =
+                      (etapas ?? []).find(
+                        (e) => e.funilId === id && !e.arquivada && e.status === statusAtual,
+                      ) ?? (etapas ?? []).find((e) => e.funilId === id && !e.arquivada);
+                    if (destino) onMover?.(lead, destino);
+                  }}
+                  opcoes={(funis ?? [])
+                    .filter((f) => !f.arquivado)
+                    .map((f) => ({ valor: f.id, rotulo: f.nome }))}
+                />
+                <Selecao
+                  label="Etapa"
+                  compacto
+                  valor={etapaAtual?.id ?? ""}
+                  placeholder="pela situação do caso"
+                  onChange={(id) => {
+                    const destino = (etapas ?? []).find((e) => e.id === id);
+                    if (destino) onMover?.(lead, destino);
+                  }}
+                  opcoes={doFunil.map((e) => ({
+                    valor: e.id,
+                    rotulo: e.nome,
+                    ajuda: e.ajuda ?? undefined,
+                  }))}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-snug text-ib-slate">
+                Mover aqui é a mesma ação de arrastar o card: uma etapa de desfecho encerra
+                o caso, e “perdido” continua pedindo o motivo.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* ── O RODAPÉ. "Ver conversa" é a única saída que navega. ── */}

@@ -24,6 +24,18 @@ export const dynamic = "force-dynamic";
  * paciência.
  */
 
+/**
+ * O BLOCO VAZIO ENCOLHE.
+ *
+ * A tela tinha quatro cartões do mesmo tamanho, e num dia normal três deles estão
+ * vazios: "nenhuma mensagem esperando resposta sua", "nenhuma reunião marcada", "nada seu
+ * está parado". Cada um ocupava um cartão inteiro com cabeçalho, contador e parágrafo —
+ * meia tela de rolagem para dizer que não há nada a fazer, empurrando para baixo o único
+ * bloco que tinha um caso dentro.
+ *
+ * Vazio agora é UMA LINHA. O bloco com trabalho dentro continua sendo um cartão inteiro,
+ * e é ele que ocupa a tela.
+ */
 function Bloco({
   titulo,
   contagem,
@@ -39,8 +51,18 @@ function Bloco({
   destaque?: boolean;
   children: React.ReactNode;
 }) {
+  if (contagem === 0) {
+    return (
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-xl border border-ib-line bg-white/60 px-4 py-2.5">
+        <span className="text-sm font-semibold text-ib-slate">{titulo}</span>
+        <span className="font-mono text-xs tabular-nums text-ib-slate">0</span>
+        <span className="text-xs text-ib-slate">· {vazio}</span>
+      </div>
+    );
+  }
+
   return (
-    <Card className={`overflow-hidden ${destaque && contagem > 0 ? "ring-1 ring-ib-warn/40" : ""}`}>
+    <Card className={`overflow-hidden ${destaque ? "ring-1 ring-ib-warn/40" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ib-line bg-ib-papel/70 px-5 py-3">
         <div className="flex items-center gap-2.5">
           <h2 className="text-sm font-semibold text-ib-ink">{titulo}</h2>
@@ -50,11 +72,48 @@ function Bloco({
         </div>
         {descricao ? <p className="text-xs text-ib-slate">{descricao}</p> : null}
       </div>
-      {contagem === 0 ? (
-        <p className="px-5 py-5 text-sm leading-relaxed text-ib-slate">{vazio}</p>
-      ) : (
-        children
-      )}
+      {children}
+    </Card>
+  );
+}
+
+/**
+ * A FAIXA DE CIMA — o dia inteiro em cinco números.
+ *
+ * Antes era preciso rolar quatro cartões para saber se havia algo a fazer, e a resposta
+ * costumava ser "não". Aqui ela é imediata, e a cor só aparece onde há dívida: retorno
+ * marcado para hoje e caso parado. O resto é contagem, não alarme.
+ */
+function Faixa({
+  itens,
+}: {
+  itens: { rotulo: string; valor: number; nota: string; tom?: "alerta" | "aviso" }[];
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="grid grid-cols-2 divide-y divide-ib-line sm:grid-cols-3 sm:divide-y-0 lg:grid-cols-5 lg:divide-x">
+        {itens.map((i) => (
+          <div key={i.rotulo} className="px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
+              {i.rotulo}
+            </p>
+            <p
+              className={`mt-0.5 font-display text-2xl font-semibold tabular-nums ${
+                i.valor === 0
+                  ? "text-ib-slate"
+                  : i.tom === "alerta"
+                    ? "text-ib-danger"
+                    : i.tom === "aviso"
+                      ? "text-[#9A6212]"
+                      : "text-ib-ink"
+              }`}
+            >
+              {i.valor}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-snug text-ib-slate">{i.nota}</p>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }
@@ -98,6 +157,35 @@ export default async function MeusAtendimentosPage() {
         eyebrow="Acompanhamento"
         title="Meus atendimentos"
         description="O que está com você, separado por quem precisa agir. A fila mostra quem chegou; esta tela mostra quem está esperando."
+      />
+
+      <Faixa
+        itens={[
+          {
+            rotulo: "Retornos hoje",
+            valor: meus.paraHoje.length,
+            nota: "você marcou, com motivo escrito",
+            tom: "alerta",
+          },
+          {
+            rotulo: "Esperando você",
+            valor: meus.comigo.length,
+            nota: "a pessoa falou por último",
+            tom: "aviso",
+          },
+          {
+            rotulo: "Esperando o cliente",
+            valor: meus.aguardandoCliente.length,
+            nota: "silêncio, não atraso",
+          },
+          { rotulo: "Reuniões", valor: meus.agendados.length, nota: "marcadas com a pessoa" },
+          {
+            rotulo: `Parados +${DIAS_PARA_CONSIDERAR_PARADO}d`,
+            valor: meus.parados.length,
+            nota: "sem movimento nenhum",
+            tom: "aviso",
+          },
+        ]}
       />
 
       {/* LEMBRETES DO DIA vêm antes de tudo: é a única coisa aqui que alguém marcou

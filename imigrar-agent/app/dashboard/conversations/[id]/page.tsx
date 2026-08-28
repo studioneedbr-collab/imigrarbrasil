@@ -17,14 +17,21 @@ import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, Lead, Message, TransferTicket, Urgency } from "@/lib/domain/types";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import RascunhoSombra, { type RascunhoView } from "@/components/agente/rascunho-sombra";
+import { QualidadeDoLead } from "@/components/atendimentos/qualidade";
+import { Selecao } from "@/components/dashboard/campos";
 
+// PARA ONDE SE TRANSFERE AQUI.
+//
+// A lista era a de uma assessoria de mão de obra — "Recursos Humanos", "Departamento
+// Pessoal", "Suporte" —, e nenhum desses times existe neste escritório. Transferir para
+// um setor que não existe é o mesmo que transferir para lugar nenhum: o caso sai da
+// conversa e não chega em ninguém.
 const SETORES = [
-  "Comercial",
-  "Operacional",
-  "Recursos Humanos",
-  "Departamento Pessoal",
+  "Jurídico",
+  "Atendimento",
+  "Documentação",
   "Financeiro",
-  "Suporte",
+  "Diretoria",
 ];
 
 type DetailResponse = {
@@ -310,25 +317,18 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const transferTicket = transferTickets[0] ?? null;
   const title = conversation.contactName ?? conversation.whatsappNumber;
 
-  // O que o time jurídico precisa ter na mão quando pegar esta conversa. A lista da base
-  // comercial media outra coisa (serviço, nº de postos, CNPJ) e marcava 100% de
-  // qualificação para quem não tinha contado nem de onde é.
-  const checklist = lead
-    ? [
-        { label: "Nacionalidade", done: !!(lead.nacionalidade ?? lead.clientType) },
-        { label: "Onde está", done: !!(lead.localizacao ?? lead.region) },
-        { label: "Objetivo", done: !!(lead.objetivo ?? lead.servicesInterested?.length) },
-        { label: "Situação", done: !!(lead.situacaoDocumental ?? lead.contractDuration) },
-        { label: "Prazo", done: !!lead.temPrazoCorrendo || !!lead.prazoDataLimite },
-      ]
-    : [];
-  const doneCount = checklist.filter((c) => c.done).length;
-  const pct = checklist.length > 0 ? Math.round((doneCount / checklist.length) * 100) : 0;
+  // A lista do que falta NÃO mora mais aqui: é a ficha mínima do domínio
+  // (lib/domain/ficha.ts), lida pelo bloco de qualidade. Uma definição só, para a
+  // conversa, o quadro e o detalhe do caso contarem a mesma coisa.
 
   // Nem todo contato é lead comercial: operacional/RH/DP são SOLICITAÇÕES (suporte),
   // e não fazem sentido com "qualificação" e "score" de venda.
   const SETOR_LABEL: Record<string, string> = {
-    comercial: "Comercial",
+    // "comercial" é a chave herdada do funil da base que originou este código, e é a que
+    // já está gravada em todo lead do banco. O que o time lê é OUTRA coisa: aqui esse
+    // destino é o jurídico de imigração, e chamá-lo de "Comercial" na tela fazia parecer
+    // que existe um funil de vendas paralelo ao atendimento.
+    comercial: "Jurídico",
     operacional: "Operacional",
     rh: "RH",
     departamento_pessoal: "Departamento Pessoal",
@@ -676,7 +676,7 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                   <Field label="CPF" value={transferTicket.dossie.cpf ?? "—"} />
                   <Field label="Cidade" value={transferTicket.dossie.cidade ?? "—"} />
                   <Field
-                    label="Serviços"
+                    label="O que procura"
                     value={
                       transferTicket.dossie.servicos && transferTicket.dossie.servicos.length > 0
                         ? transferTicket.dossie.servicos.join(", ")
@@ -708,17 +708,15 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                   {isSolicitacao ? "Solicitação de suporte" : "Dossiê do lead"}
                 </p>
                 <p className="mt-0.5 text-sm font-semibold text-ib-ink">
-                  {lead?.companyName ?? lead?.contactName ?? "Coletando…"}
+                  {lead?.contactName ?? conversation?.contactName ?? "Coletando…"}
                 </p>
               </div>
-              {conversation && !isSolicitacao ? (
-                <div className="text-right">
-                  <p className="font-mono text-lg font-semibold tabular-nums text-ib-ink">
-                    {conversation.leadScore}
-                  </p>
-                  <p className="text-[10px] uppercase tracking-wide text-ib-slate">score</p>
-                </div>
-              ) : isSolicitacao && setorLabel ? (
+              {/* O "score" saiu daqui. Era um número de 0 a 100 do funil comercial que
+                  originou este código — "43" não dizia 43 de quê, não mudava o que alguém
+                  faria e competia em tamanho com o nome da pessoa. Quem responde essa
+                  pergunta agora é o bloco de qualidade abaixo, que separa o que se sabe
+                  (completude) do que pressiona (prioridade). */}
+              {isSolicitacao && setorLabel ? (
                 <span className="rounded-full border border-ib-line bg-ib-papel px-2.5 py-1 text-[11px] font-medium text-ib-slate">
                   {setorLabel}
                 </span>
@@ -738,41 +736,15 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                   </div>
                 ) : (
                 <>
-                {/* Qualification progress */}
-                <div className="rounded-xl border border-ib-line bg-ib-papel/60 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ib-slate">
-                      Qualificação
-                    </span>
-                    <span className="font-mono text-xs tabular-nums text-ib-ink">
-                      {doneCount}/{checklist.length}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-ib-line">
-                    <div
-                      className="h-full rounded-full bg-ib-selo transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <ul className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {checklist.map((item) => (
-                      <li key={item.label} className="flex items-center gap-1.5 text-xs">
-                        <span
-                          className={`flex h-4 w-4 items-center justify-center rounded-full ${
-                            item.done
-                              ? "bg-ib-success/15 text-ib-success"
-                              : "border border-ib-line text-transparent"
-                          }`}
-                        >
-                          <Icon name="check" className="h-3 w-3" />
-                        </span>
-                        <span className={item.done ? "text-ib-ink" : "text-ib-slate"}>
-                          {item.label}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                {/* A QUALIDADE DO LEAD, a mesma do quadro e do resumo.
+                    Antes esta caixa tinha uma lista de cinco itens escrita à mão AQUI,
+                    e a ficha mínima do domínio tem seis: a conversa dizia "2/5" enquanto
+                    o resto do painel dizia que faltavam quatro coisas. Duas contas da
+                    mesma coisa é como um time passa a não confiar na tela. */}
+                <QualidadeDoLead
+                  lead={lead}
+                  className="rounded-xl border border-ib-line bg-ib-papel/60 p-4"
+                />
                 </>
                 )}
 
@@ -886,44 +858,28 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.08em] text-ib-slate">
-                  Setor
-                </label>
-                <select
-                  value={setor}
-                  onChange={(e) => setSetor(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"
-                >
-                  {SETORES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <Selecao
+                  valor={setor}
+                  onChange={setSetor}
+                  label="Setor de destino"
+                  opcoes={SETORES.map((s) => ({ valor: s, rotulo: s }))}
+                />
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.08em] text-ib-slate">
-                  Pessoa (usuário cadastrado)
-                </label>
                 {users.length > 0 ? (
-                  <select
-                    value={pessoa}
-                    onChange={(e) => setPessoa(e.target.value)}
-                    autoFocus
-                    className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"
-                  >
-                    <option value="">Selecione…</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.name || u.email}>
-                        {u.name || u.email}
-                      </option>
-                    ))}
-                  </select>
+                  <Selecao
+                    valor={pessoa}
+                    onChange={setPessoa}
+                    label="Quem assume"
+                    placeholder="Selecione…"
+                    opcoes={users.map((u) => ({ valor: u.name || u.email, rotulo: u.name || u.email }))}
+                  />
                 ) : (
                   <input
                     value={pessoa}
                     onChange={(e) => setPessoa(e.target.value)}
-                    placeholder="Ex.: Pedro Lucas"
+                    aria-label="Quem assume"
+                    placeholder="quem assume (ex.: Pedro Lucas)"
                     autoFocus
                     onKeyDown={(e) => e.key === "Enter" && !transferring && doTransfer()}
                     className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink placeholder:text-ib-slate focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"

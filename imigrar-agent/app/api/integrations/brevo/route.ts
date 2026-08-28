@@ -37,7 +37,7 @@ export async function PUT(req: NextRequest) {
     const value: BrevoConfig = {
       apiKey: parsed.apiKey?.trim() ? parsed.apiKey.trim() : current.apiKey,
       senderEmail: parsed.senderEmail,
-      senderName: parsed.senderName?.trim() || "Shine Rio",
+      senderName: parsed.senderName?.trim() || "Imigrar Brasil",
     };
     await repo.setConfig("brevo", value);
     return NextResponse.json({ ok: true });

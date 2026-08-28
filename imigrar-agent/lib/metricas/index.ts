@@ -37,6 +37,36 @@ export interface Metricas {
   tempoAteHumano: { geralMin: number | null; quentePrazoMin: number | null; semAssumir: number };
   /** Precisa ser zero, e precisa estar visível. */
   prazosPerdidos: LeadDaFila[];
+
+  /**
+   * QUEM É ESSA GENTE — nacionalidade, onde está e o que procura.
+   *
+   * Não estava aqui, e a falta aparecia na primeira pergunta que qualquer sócio faz
+   * olhando o painel: "de onde vem a maior parte dos casos?". A resposta existia no
+   * banco desde sempre; o que faltava era alguém contar.
+   */
+  porNacionalidade: Array<{ label: string; total: number }>;
+  porLocalizacao: Array<{ label: string; total: number }>;
+  porModalidade: Array<{ label: string; total: number }>;
+
+  /**
+   * O DESFECHO. Quantos fecharam, quantos se perderam e por quê.
+   *
+   * "Perdido" com motivo é o dado mais barato de coletar e o mais caro de não ter: é a
+   * única forma de responder por que os casos não viram atendimento sem reler cem
+   * conversas.
+   */
+  desfecho: {
+    fechados: number;
+    perdidos: number;
+    emAberto: number;
+    /** Taxa de fechamento sobre o que teve desfecho no período. */
+    taxaFechamento: number;
+    motivos: Array<{ label: string; total: number }>;
+  };
+
+  /** Prazos confirmados no período, e quantos ainda correm. */
+  prazos: { sinalizados: number; confirmados: number; correndo: number; taxaConfirmacao: number };
 }
 
 function noPeriodo(iso: string | null | undefined, de: Date, ate: Date): boolean {
@@ -110,9 +140,65 @@ export function calcularMetricas(
     .map(minutosAteHumano)
     .filter((n): n is number => n !== null);
 
+  // AGRUPAMENTOS DE LEITURA. Contam sobre `leads` (já recortados pelo período) e nunca
+  // sobre `reais`: um número que ignora o filtro escolhido é pior do que número nenhum,
+  // porque parece responder à pergunta que a pessoa fez.
+  const agrupar = (
+    valor: (l: LeadDaFila) => string | null | undefined,
+    vazio = "não informado",
+  ) => {
+    const m = new Map<string, number>();
+    for (const l of leads) {
+      const k = (valor(l) ?? "").trim() || vazio;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return Array.from(m, ([label, total]) => ({ label, total })).sort((a, b) => b.total - a.total);
+  };
+
+  const fechados = leads.filter((l) => l.atendimentoStatus === "fechado").length;
+  const perdidos = leads.filter((l) => l.atendimentoStatus === "perdido").length;
+  const comDesfecho = fechados + perdidos;
+
+  const sinalizados = leads.filter((l) => l.temPrazoCorrendo || l.prazoDataLimite).length;
+  const confirmados = leads.filter((l) => !!l.prazoDataLimite).length;
+
   return {
     periodo: { de: de.toISOString(), ate: ate.toISOString() },
     atendidas: leads.length,
+    porNacionalidade: agrupar((l) => l.nacionalidade ?? l.clientType, "nacionalidade não informada"),
+    porLocalizacao: agrupar(
+      (l) =>
+        l.localizacao === "brasil"
+          ? "no Brasil"
+          : l.localizacao === "exterior"
+            ? `no exterior${l.paisExterior ? ` — ${l.paisExterior}` : ""}`
+            : null,
+      "não se sabe onde está",
+    ),
+    porModalidade: agrupar((l) => l.modalidadeProvavel, "modalidade a definir"),
+    desfecho: {
+      fechados,
+      perdidos,
+      emAberto: leads.length - comDesfecho,
+      taxaFechamento: comDesfecho ? fechados / comDesfecho : 0,
+      // Só os perdidos entram aqui. Agrupar sobre todos os leads faria cada caso em
+      // aberto virar um "sem motivo registrado" — e a lista de motivos passaria a
+      // descrever o painel inteiro em vez das perdas.
+      motivos: (() => {
+        const m = new Map<string, number>();
+        for (const l of leads.filter((x) => x.atendimentoStatus === "perdido")) {
+          const k = (l.motivoPerda ?? "").trim() || "sem motivo registrado";
+          m.set(k, (m.get(k) ?? 0) + 1);
+        }
+        return Array.from(m, ([label, total]) => ({ label, total })).sort((a, b) => b.total - a.total);
+      })(),
+    },
+    prazos: {
+      sinalizados,
+      confirmados,
+      correndo: leads.filter((l) => l.prazoDataLimite && l.atendimentoStatus !== "fechado" && l.atendimentoStatus !== "perdido").length,
+      taxaConfirmacao: sinalizados ? confirmados / sinalizados : 0,
+    },
     porIdioma: Array.from(idiomas, ([idioma, total]) => ({ idioma, total })).sort(
       (a, b) => b.total - a.total,
     ),

@@ -5,6 +5,7 @@ import {
   type KnowledgeBase,
   type PromptOverrides,
 } from "@/lib/agent/knowledge";
+import { blocoMaterialOficial } from "@/lib/agent/material-oficial";
 import {
   DEFAULT_TRAINING,
   buildBehaviorRulesBlock,
@@ -125,7 +126,15 @@ async function getFaqBlock(): Promise<string> {
 export async function getSystemPrompt(): Promise<string> {
   const raw = await getRepository().getConfig<string>("system_prompt");
   const [briefingBlock, faqBlock] = await Promise.all([getBriefingBlock(), getFaqBlock()]);
-  if (raw && raw.length > 50) return raw + briefingBlock + faqBlock;
+  // ═══ O MATERIAL OFICIAL ENTRA SEMPRE, E POR ÚLTIMO ═══
+  //
+  // Por último porque é a última coisa que o modelo lê antes de responder. E SEMPRE —
+  // inclusive por cima de um `system_prompt` cru gravado à mão, inclusive depois de a
+  // equipe reescrever a persona inteira na tela de treinar. O RAG injeta trecho só quando
+  // a mensagem pede pesquisa; as regras que impedem a Ana de dar parecer sobre o caso de
+  // alguém não podem depender disso. Ver lib/agent/material-oficial.ts.
+  const material = blocoMaterialOficial();
+  if (raw && raw.length > 50) return raw + briefingBlock + faqBlock + material;
   const [kb, training] = await Promise.all([getKnowledgeBase(), getTrainingConfig()]);
-  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock;
+  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material;
 }

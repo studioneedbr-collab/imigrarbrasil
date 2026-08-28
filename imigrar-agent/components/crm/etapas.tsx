@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import { COLUNAS } from "@/lib/fila/kanban";
@@ -27,6 +28,12 @@ const IMPLICA: Record<AtendimentoStatus, string> = {
   fechado: "desfecho: encerra o caso e sai da fila",
   perdido: "desfecho: encerra o caso e EXIGE motivo ao mover",
 };
+
+const OPCOES_STATUS = COLUNAS.map((s) => ({
+  valor: s,
+  rotulo: ATENDIMENTO_LABEL[s],
+  ajuda: IMPLICA[s],
+}));
 
 export function GerenciarEtapas({
   funil,
@@ -223,19 +230,14 @@ export function GerenciarEtapas({
                 }}
                 className="w-44 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-sm font-semibold text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
               />
-              <select
-                value={e.status}
-                aria-label={`Status de ${e.nome}`}
-                onChange={(ev) => void salvar(e.id, { status: ev.target.value as AtendimentoStatus })}
-                className="rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-xs text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-              >
-                {COLUNAS.map((s) => (
-                  <option key={s} value={s}>
-                    {ATENDIMENTO_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[11px] text-ib-slate">{IMPLICA[e.status]}</span>
+              <Selecao
+                compacto
+                className="w-44"
+                label={`Status de ${e.nome}`}
+                valor={e.status}
+                onChange={(v) => void salvar(e.id, { status: v })}
+                opcoes={OPCOES_STATUS}
+              />
 
               <span className="ml-auto flex items-center gap-1">
                 <button
@@ -307,22 +309,13 @@ export function GerenciarEtapas({
             className="mt-1 w-full min-w-[12rem] rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
           />
         </label>
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Conta como
-          </span>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as AtendimentoStatus)}
-            className="mt-1 rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          >
-            {COLUNAS.map((s) => (
-              <option key={s} value={s}>
-                {ATENDIMENTO_LABEL[s]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Selecao
+          className="w-52"
+          label="Conta como"
+          valor={status}
+          onChange={setStatus}
+          opcoes={OPCOES_STATUS}
+        />
         <button
           type="button"
           disabled={ocupado || nome.trim().length < 2}

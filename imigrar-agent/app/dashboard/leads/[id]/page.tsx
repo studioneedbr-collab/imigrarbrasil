@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Icon, Skeleton, btnGhost, btnPrimary, fmtTime } from "@/components/dashboard/ui";
+import { CampoData, Selecao } from "@/components/dashboard/campos";
 import { ChipIdioma, ContadorPrazo } from "@/components/fila/linha";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import {
@@ -523,46 +524,20 @@ function BlocoPrazo({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
 
         {formVisivel ? (
           <>
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Que prazo é este
-          </span>
-          <select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as PrazoTipo)}
-            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          >
-            {TIPOS.map((t) => (
-              <option key={t} value={t}>
-                {PRAZO_TIPO_LABEL[t]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Selecao
+          label="Que prazo é este"
+          valor={tipo}
+          onChange={setTipo}
+          opcoes={TIPOS.map((t) => ({ valor: t, rotulo: PRAZO_TIPO_LABEL[t] }))}
+        />
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-              Data da notificação
-            </span>
-            <input
-              type="date"
-              value={notificacao}
-              onChange={(e) => setNotificacao(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 font-mono text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-              Data limite
-            </span>
-            <input
-              type="date"
-              value={limite}
-              onChange={(e) => setLimite(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 font-mono text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-            />
-          </label>
+          <CampoData
+            label="Data da notificação"
+            valor={notificacao}
+            onChange={(v) => setNotificacao(v ?? "")}
+          />
+          <CampoData label="Data limite" valor={limite} onChange={(v) => setLimite(v ?? "")} />
         </div>
 
         <p className="text-xs leading-relaxed text-ib-slate">
@@ -751,57 +726,42 @@ function Ficha({ lead, aoSalvar }: { lead: Lead; aoSalvar: () => void }) {
   return (
     <div className="p-5">
       <div className="space-y-3">
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Onde a pessoa está
-          </span>
-          <select
-            value={(form.localizacao as string) ?? lead.localizacao ?? ""}
-            onChange={(e) => mexer("localizacao", e.target.value || null)}
-            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          >
-            <option value="">não se sabe</option>
-            <option value="brasil">no Brasil</option>
-            <option value="exterior">no exterior</option>
-          </select>
-        </label>
+        <Selecao
+          label="Onde a pessoa está"
+          valor={((form.localizacao as string) ?? lead.localizacao ?? "") as "" | "brasil" | "exterior"}
+          onChange={(v) => mexer("localizacao", v || null)}
+          opcoes={[
+            { valor: "" as const, rotulo: "não se sabe" },
+            { valor: "brasil" as const, rotulo: "no Brasil" },
+            { valor: "exterior" as const, rotulo: "no exterior" },
+          ]}
+        />
 
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Data do relógio (opcional)
-          </span>
-          <input
-            type="date"
-            value={(form.relogioData as string) ?? lead.relogioData ?? ""}
-            onChange={(e) => mexer("relogioData", e.target.value || null)}
-            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          />
-          <span className="mt-0.5 block text-[11px] text-ib-slate">
-            Só preencha se a pessoa confirmou a data. A menos de {RELOGIO_APERTADO_DIAS} dias, o caso sobe na
-            fila normal e ganha marcador — não vira prazo processual e não entra no bloco de prazos.
-          </span>
-        </label>
+        <CampoData
+          label="Data do relógio (opcional)"
+          valor={(form.relogioData as string) ?? lead.relogioData ?? ""}
+          onChange={(v) => mexer("relogioData", v)}
+          ajuda={`Só preencha se a pessoa confirmou a data. A menos de ${RELOGIO_APERTADO_DIAS} dias, o caso sobe na fila normal e ganha marcador — não vira prazo processual e não entra no bloco de prazos.`}
+        />
 
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Intenção declarada
-          </span>
-          <select
-            value={(form.intencao as string) ?? lead.intencao ?? ""}
-            onChange={(e) => mexer("intencao", e.target.value || null)}
-            className="mt-1 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          >
-            <option value="">ainda não perguntaram</option>
-            {(Object.keys(INTENCAO_LABEL) as Intencao[]).map((i) => (
-              <option key={i} value={i}>
-                {INTENCAO_LABEL[i]}
-              </option>
-            ))}
-          </select>
-          <span className="mt-0.5 block text-[11px] text-ib-slate">
-            {lead.intencao ? INTENCAO_AJUDA[lead.intencao] : "Sai do teste de intenção, feito uma vez antes de encaminhar."}
-          </span>
-        </label>
+        <Selecao
+          label="Intenção declarada"
+          valor={((form.intencao as string) ?? lead.intencao ?? "") as "" | Intencao}
+          onChange={(v) => mexer("intencao", v || null)}
+          ajuda={
+            lead.intencao
+              ? INTENCAO_AJUDA[lead.intencao]
+              : "Sai do teste de intenção, feito uma vez antes de encaminhar."
+          }
+          opcoes={[
+            { valor: "" as const, rotulo: "ainda não perguntaram" },
+            ...(Object.keys(INTENCAO_LABEL) as Intencao[]).map((i) => ({
+              valor: i,
+              rotulo: INTENCAO_LABEL[i],
+              ajuda: INTENCAO_AJUDA[i],
+            })),
+          ]}
+        />
 
         <label className="flex items-start gap-2 text-sm text-ib-ink">
           <input
@@ -897,18 +857,18 @@ function Classificar({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => 
         . Discordar aqui é o que calibra o agente.
       </p>
 
-      <select
-        value={nova}
-        onChange={(e) => setNova(e.target.value as Classificacao)}
-        className="mt-3 w-full rounded-lg border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-      >
-        {CLASSIFICACOES.map((c) => (
-          <option key={c} value={c}>
-            {CLASSIFICACAO_LABEL[c]}
-          </option>
-        ))}
-      </select>
-      <p className="mt-1 text-[11px] leading-relaxed text-ib-slate">{CLASSIFICACAO_AJUDA[nova]}</p>
+      <Selecao
+        className="mt-3"
+        label="Classificação"
+        valor={nova}
+        onChange={setNova}
+        ajuda={CLASSIFICACAO_AJUDA[nova]}
+        opcoes={CLASSIFICACOES.map((c) => ({
+          valor: c,
+          rotulo: CLASSIFICACAO_LABEL[c],
+          ajuda: CLASSIFICACAO_AJUDA[c],
+        }))}
+      />
 
       <input
         value={motivo}
@@ -1024,13 +984,11 @@ function Retornos({ detalhe, aoSalvar }: { detalhe: Detalhe; aoSalvar: () => voi
 
       {agendando ? (
       <div className="mt-3 space-y-2">
-        <input
-          type="date"
+        <CampoData
           autoFocus
-          value={quando}
-          onChange={(e) => setQuando(e.target.value)}
-          aria-label="Data do retorno"
-          className="w-full rounded-lg border border-ib-line bg-white px-3 py-2 font-mono text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          ariaLabel="Data do retorno"
+          valor={quando}
+          onChange={(v) => setQuando(v ?? "")}
         />
         <input
           value={nota}

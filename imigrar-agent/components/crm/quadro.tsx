@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CardDoAtendimento } from "@/components/atendimentos/card";
 import { ResumoDoLead } from "@/components/atendimentos/resumo-modal";
 import { GerenciarEtapas } from "@/components/crm/etapas";
+import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
@@ -350,23 +351,25 @@ export default function QuadroCrm({
                     >
                       <CardDoAtendimento lead={lead} agora={agora} onAbrir={(l) => setAberto(l.id)} />
                       {/* O caminho sem arrasto: existe sempre, e no celular é o único. */}
-                      <label className="mt-1 flex items-center gap-1 px-1 xl:hidden">
-                        <span className="text-[10px] text-ib-slate">mover para</span>
-                        <select
-                          value={coluna.etapa.id}
-                          onChange={(e) => {
-                            const destino = doFunil.find((x) => x.id === e.target.value);
+                      {/* O caminho sem arrasto — no celular é o único que existe, e
+                          por isso ele some no desktop (`xl:hidden`), onde arrastar já
+                          resolve e um seletor por card viraria ruído em cinco colunas. */}
+                      <div className="mt-1 px-1 xl:hidden">
+                        <Selecao
+                          compacto
+                          label="mover para"
+                          valor={coluna.etapa.id}
+                          onChange={(id) => {
+                            const destino = doFunil.find((x) => x.id === id);
                             if (destino) pedirOuMover(lead, destino);
                           }}
-                          className="rounded border border-ib-line bg-white px-1 py-0.5 text-[11px] text-ib-ink"
-                        >
-                          {doFunil.map((e) => (
-                            <option key={e.id} value={e.id}>
-                              {e.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          opcoes={doFunil.map((e) => ({
+                            valor: e.id,
+                            rotulo: e.nome,
+                            ajuda: e.ajuda ?? undefined,
+                          }))}
+                        />
+                      </div>
                     </div>
                   ))}
 
@@ -395,6 +398,9 @@ export default function QuadroCrm({
           assumindo={assumindo}
           onFechar={() => setAberto(null)}
           onAssumir={assumirDoResumo}
+          funis={vivos}
+          etapas={etapas.filter((e) => !e.arquivada)}
+          onMover={(l, etapa) => pedirOuMover(l, etapa)}
         />
       ) : null}
 

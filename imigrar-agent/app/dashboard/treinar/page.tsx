@@ -49,6 +49,11 @@ type Draft = {
 
 type Feedback = { kind: "success" | "error"; text: string } | null;
 
+type MaterialOficialResposta = {
+  regras: string;
+  documentos: { arquivo: string; titulo: string; cobre: string; colecao: string }[];
+};
+
 type TabId =
   | "identidade"
   | "empresa"
@@ -56,6 +61,7 @@ type TabId =
   | "regras"
   | "raciocinio"
   | "tecnico"
+  | "material"
   | "testar";
 
 const TABS: { id: TabId; label: string; icon: IconName }[] = [
@@ -65,6 +71,7 @@ const TABS: { id: TabId; label: string; icon: IconName }[] = [
   { id: "regras", label: "Regras de atendimento", icon: "shield" },
   { id: "raciocinio", label: "Raciocínio", icon: "activity" },
   { id: "tecnico", label: "Conhecimento técnico", icon: "calc" },
+  { id: "material", label: "Material oficial", icon: "book" },
   { id: "testar", label: "Testar", icon: "pulse" },
 ];
 
@@ -228,6 +235,7 @@ export default function TreinarPage() {
   const [saved, setSaved] = useState<Draft | null>(null);
   const [behaviorRules, setBehaviorRules] = useState<BehaviorRuleMeta[]>([]);
   const [preview, setPreview] = useState("");
+  const [material, setMaterial] = useState<MaterialOficialResposta | null>(null);
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -260,6 +268,7 @@ export default function TreinarPage() {
         setSaved(structuredClone(loaded));
         setBehaviorRules(d.behaviorRules ?? []);
         setPreview(d.preview ?? "");
+        setMaterial(d.materialOficial ?? null);
         if (sRes.ok) {
           const s = (await sRes.json()) as { mode?: string };
           setAgentOnline(s.mode === "real");
@@ -462,6 +471,7 @@ export default function TreinarPage() {
       {tab === "tecnico" ? (
         <TabTecnico draft={draft} patch={patch} onRestore={() => restore("technical")} />
       ) : null}
+      {tab === "material" ? <TabMaterial material={material} /> : null}
       {tab === "testar" ? <TabTestar saved={saved} preview={preview} dirty={dirty} /> : null}
     </div>
   );
@@ -1453,14 +1463,87 @@ function TabTecnico({
 }
 
 /* ================================================================== */
-/* TAB 7 — Testar                                                     */
+/* TAB 7 — Material oficial (só leitura)                              */
 /* ================================================================== */
 
+/**
+ * O QUE A ANA NUNCA ESQUECE — e o que esta tela NÃO edita.
+ *
+ * Todo o resto do treinamento é reescrevível: persona, seções, objeções, regras de
+ * encaminhamento, vocabulário. Este bloco não é, e mostrá-lo aqui é o ponto: quem ajusta
+ * o tom da Ana numa tarde precisa saber que existem seis regras que continuam valendo
+ * depois do ajuste, e por quê.
+ *
+ * As regras entram em TODO prompt, por último — ver lib/agent/material-oficial.ts. O RAG
+ * (que insere trechos dos PDFs quando a pergunta pede) é condicional; elas não são.
+ */
+function TabMaterial({ material }: { material: MaterialOficialResposta | null }) {
+  const COLECAO_LABEL: Record<string, string> = {
+    cartilha: "Cartilha",
+    legislacao: "Legislação",
+    doutrina: "Doutrina",
+  };
+
+  return (
+    <div className="space-y-5">
+      <Card className="p-5">
+        <BlockHeading
+          eyebrow="Não editável"
+          title="As regras que não se quebram"
+          description="Entram em todo prompt, por último — inclusive depois de a persona ser reescrita. Cada uma delas já foi quebrada numa conversa real; é isso que elas custaram para existir."
+        />
+        <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-ib-line bg-ib-papel/60 p-4 font-mono text-[12px] leading-relaxed text-ib-ink">
+          {material?.regras ?? "—"}
+        </pre>
+        <p className="mt-3 text-xs leading-relaxed text-ib-slate">
+          Para mudar qualquer uma delas é preciso mexer em{" "}
+          <code className="rounded bg-ib-papel px-1 py-0.5 font-mono">lib/agent/material-oficial.ts</code>{" "}
+          e subir uma versão. É de propósito: o que protege a pessoa do outro lado não pode
+          ser apagado por engano numa tarde de ajuste de tom.
+        </p>
+      </Card>
+
+      <Card className="p-5">
+        <BlockHeading
+          eyebrow="Acervo"
+          title="Os documentos que sustentam as respostas"
+          description="Ficam em material-oficial/, são quebrados em trechos pela ingestão e recuperados a cada mensagem que pede pesquisa. A Ana sabe desta lista: é o que a impede de prometer resposta sobre tema que o acervo não cobre."
+        />
+        <ul className="mt-4 divide-y divide-ib-line">
+          {(material?.documentos ?? []).map((d) => (
+            <li key={d.arquivo} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
+              <span className="text-sm font-semibold text-ib-ink">{d.titulo}</span>
+              <span className="rounded-full bg-ib-papel px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ib-slate ring-1 ring-inset ring-ib-line">
+                {COLECAO_LABEL[d.colecao] ?? d.colecao}
+              </span>
+              <span className="w-full text-xs leading-relaxed text-ib-slate sm:w-auto sm:flex-1">
+                {d.cobre}
+              </span>
+              <span className="font-mono text-[11px] text-ib-slate">{d.arquivo}</span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* TAB 8 — Testar                                                     */
+/* ================================================================== */
+
+// OS ATALHOS DE TESTE.
+//
+// Eram cenários de portaria terceirizada, herdados da base que originou este código —
+// "quero 2 porteiros na Barra" testava um agente que não existe mais. Cada um destes cobre
+// um caminho DIFERENTE do atendimento de imigração, que é o que faz o teste valer:
+// urgência com prazo, pessoa que ainda está fora do Brasil, pedido de orientação sem caso,
+// tentativa de arrancar honorário e o pedido de falar com gente.
 const CENARIOS = [
-  "Quero 2 porteiros na Barra",
-  "Posto 24h de portaria",
-  "Achei caro",
-  "Sou da distribuidora G7",
+  "Recebi uma multa migratória, o que faço?",
+  "Estou na Venezuela e quero ir para o Brasil trabalhar",
+  "Meu CRNM vence mês que vem",
+  "Quanto vocês cobram?",
   "Preciso falar com uma pessoa",
 ];
 

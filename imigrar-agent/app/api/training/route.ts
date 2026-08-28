@@ -18,6 +18,7 @@ import {
   normalizeTechnical,
   normalizeTransferRules,
 } from "@/lib/agent/training";
+import { MATERIAIS, REGRAS_INVIOLAVEIS, blocoMaterialOficial } from "@/lib/agent/material-oficial";
 import type { FaqItem } from "@/app/api/faq/route";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,11 @@ export async function GET() {
     briefing: briefing ?? {},
     faq: faq ?? [],
     behaviorRules: BEHAVIOR_RULES.map((r) => ({ id: r.id, label: r.label })),
-    preview: buildSystemPrompt(kb, trainingToOverrides(training)),
+    // O PREVIEW MOSTRA O PROMPT DE VERDADE. Sem o bloco do material oficial ele mostrava
+    // menos do que a Ana recebe — e a tela que existe para ensinar o agente estava
+    // escondendo justamente a parte que ninguém pode editar.
+    preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
+    materialOficial: { regras: REGRAS_INVIOLAVEIS, documentos: MATERIAIS },
   });
 }
 
@@ -162,16 +167,39 @@ export async function PUT(req: NextRequest) {
     const guardrails = normalizeGuardrails(b.guardrails);
     const technical = normalizeTechnical(b.technical);
 
-    await Promise.all([
-      repo.setConfig("knowledge_base", kb),
-      repo.setConfig("reasoning", reasoning),
-      repo.setConfig("objections", objections),
-      repo.setConfig("transfer_rules", transferRules),
-      repo.setConfig("guardrails", guardrails),
-      repo.setConfig("technical_knowledge", technical),
-      ...(b.briefing ? [repo.setConfig("briefing", b.briefing)] : []),
-      ...(b.faq ? [repo.setConfig("faq", b.faq)] : []),
-    ]);
+    // CADA BLOCO TEM A SUA CHAVE, e a gravação é conferida uma a uma.
+    //
+    // Com `Promise.all` a primeira falha abortava a resposta e a mensagem dizia "nada foi
+    // alterado" — mentira: as outras escritas já tinham ido ao banco. Um treinamento
+    // metade novo e metade velho é o pior estado possível aqui, porque ninguém desconfia
+    // dele: a tela mostra o rascunho, o agente usa outra coisa.
+    const escritas: [string, Promise<unknown>][] = [
+      ["knowledge_base", repo.setConfig("knowledge_base", kb)],
+      ["reasoning", repo.setConfig("reasoning", reasoning)],
+      ["objections", repo.setConfig("objections", objections)],
+      ["transfer_rules", repo.setConfig("transfer_rules", transferRules)],
+      ["guardrails", repo.setConfig("guardrails", guardrails)],
+      ["technical_knowledge", repo.setConfig("technical_knowledge", technical)],
+      ...(b.briefing ? ([["briefing", repo.setConfig("briefing", b.briefing)]] as [string, Promise<unknown>][]) : []),
+      ...(b.faq ? ([["faq", repo.setConfig("faq", b.faq)]] as [string, Promise<unknown>][]) : []),
+    ];
+    const resultados = await Promise.allSettled(escritas.map(([, p]) => p));
+    const falhou = escritas
+      .map(([chave], i) => (resultados[i].status === "rejected" ? chave : null))
+      .filter((c): c is string => !!c);
+    if (falhou.length) {
+      console.error("[training:PUT] blocos que não gravaram:", falhou.join(", "));
+      return NextResponse.json(
+        {
+          error:
+            falhou.length === escritas.length
+              ? "Não consegui gravar nada. Nada foi alterado."
+              : `Gravei parte do treinamento. NÃO gravou: ${falhou.join(", ")}. Salve de novo para completar.`,
+          blocos: falhou,
+        },
+        { status: 500 },
+      );
+    }
 
     const training = {
       reasoning,
@@ -183,13 +211,34 @@ export async function PUT(req: NextRequest) {
     };
     return NextResponse.json({
       ok: true,
-      preview: buildSystemPrompt(kb, trainingToOverrides(training)),
+      // O mesmo prompt que o GET devolve — com o bloco do material oficial. Sem ele,
+      // salvar fazia as regras invioláveis SUMIREM do preview que o GET acabara de
+      // mostrar, e a tela passava a descrever um agente que não existe.
+      preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
     });
   } catch (err) {
     console.error("[training:PUT]", err instanceof Error ? err.message : err);
+    // O ERRO PRECISA DIZER O CAMPO.
+    //
+    // A mensagem era "Falha ao salvar o treinamento. Confira os campos obrigatórios." —
+    // numa tela com sete abas, dezenas de textos e listas inteiras de objeções, isso
+    // manda a pessoa procurar agulha em palheiro. Resultado prático: ninguém nunca
+    // salvou nada (o banco de produção tinha uma única chave em `agent_config`), e o
+    // agente rodou meses inteiro no padrão de código enquanto a tela dizia que dava para
+    // treiná-lo.
+    if (err instanceof z.ZodError) {
+      const issue = err.issues[0];
+      const onde = issue?.path?.length ? issue.path.join(" › ") : "algum campo";
+      return NextResponse.json(
+        { error: `Não salvei: ${onde} — ${issue?.message ?? "valor inválido"}.`, campo: issue?.path },
+        { status: 400 },
+      );
+    }
+    // Não-Zod aqui é erro nosso, não do que a pessoa digitou: 500, e sem prometer que
+    // nada mudou — a falha pode ter vindo depois de alguma escrita.
     return NextResponse.json(
-      { error: "Falha ao salvar o treinamento. Confira os campos obrigatórios." },
-      { status: 400 },
+      { error: "Falha ao salvar o treinamento. Confira a tela e salve de novo." },
+      { status: 500 },
     );
   }
 }

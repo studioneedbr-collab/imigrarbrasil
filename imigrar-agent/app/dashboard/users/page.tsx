@@ -22,8 +22,11 @@ import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 
 type Setor = "comercial" | "operacional" | "rh" | "departamento_pessoal";
 
+// "comercial" é a chave herdada da base que originou este código e é a que está gravada
+// no banco. Aqui esse destino é o jurídico de imigração — ver o mesmo comentário em
+// app/dashboard/conversations/[id]/page.tsx.
 const SETOR_LABEL: Record<Setor, string> = {
-  comercial: "Comercial",
+  comercial: "Jurídico",
   operacional: "Operacional",
   rh: "RH",
   departamento_pessoal: "Departamento Pessoal",
@@ -336,7 +339,7 @@ export default function UsersPage() {
                   onChange={(e) => setSetor(e.target.value as Setor)}
                   className={inputCls}
                 >
-                  <option value="comercial">Comercial</option>
+                  <option value="comercial">Jurídico</option>
                   <option value="operacional">Operacional</option>
                   <option value="rh">RH</option>
                   <option value="departamento_pessoal">Departamento Pessoal</option>

@@ -54,19 +54,75 @@ const PRAZO_LABEL: Record<string, string> = {
  */
 export function buildDadosConhecidosBlock(lead: Lead | null): string {
   if (!lead) return "";
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // A FICHA INTEIRA, e não os seis campos herdados.
+  //
+  // O bloco listava nome, nacionalidade (em `clientType`), região, serviços, urgência,
+  // situação, empresa e e-mail — os campos da estrutura comercial que originou este
+  // código. Só que a ficha deste produto cresceu: `nacionalidade`, `localizacao`,
+  // `objetivo`, `modalidadeProvavel`, `intencao`, o sinal de prazo e a data confirmada
+  // por um humano são campos PRÓPRIOS, e nenhum deles chegava aqui.
+  //
+  // O efeito era exatamente o que a tela promete que não acontece: a pessoa dizia que
+  // recebeu multa, o atendente ligava, confirmava a data limite e gravava na ficha — e
+  // na mensagem seguinte a Ana perguntava de novo se havia algum prazo. Quem está com
+  // medo e repete a mesma resposta pela terceira vez desiste do atendimento.
+  //
+  // O QUE NÃO ENTRA: número de documento. `situacaoDocumental` e `contractDuration` já
+  // vêm limpos por `semNumeroDeDocumento` (lib/agent/lead-capture.ts), e nada aqui
+  // reintroduz CPF, passaporte ou protocolo no prompt.
+  // ─────────────────────────────────────────────────────────────────────────
+  const onde =
+    lead.localizacao === "brasil"
+      ? `no Brasil${lead.region ? ` — ${lead.region}` : ""}`
+      : lead.localizacao === "exterior"
+        ? `no exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}`
+        : lead.region ?? null;
+
+  const prazo = lead.prazoDataLimite
+    ? `Prazo processual: data limite ${lead.prazoDataLimite} JÁ CONFIRMADA pelo time — não pergunte de novo e não recalcule`
+    : lead.temPrazoCorrendo
+      ? `Prazo processual: ${lead.prazoTipo ? PRAZO_TIPO_CONHECIDO[lead.prazoTipo] ?? "sinalizado" : "sinalizado"} — o time vai confirmar a data com ela; não calcule prazo`
+      : null;
+
   const known = [
     lead.contactName && `Nome: ${lead.contactName}`,
-    lead.clientType && `Nacionalidade: ${lead.clientType}`,
-    lead.region && `Onde está agora: ${lead.region}`,
+    (lead.nacionalidade ?? lead.clientType) &&
+      `Nacionalidade: ${lead.nacionalidade ?? lead.clientType}`,
+    onde && `Onde está agora: ${onde}`,
+    lead.objetivo && `O que ela quer conseguir: ${lead.objetivo}`,
     lead.servicesInterested?.length && `O que procura: ${lead.servicesInterested.join(", ")}`,
-    lead.urgency && `Prazo: ${PRAZO_LABEL[lead.urgency] ?? lead.urgency}`,
-    lead.contractDuration && `Situação atual: ${lead.contractDuration}`,
-    lead.companyName && `Empresa/instituição: ${lead.companyName}`,
+    lead.modalidadeProvavel && `Caminho provável (hipótese interna, não diga a ela): ${lead.modalidadeProvavel}`,
+    lead.urgency && `Urgência: ${PRAZO_LABEL[lead.urgency] ?? lead.urgency}`,
+    prazo,
+    lead.relogioDoCaso && `O que pressiona o caso: ${lead.relogioDoCaso}`,
+    lead.intencao && `Intenção declarada: ${INTENCAO_CONHECIDA[lead.intencao] ?? lead.intencao} — já perguntada, NÃO pergunte de novo`,
+    lead.situacaoDocumental && `Situação documental: ${lead.situacaoDocumental}`,
+    lead.contractDuration && `Como entrou / o que tem hoje: ${lead.contractDuration}`,
+    lead.entradaControleMigratorio && "Entrou pelo controle migratório (ela contou)",
+    lead.documentosPossui && `Documentos que tem: ${lead.documentosPossui}`,
+    lead.documentosFaltantes && `Documentos que faltam: ${lead.documentosFaltantes}`,
+    lead.vinculoFamiliarBrasil && `Vínculo familiar no Brasil: ${lead.vinculoFamiliarBrasil}`,
     lead.email && `E-mail: ${lead.email}`,
   ].filter(Boolean);
   if (!known.length) return "";
   return `\n\n════════ DADOS JÁ CONHECIDOS DESTE CONTATO (confirme, NÃO pergunte de novo) ════════\n${known.join(" · ")}`;
 }
+
+/** Rótulos legíveis para o prompt — o código interno não diz nada ao modelo. */
+const PRAZO_TIPO_CONHECIDO: Record<string, string> = {
+  multa: "multa migratória",
+  indeferimento: "indeferimento",
+  notificacao_saida: "notificação de saída",
+  outro: "sinalizado",
+};
+
+const INTENCAO_CONHECIDA: Record<string, string> = {
+  contratar: "quer que o escritório conduza",
+  sozinho: "prefere tocar o processo sozinha",
+  sem_condicoes: "declarou não ter condições de pagar",
+};
 
 // Bloco "AGORA": data e hora de Brasília + a saudação correta para este momento.
 // O DeepSeek não sabe que horas são; sem isto ele espelha a saudação que a pessoa

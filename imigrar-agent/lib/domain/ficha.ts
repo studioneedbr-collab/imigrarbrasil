@@ -51,7 +51,12 @@ export function qualificacaoFaltando(lead: Lead | null): DossieFaltando {
     !lead?.contactName && "o nome dela",
     !lead?.clientType && "a nacionalidade",
     !lead?.region && "onde a pessoa está agora (no Brasil ou no exterior)",
-    !lead?.servicesInterested?.length && "o que ela quer conseguir",
+    // "O que ela quer conseguir" tem DOIS lugares: `servicesInterested` (os caminhos que
+    // a triagem reconhece: refúgio, reunião familiar, naturalização) e `objetivo` (a frase
+    // do caso, que o agente deduz ou um humano escreve). Checar só o primeiro fazia a ficha
+    // continuar listando esta pendência com o objetivo preenchido na tela ao lado — e
+    // pendência falsa aqui não é cosmética: é ela que segura o encaminhamento ao time.
+    !lead?.servicesInterested?.length && !lead?.objetivo?.trim() && "o que ela quer conseguir",
     !temRelogio && "o que pressiona o caso e quando (nem que seja 'sem urgência')",
     !lead?.intencao &&
       "se ela prefere tocar o processo sozinha ou que o escritório cuide (pergunte UMA vez)",
