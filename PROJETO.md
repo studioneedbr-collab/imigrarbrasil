@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **28/08/2026** (a etapa comercial no CRM e o follow-up por motivo de espera — seções 9 e 10; a Z-API no ar e o primeiro WhatsApp real atendido — seção 13).
+Última atualização: **28/08/2026** (a etapa comercial no CRM e o follow-up por motivo de espera — seções 9 e 10; o modo sombra sem efeito no mundo e o webhook fechado — seções 7 e 8; a Z-API no ar e o primeiro WhatsApp real atendido — seção 13).
 
 ---
 
@@ -283,6 +283,19 @@ ficha, e na mensagem seguinte a Ana perguntava de novo se havia algum prazo. Que
 medo e repete a mesma resposta pela terceira vez desiste do atendimento. Número de documento
 continua fora: os campos já são gravados sem ele.
 
+**O tamanho da mensagem** (`knowledge.ts` + `training.ts`): **2 a 3 frases por mensagem**, e
+a instrução diz *corte, não resuma* — o que sobrar se diz na próxima mensagem, se ainda
+fizer falta (quase nunca faz). Junto veio a proibição de abrir repetindo o que a pessoa
+acabou de dizer: "entendi, você entrou por Corumbá com o passaporte carimbado e guardou ele"
+é a mensagem dela de volta, ocupando o lugar da resposta.
+
+> **Duas definições da mesma regra não viram média — vence a mais permissiva.** O bloco de
+> conhecimento dizia "2 a 4 parágrafos no máximo" e o de identidade dizia "2 a 3 frases", as
+> duas com o mesmo rótulo ("mensagens curtas") **no mesmo prompt**. O resultado eram
+> respostas de cinco e seis linhas para quem lê no celular, com medo, muitas vezes em
+> segunda língua. Se um dia mudar o número num arquivo, mude no outro.
+> Testes: `tests/tamanho-da-mensagem.test.ts`.
+
 **Idioma**: detectado e gravado no contato. Importa em dois lugares que o prompt não alcança
 — o follow-up automático (que sairia sempre em português) e o atendente humano, que precisa
 saber em que língua responder **antes** de abrir a conversa. Por isso o código do idioma é a
@@ -320,7 +333,24 @@ Bolívia".
 
 **Antiban do WhatsApp**: a Ana é reativa (nunca dispara para lista), tem opt-out
 determinístico, janela de envio 8h–20h em dia útil para mensagens iniciadas pelo sistema,
-sem rajada nos crons, e ritmo humano no envio.
+sem rajada nos crons, e ritmo humano no envio. **Grupo, lista de transmissão, status e canal
+não viram atendimento** — o corte é no webhook, antes de qualquer escrita (§9). A régua de
+follow-up e o resto das travas estão na §10.
+
+> ⚠️ **O webhook ficava ABERTO quando não havia segredo nenhum configurado** (corrigido em
+> 28/08). Com `WEBHOOK_VERIFY_TOKEN` ausente **e** nenhum Client-Token, as duas guardas eram
+> puladas e a requisição seguia. Não é hipótese: foi o estado do projeto até a Z-API entrar,
+> e nele qualquer um que soubesse a URL injetava conversa e lead na fila — inclusive com
+> prazo correndo, que é o topo do bloco 1 — e queimava o saldo do modelo. Com a Z-API ligada
+> seria pior: a resposta sai para o `phone` que veio no corpo, ou seja, **envio para número
+> arbitrário pelo WhatsApp da empresa**, que é o caminho mais curto para o bloqueio que o
+> antiban existe para evitar.
+>
+> Agora sem segredo a rota recusa com **503 e não 401**, de propósito: isto não é requisição
+> forjada, é instalação pela metade, e quem lê o log precisa saber qual dos dois é. E header
+> ausente com Client-Token configurado deixou de passar batido — antes `incomingToken &&`
+> curto-circuitava a comparação, então **quem mandava prova errada era barrado e quem não
+> mandava prova nenhuma entrava**. Testes: `tests/webhook-auth.test.ts`.
 
 ---
 
@@ -418,6 +448,27 @@ Duas decisões que sustentam isso:
 - o texto da Ana e o texto que a pessoa mandou ficam em **colunas separadas**. É o par que
   ensina — só o texto final não ensina nada, e o descarte com motivo ensina mais ainda. É
   daqui que sai a matéria-prima da fila de revisão (§12).
+
+> ⚠️ **O modo sombra prometia que nada era enviado — e não cumpria** (corrigido em 28/08).
+> `respondToConversation` protegia três coisas (não gravava a resposta, não mudava o status,
+> não mexia no relógio) e **as tools rodavam normalmente**, porque o flag `sombra` nunca
+> chegava até `executeTool`. Duas delas falam para fora: `transferir_para_humano` manda
+> WhatsApp para o advogado (`TEAM_WHATSAPP`) e `agendar_followup` marca uma mensagem que o
+> cron entrega **à pessoa** horas depois. Ou seja: um ensaio acordava o time e mandava
+> mensagem para o cliente — e o follow-up é o mais traiçoeiro dos dois, porque chega quando
+> ninguém mais liga aquela mensagem ao ensaio de ontem.
+>
+> Pior: **há um caminho que cai em sombra sem ninguém escolher** — instância não reconhecida
+> (ver `decidirAtendimento`) —, então um webhook apontado para o lugar errado passava a
+> falar com gente por um canal que o painel nem sabia qual era.
+>
+> O flag agora desce por `runner` → `deepseek`/`fallback` → `executeTool`, inclusive no
+> terceiro caminho até a tool (o anti-loop, que não passa pelo runner e é o mais fácil de
+> esquecer). **O que continua rodando em sombra, de propósito:** a leitura do material
+> oficial, a gravação da ficha e a AVALIAÇÃO do portão de encaminhamento. Nenhuma sai do
+> sistema, e todas mudam o que a Ana escreveria — se o portão recusasse só em produção, o
+> rascunho deixaria de ser ensaio fiel e viraria ficção. A tool devolve `ok: true` pelo
+> mesmo motivo. Testes: `tests/sombra-sem-efeito.test.ts`.
 
 ### Auditoria
 
@@ -752,6 +803,17 @@ Os PDFs têm o nome do `id` que já têm em `ingestao/fontes.json`. Os scripts d
 
 **Identidade visual:** teal `#009687` é identidade, azul `#005EC4` é ação. Amostrados do
 logotipo, pixel a pixel. Densidade acima de espaço em branco — é ferramenta de uso diário.
+
+**`tsconfig.json` não tem `baseUrl`, e isso é de propósito.** Entrada relativa em `paths`
+resolve contra a pasta do próprio arquivo desde o TS 4.4, então `baseUrl: "."` não fazia
+diferença nenhuma — `"@/*": ["./*"]` aponta para o mesmo lugar com ou sem ele. O que ele
+fazia era só uma coisa: ser marcado como erro no editor, porque está em rota de remoção no
+TypeScript 7. O `tsc` da linha de comando ainda aceita, então o build passava e só o editor
+reclamava. **Cuidado ao ler o comentário no topo de `middleware.ts`:** ele credita ao
+`baseUrl` a correção da falha de deploy no Edge ("referencing unsupported modules"). Não é
+ele — o que resolve aquilo é o import **relativo** em todo o grafo do middleware, e quem
+garante isso é `tests/middleware-edge.test.ts`, que percorre o grafo e falha se um `@/`
+reaparecer.
 
 **Não se usa controle nativo do navegador** (`components/dashboard/campos.tsx`). `<select>` e
 `<input type="date">` mudam de cara em cada máquina, e num painel onde a data é prazo
@@ -1102,6 +1164,17 @@ passando**.
       rascunhos para aprovação, proteções do número e opt-out permanente com rastro
 - [x] **Métricas de follow-up** (§5) — com a taxa de resposta por idioma, que é o alarme
       da promessa central do projeto
+- [x] **O modo sombra parou de ter efeito no mundo** (§8) — o flag não chegava até
+      `executeTool`, então o ensaio acordava o advogado no WhatsApp e agendava follow-up
+      para o cliente. Havia um caminho que cai em sombra sem ninguém escolher (instância
+      não reconhecida), o que tornava isso rotina e não acidente
+- [x] **O webhook deixou de aceitar requisição sem prova nenhuma** (§7) — sem segredo
+      configurado ele recusa com 503; e header ausente com Client-Token configurado deixou
+      de passar batido
+- [x] **As respostas da Ana encolheram** (§7) — 2 a 3 frases, com a duplicidade de
+      definição entre `knowledge.ts` e `training.ts` desfeita: vencia a mais permissiva
+- [x] **`baseUrl` fora do `tsconfig.json`** (§12) — não fazia nada além de ser erro no
+      editor, e o comentário do `middleware.ts` creditava a ele uma correção que não é dele
 
 **Segurando de propósito até as primeiras cem conversas**
 
@@ -1141,7 +1214,12 @@ de descobrir, em três semanas, que metade não era necessária.
 - **silêncio total só em teste** — em produção, do outro lado tem alguém que escreveu
   pedindo ajuda;
 - **conversa de teste não conta** em métrica nenhuma nem na fila de trabalho;
-- resposta de sombra **não entra no histórico** enquanto não for enviada de verdade;
+- resposta de sombra **não entra no histórico** enquanto não for enviada de verdade, e em
+  sombra **nenhuma tool sai do sistema** — nem WhatsApp para o advogado, nem follow-up
+  agendado para a pessoa;
+- **webhook sem segredo configurado recusa** (503), e header ausente não passa;
+- **2 a 3 frases por mensagem** — e a regra está escrita em dois arquivos, que têm de mudar
+  juntos;
 - **etapa é nome, status é domínio** — etapa de CRM nunca vira um estado paralelo, e apagar
   etapa ou funil não apaga caso nenhum;
 - **grupo, transmissão, status e canal não viram atendimento** — o corte é no webhook, antes
