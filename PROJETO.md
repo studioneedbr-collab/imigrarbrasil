@@ -1220,10 +1220,9 @@ de descobrir, em três semanas, que metade não era necessária.
 - [ ] **Lacunas de conhecimento** (o que perguntaram e a base não cobre)
 - [ ] **Versionamento de prompt** + bateria de casos de teste no simulador
 - [ ] **Filtros salvos, mapa de origem, métricas por versão de prompt**
-- [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco. Senha não é
-      recuperável (scrypt, mão única): o que falta é poder DEFINIR uma nova, a própria e —
-      para um admin — a de outra conta. É o que responde "me manda o login de fulano", que
-      hoje não tem resposta possível
+- [ ] **Trocar senha pelo painel** — a redefinição já existe pela linha de comando
+      (`npm run senha -- <e-mail>`, ver §15); o que falta é dentro do painel: cada pessoa
+      trocando a sua, e um admin definindo a de outra conta
 - [ ] **Dashboard e CRM por pessoa** — escopo a fechar
 - [x] **Treinar o agente** — as abas deixaram de ser da base comercial; falta a
       **primeira gravação de verdade** (§13: `agent_config` ainda só tem `chave_geral`).
@@ -1281,10 +1280,20 @@ de descobrir, em três semanas, que metade não era necessária.
 ```bash
 npm run setup     # instala em imigrar-agent/
 npm run dev       # http://localhost:3000
-npm test          # 804 testes
+npm test          # 807 testes
 npm run typecheck
 npm run migrar    # aplica no banco só as migrations que faltam (precisa de DATABASE_URL)
+npm run senha -- <e-mail>   # redefine a senha de uma conta (mostra a nova UMA vez)
 ```
+
+**Senha não se recupera, só se substitui.** O banco guarda um hash scrypt, que é de mão
+única: nem um administrador, nem quem abre o Supabase, nem quem escreveu o sistema lê a
+senha de volta. Quando alguém perde a dela, o caminho é `npm run senha -- <e-mail>`, que
+grava uma nova e a mostra **uma vez** no terminal. O script existe em vez de "roda um UPDATE
+no SQL Editor" porque o UPDATE à mão erra de um jeito que não avisa: o formato é
+`scrypt$N$r$p$salt$hash` com N=2^17, e qualquer coisa fora disso o banco aceita e o login
+recusa — a pessoa fica trancada achando que digitou errado. `tests/auth.test.ts` compara os
+parâmetros do script com os de `lib/auth/password.ts` e falha se divergirem.
 
 Primeiro acesso: `/setup` cria o primeiro admin e se tranca depois. Sem
 `SUPABASE_SERVICE_ROLE_KEY` no `.env.local`, o app roda em memória e some no reinício.

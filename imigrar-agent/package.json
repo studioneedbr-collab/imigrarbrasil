@@ -10,7 +10,8 @@
     "migrar": "node scripts/migrar.mjs",
     "test": "vitest run",
     "test:rag": "vitest run --config vitest.rag.config.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "senha": "node scripts/redefinir-senha.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
