@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **28/08/2026, madrugada** (a Z-API no ar e o primeiro WhatsApp real atendido — ver seção 12).
+Última atualização: **28/08/2026** (a etapa comercial no CRM e o follow-up por motivo de espera — seções 9 e 10; a Z-API no ar e o primeiro WhatsApp real atendido — seção 13).
 
 ---
 
@@ -22,7 +22,7 @@ Junto vem um **painel interno**, onde o time trabalha os casos que a Ana levanto
 
 **O número:** `11 91985-4664`. É a linha que a Ana atende — tudo será concentrado nela.
 Ainda **não é o que está no ar**: em 28/08 a instância Z-API estava pareada num número
-pessoal. Ver a pendência viva na seção 12.
+pessoal. Ver a pendência viva na seção 13.
 Quando precisa, o Walter puxa o contato para o número pessoal dele de advogado.
 
 > ⚠️ **Pendência conhecida.** O aviso de "prazo a confirmar" **não pode ir para o 4664**,
@@ -157,9 +157,9 @@ Não é lixeira. Alguém revisa por amostragem se a Ana está descartando gente 
 
 ## 5. Métricas: tempo do time, não receita
 
-Não existe gráfico de faturamento, ticket médio ou previsão. Seis abas — visão geral, quem
-procura, desfecho, prazos, agente e custo —, filtro de período (7/30/90 dias e *tudo*) e
-filtro por **nacionalidade**, que o custo também respeita. O que se mede:
+Não existe gráfico de faturamento, ticket médio ou previsão. Sete abas — visão geral, quem
+procura, desfecho, prazos, agente, custo e **follow-up** —, filtro de período (7/30/90 dias
+e *tudo*) e filtro por **nacionalidade**, que o custo também respeita. O que se mede:
 
 - conversas atendidas no período, **por idioma**;
 - quantas foram **filtradas** — *o número que justifica o projeto*;
@@ -172,7 +172,12 @@ filtro por **nacionalidade**, que o custo também respeita. O que se mede:
 - desfecho: fechados, perdidos, em aberto, taxa de fechamento e **por que os casos foram
   perdidos** (a soma dos motivos que o CRM exige na hora de mover o card);
 - prazos: sinalizados, confirmados e a **taxa de confirmação** — sinalizado sem confirmar é
-  caso sem contador, e ninguém sabe quantos dias sobram.
+  caso sem contador, e ninguém sabe quantos dias sobram;
+- follow-up: enviados por motivo e por idioma, taxa de resposta, casos **recuperados**
+  (voltaram a responder), casos perdidos por **esgotamento da sequência** e tempo médio de
+  espera por motivo. Rascunho não enviado e tarefa não tratada **não contam como mensagem**
+  — contam como fila; incluí-los derrubaria a taxa por causa de trabalho que nunca chegou a
+  ninguém.
 
 > **O filtro de período parecia quebrado e não estava.** 7, 30 e 90 dias mostravam a mesma
 > coisa porque a operação é nova: todo caso do banco cabe dentro de sete dias. Só que filtro
@@ -181,13 +186,20 @@ filtro por **nacionalidade**, que o custo também respeita. O que se mede:
 > casos existem ao todo, quantos entraram no período, de que data a que data — e diz, com
 > todas as letras, quando o painel inteiro cabe no período escolhido.
 
+> **A taxa de resposta por idioma é o alarme da promessa central.** O projeto inteiro se
+> apoia em atender em qualquer língua, e se essa promessa se quebrar ela se quebra em
+> silêncio: os modelos em português continuam funcionando, quem fala crioulo simplesmente
+> para de responder, e nada na tela indica nada. Um idioma abaixo da metade da média fica
+> vermelho, porque quase sempre é tradução ruim ou tom errado — e isso se corrige numa
+> tarde, se alguém souber.
+
 > **Por que a taxa de resgate é a métrica mais importante.** Um agente que filtra demais
 > parece ótimo nos números: pouca conversa chegando ao time, todo mundo elogiando a
 > economia. E está destruindo o negócio em silêncio, porque quem precisava de ajuda foi
 > descartado sem ninguém ver. A taxa de resgate é o único jeito de perceber isso cedo.
 > **Se ela sobe, a Ana está descartando demais.**
 
-Código: `lib/metricas/`.
+Código: `lib/metricas/` · `lib/followup/metricas.ts`.
 
 ---
 
@@ -513,6 +525,176 @@ Endereço: `/dashboard/crm` (o antigo `/dashboard/atendimentos` redireciona).
 
 ---
 
+## 10. O follow-up — o sistema que sabe o que está esperando
+
+### A premissa: aqui não é cadência de vendas
+
+**Em imigração o tempo morto é do cliente, não do vendedor.** A pessoa some três semanas
+porque está esperando certidão do consulado, apostilamento, tradução juramentada ou
+agendamento na Polícia Federal. Nada disso depende dela e nada disso anda mais rápido
+porque alguém perguntou.
+
+É por isso que "passando para saber se ainda tem interesse" não é só inútil aqui: mandada a
+quem está há duas semanas na fila do consulado, ela é a prova de que o escritório não sabe
+em que pé está o caso. O follow-up tem de ser sobre **o que estamos esperando** — e para
+isso o motivo precisa estar gravado.
+
+### O motivo da espera
+
+Quem pausa o caso escolhe o motivo, e o sistema já propõe a data do próximo toque:
+
+| motivo | cadência sugerida |
+|---|---|
+| aguardando documento com o cliente | 3 dias |
+| aguardando consulado | 30 dias |
+| aguardando Polícia Federal | 30 dias |
+| aguardando tradução ou apostilamento | 15 dias |
+| aguardando decisão sobre a proposta | 2 dias |
+| aguardando pagamento | 3 dias |
+| cliente pediu para retomar depois | **a data que ele indicou** |
+
+A cadência é **sugestão editável**, não regra — 30 dias é a média de um consulado, não a
+promessa dele. A última linha não tem sugestão nenhuma de propósito: inventar uma cadência
+por cima de "me procura em março" é desrespeitar exatamente o que a pessoa pediu, e ali a
+tela exige a data.
+
+**Caso parado sem motivo registrado não vira mensagem — vira pendência** em "Meus
+atendimentos" e na faixa de risco da Operação. É a diferença que muda o que se faz em
+seguida: com motivo, o silêncio é o processo funcionando e o sistema escreve sozinho; sem
+motivo, ninguém escreve nada e o caso apodrece parecendo normal.
+
+### A sequência tem fim
+
+Follow-up sem limite gera lead zumbi e incomoda quem já decidiu não responder — e quem se
+incomoda bloqueia e denuncia, que é o que derruba o número. **No máximo três toques por
+motivo de espera.** Depois do terceiro sem resposta o caso vai para PERDIDO com motivo
+"sumiu", e sai uma última mensagem dizendo que o escritório fica à disposição quando ela
+quiser retomar.
+
+O contador **zera quando a pessoa responde** e quando o motivo muda. As duas coisas
+importam: quem escreve a cada duas semanas dizendo "ainda estou esperando o consulado"
+seria encerrado como se tivesse sumido — justamente a pessoa que está fazendo tudo certo —,
+e quem esperou o consulado, respondeu, e agora espera pagamento começa do zero, porque são
+duas esperas diferentes.
+
+A despedida vive em código, e não na tabela de modelos: é a mensagem que sai quando **não
+há** modelo aprovado para mandar, e depender de cadastro para ela seria deixar o caso mais
+delicado do fluxo sem texto nenhum. Sem idioma conhecido, o caso fecha **em silêncio** —
+uma despedida na língua errada é a confirmação, na última mensagem, de que o escritório
+nunca soube com quem estava falando.
+
+### Follow-up no idioma da pessoa — o ponto que não pode falhar
+
+O projeto inteiro existe porque o público é multilíngue. Mandar follow-up em português para
+um haitiano destrói o produto, e destrói mais do que uma mensagem perdida: comunica que
+ninguém do outro lado percebeu com quem está falando, para uma pessoa que já desconfia de
+instituição.
+
+**Não existe idioma de reserva.** Sem modelo na língua da pessoa, o disparo não acontece:
+vira tarefa para alguém escrever à mão. Um *fallback* para português faria o defeito voltar
+sem ninguém perceber, porque tudo continuaria "funcionando".
+
+Os modelos são cadastrados por motivo e por idioma em `/dashboard/followup`, e a tela não é
+uma lista de textos: é um **mapa de buracos**. Chip preenchido = envio automático · chip
+claro = rascunho para aprovação · chip tracejado = sem modelo. Escrever é de advogado e
+administrador — um modelo não é preferência pessoal, é a frase que sai do único número do
+escritório para dezenas de pessoas, e escrever "seu processo já foi aprovado" num modelo é
+diferente de escrever isso numa conversa: o erro não acontece uma vez, acontece toda vez.
+
+### Quem envia
+
+**Rascunho para aprovação é o padrão**, e não uma etapa de transição. A mensagem aparece na
+fila do responsável com enviar, editar ou pular; follow-up aqui fala com gente em situação
+delicada, e o custo de uma frase errada não é uma venda perdida, é uma pessoa que para de
+pedir ajuda. **Pular não é falha, é dado**: um modelo pulado toda vez está errado, e sem
+registrar o pulo ninguém descobre. **Editar grava o texto que saiu**, não o do modelo — o
+par (o que o sistema escreveu, o que a pessoa mandou) é o que mostra onde o modelo erra.
+
+**Envio automático** é escolha por modelo e nasce desligado. Ligá-lo é dizer que aquela
+frase específica pode sair sem ninguém ler.
+
+**Caso com prazo processual correndo não entra em follow-up automático em hipótese
+nenhuma** — a regra vem antes de qualquer conta de janela ou de teto. Quem tem defesa a
+protocolar precisa de alguém do escritório no telefone; uma mensagem programada gasta o
+único contato que a pessoa vai ler naquele dia. Esses casos geram **tarefa de ligar**.
+
+### A proteção do número
+
+O escritório opera com **um número só**. Se ele for bloqueado a captação inteira para, e
+isso é mais grave que qualquer lead perdido. Todas as travas passam por uma função pura
+(`lib/followup/regras.ts`), numa ordem que não é arbitrária:
+
+1. **o que nunca pode** — opt-out, DPU, ensaio, quem nunca respondeu, caso sem motivo de
+   espera. São proibições: matam o disparo, não entram em fila;
+2. **o que não é mensagem** — prazo processual: vira tarefa de ligar;
+3. **o que acabou** — a sequência esgotada vira desfecho;
+4. **o que ainda não** — data futura, fora da janela, fim de semana, intervalo mínimo, teto
+   diário. Estes **adiam, nunca cancelam**: o toque continua devendo;
+5. **o que falta** — sem modelo no idioma, vira tarefa manual.
+
+A ordem importa porque as respostas são diferentes: "bloqueado" some da fila para sempre,
+"adiado" volta amanhã, "tarefa" aparece para um humano fazer.
+
+- **Janela de horário**, nunca fim de semana, **intervalo mínimo de 20 h** entre dois toques
+  ao mesmo contato, **teto diário por instância** (por instância e não global: é a instância
+  que é banida, não a conta), **variação do texto** e **nunca para quem nunca respondeu** —
+  disparar para quem nunca respondeu é a assinatura mais clara de disparo em massa que
+  existe, e é o padrão que os classificadores do WhatsApp procuram.
+- **A variação é determinística**, não aleatória: o cron pode passar duas vezes pelo mesmo
+  pendente, e a mensagem já mostrada ao responsável para aprovação não pode mudar debaixo
+  dele.
+
+> **"No fuso da pessoa" é mais do que o sistema honestamente sabe.** O cadastro tem país,
+> não fuso, e um DDI não identifica fuso (os Estados Unidos têm seis). Então são duas
+> janelas: **8h–20h de Brasília para quem está no Brasil**, que é o fuso dela de verdade, e
+> **12h–18h para quem está no exterior** — a faixa que continua sendo horário decente em
+> quase toda a extensão onde este público está. Mais estreita porque a incerteza é maior, e
+> o erro que ela evita (mensagem às 4h da manhã de alguém) custa uma denúncia.
+
+### Opt-out permanente
+
+Quem pede para não receber mais mensagem, em qualquer idioma e de qualquer forma, **nunca
+mais** recebe follow-up automático — de nenhum motivo. Vale também para quem foi encaminhado
+à DPU: a pessoa já recebeu o encaminhamento certo, e ir atrás dela é ocupá-la com um serviço
+que não vai contratar.
+
+O opt-out fica registrado com data **e a mensagem que o originou** (recortada em 500
+caracteres: é prova do pedido, não cópia do histórico). Sem ela, seis meses depois ninguém
+consegue dizer se o contato foi silenciado porque pediu ou porque uma regex casou com uma
+frase parecida — e é essa diferença que separa cumprir a LGPD de alegar que cumpriu.
+
+### Onde ele aparece
+
+- **"Follow-ups de hoje"**, no topo de "Meus atendimentos", antes até da faixa de números.
+  É o único trabalho da tela que leva um minuto e some quando é feito; enterrado embaixo das
+  listas, ele acumula — e uma fila de rascunhos acumulada faz o follow-up parar de existir
+  sem ninguém ter desligado nada. As **tarefas dividem o bloco** com os rascunhos de
+  propósito: "ligar, há prazo correndo" e "escrever à mão, não há modelo em crioulo" são o
+  mesmo trabalho de acompanhamento por outro meio, e separá-los em duas telas é como um dos
+  dois deixa de ser feito.
+- **No card do quadro**, um marcador discreto com o próximo toque e o motivo. Não é
+  urgência: é a informação de que o caso *não* está esquecido, que é o oposto do que um card
+  parado comunica.
+- **No popup do card**, a espera, o próximo toque e "agendar follow-up" sem sair do quadro.
+- **Na faixa de risco da Operação**, os follow-ups escritos e não tratados.
+- **Na linha do tempo do caso**, cada toque com data, canal, motivo, **idioma**, quem
+  aprovou e o texto enviado. O texto vem gravado no próprio toque, e não montado a partir do
+  modelo: um modelo editado no mês que vem reescreveria retroativamente o que a pessoa
+  recebeu, e a linha do tempo mentiria exatamente onde alguém foi procurar a verdade.
+
+### A varredura
+
+Roda pendurada no cron que já existia (`/api/cron/followups`) porque **o plano Hobby da
+Vercel aceita poucos cron jobs**, e um deploy recusado por causa de uma linha a mais no
+`vercel.json` seria um follow-up que nunca sai. O laço vive em `lib/followup/varredura.ts` e
+tem rota própria (`/api/cron/espera`) para disparar à mão.
+
+Código: `lib/followup/` (`motivos` · `regras` · `modelos` · `varredura` · `resposta` ·
+`metricas`) · `components/followup/` · `app/api/followup/` · migration `029`.
+Endereço: `/dashboard/followup`.
+
+---
+
 ## 11. O mapa do atendimento
 
 `/dashboard/mapa`. A tela que responde a pergunta da terceira semana de uso — **"se a
@@ -555,6 +737,8 @@ imigrar-agent/      a aplicação (painel, webhook, agente)
   lib/agent/material-oficial.ts   as regras que entram em TODO prompt (não editáveis)
   lib/agent/mapa.ts               o mapa do atendimento, como dado
   lib/crm/funil.ts                funis, etapas e a montagem do quadro
+  lib/followup/regras.ts          quando o sistema pode falar primeiro (pura, testada)
+  lib/whatsapp/remetente.ts       grupo/transmissão/status não viram atendimento
   components/dashboard/campos.tsx seleção e data do sistema (sem controle nativo)
   components/atendimentos/qualidade.tsx  completude + prioridade do lead
 ingestao/           pipeline Python que vira base vetorial (não precisa de pip)
@@ -586,7 +770,7 @@ silêncio. Confirmação destrutiva usa `ConfirmDialog`, nunca `window.confirm`.
 > **O painel está NO AR e funcionando**: https://agente.imigrarbrasil.com.br
 > Login: `studioneedbr@gmail.com`. A senha foi redefinida direto no banco em 27/08 —
 > **peça a senha atual a quem redefiniu e troque**. Não existe tela de trocar senha
-> (ver seção 13): hoje o único caminho é `update users set password_hash` com o mesmo
+> (ver seção 14): hoje o único caminho é `update users set password_hash` com o mesmo
 > formato scrypt de `lib/auth/password.ts`.
 
 **Supabase** — projeto `myfmqkgpnpmvlmvaewiq`. Estava **completamente vazio** até 26/08.
@@ -597,10 +781,18 @@ transação. Precisa de `DATABASE_URL` (a conexão direta com o Postgres, não a
 `service_role` — o PostgREST não executa DDL). Sem esse registro, "o que falta neste banco?"
 só se responde conferindo tabela por tabela, que foi o que custou caro com a `024`.
 
-**Estado do banco em 27/08, conferido em `schema_migrations`: as 26 migrations aplicadas**,
-da `001` à `026_crm_funis.sql`. Isso inclui a `023` (ativação e modo sombra), a `024` (custo
-e vocabulário), a `025` (parecer barrado e telefone normalizado) e a `026` (funis, etapas e
-`leads.funil_id` / `leads.etapa_id`).
+**Estado do banco em 28/08, conferido em `schema_migrations` e nas colunas: as 29 migrations
+aplicadas**, da `001` à `029_followup_por_motivo.sql`. Isso inclui a `023` (ativação e modo
+sombra), a `024` (custo e vocabulário), a `025` (parecer barrado e telefone normalizado), a
+`026` (funis, etapas e `leads.funil_id` / `leads.etapa_id`), a `027` (etapa comercial:
+proposta, valor contratado e categoria da perda), a `028` (`apoio_ids`) e a `029` (motivo da
+espera, `followup_modelos`, `followup_toques`, a mensagem que originou o opt-out e o teto
+diário por instância).
+
+Conferido direto no Postgres, e não só pela mensagem do runner: o funil padrão está em
+`0:Novo · 1:Em atendimento · 2:Proposta enviada · 3:Reunião agendada · 4:Fechado · 5:Perdido`
+— a etapa nova entrou **entre** "em atendimento" e "reunião agendada", que é onde ela
+acontece no escritório. Nascida no fim do quadro, depois de "perdido", ninguém a usaria.
 
 > Nota histórica: `001`, `002` e `003` estavam marcadas como "puladas de propósito" — a
 > `004` as substitui. O runner as aplicou por serem idempotentes (`create table if not
@@ -843,7 +1035,8 @@ passando**.
 - [ ] **Z-API — a instância do 4664.** É o único bloqueio para virar operação de verdade:
       sem ela nenhuma pessoa real consegue escrever para a Ana
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
-- [ ] **aplicar a migration `023`** no Supabase de produção (ver §13)
+- [x] **as migrations estão aplicadas em produção** — as 29, conferidas coluna a
+      coluna e não só pela mensagem do runner (ver §13)
 
 **Feito depois da v1 (26/08, noite)**
 
@@ -879,7 +1072,7 @@ passando**.
 - [x] **Métricas com abas e filtro de nacionalidade** (§5), com o recorte declarado
 - [x] **As regras invioláveis em todo prompt** (§7) e a aba "Material oficial" no treinar
 - [x] **Treinar o agente: o erro diz o campo** — e a descoberta de que `agent_config`
-      tinha uma chave só, ou seja, ninguém nunca conseguiu salvar (§12)
+      tinha uma chave só, ou seja, ninguém nunca conseguiu salvar (§13)
 - [x] **A ficha deduz o objetivo e a Ana para de reperguntar** (§7)
 - [x] **Resto da Shine Rio removido da interface** — simulador refeito (era mock de
       WhatsApp com "Abrir proposta em PDF"), cenários de teste de portaria trocados por
@@ -887,6 +1080,28 @@ passando**.
       Documentação, Financeiro, Diretoria), "Comercial" agora se lê **Jurídico**, remetente
       padrão do Brevo. A aba **Ensaios foi removida**
 - [x] **Meus atendimentos** — faixa de números no topo e bloco vazio virando uma linha
+
+**Feito em 28/08 (a etapa comercial e o follow-up)**
+
+- [x] **Grupo do WhatsApp não vira mais lead** (§9) — o primeiro card do quadro era o JID
+      de um grupo, o que significa que a Ana estava respondendo dentro de grupos. Corte no
+      webhook antes de qualquer escrita, e os que já estavam no banco somem da fila pela
+      leitura do próprio número. Veio antes de tudo por um motivo: follow-up automático
+      disparado num grupo é o pior caso possível deste sistema
+- [x] **Telefone legível no lugar do nome** — `+55 33 9940-2577` com marcador "sem nome
+      ainda", em vez de doze dígitos colados que se leem como código de sistema
+- [x] **O quadro rola na horizontal** — a quinta coluna caía para uma segunda fileira e
+      PERDIDO aparecia embaixo de NOVO, como se fosse continuação dela
+- [x] **PROPOSTA ENVIADA** (§9) — a etapa onde o dinheiro aparece, com valor, serviço e
+      validade; **FECHADO com valor contratado** (ou "sem contrato", explícito); **PERDIDO
+      com categoria** que se soma, além da frase que se lê
+- [x] **Trocar o responsável e incluir quem mais está no caso** (§9) — um dono, e o agente
+      seguindo o dono quando o caso troca de mãos
+- [x] **O follow-up por motivo de espera** (§10) — a régua inteira: motivo, cadência
+      editável, sequência com fim, modelos multilíngues sem idioma de reserva, fila de
+      rascunhos para aprovação, proteções do número e opt-out permanente com rastro
+- [x] **Métricas de follow-up** (§5) — com a taxa de resposta por idioma, que é o alarme
+      da promessa central do projeto
 
 **Segurando de propósito até as primeiras cem conversas**
 
@@ -929,6 +1144,18 @@ de descobrir, em três semanas, que metade não era necessária.
 - resposta de sombra **não entra no histórico** enquanto não for enviada de verdade;
 - **etapa é nome, status é domínio** — etapa de CRM nunca vira um estado paralelo, e apagar
   etapa ou funil não apaga caso nenhum;
+- **grupo, transmissão, status e canal não viram atendimento** — o corte é no webhook, antes
+  de qualquer escrita, e é *fail-closed*;
+- **sem modelo no idioma da pessoa, nada dispara** — vira tarefa manual, e não existe idioma
+  de reserva;
+- **caso com prazo processual nunca entra em follow-up automático** — gera tarefa de ligar;
+- **opt-out é para sempre e vale para todos os motivos**, com a data e a mensagem que o
+  originou guardadas;
+- **três toques por motivo de espera, e acabou** — o contador zera quando a pessoa responde
+  ou quando o motivo muda;
+- **fora da janela adia, não cancela** — o toque continua devendo e sai na próxima passagem;
+- **valor proposto, valor contratado, validade e categoria da perda são só de humano** — é
+  receita no painel do escritório;
 - as **regras do material oficial entram em todo prompt** e não se editam pela tela;
 - **`funilId` e `etapaId` são só de humano** — o agente não move card;
 - **nada de `<select>`, `<input type="date">` ou `window.confirm` nativos** na interface.
@@ -940,7 +1167,7 @@ de descobrir, em três semanas, que metade não era necessária.
 ```bash
 npm run setup     # instala em imigrar-agent/
 npm run dev       # http://localhost:3000
-npm test          # 695 testes
+npm test          # 794 testes
 npm run typecheck
 npm run migrar    # aplica no banco só as migrations que faltam (precisa de DATABASE_URL)
 ```
