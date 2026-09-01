@@ -220,6 +220,31 @@ que **exposta causa dano real à pessoa**. Não é cadastro de cliente.
 O papel legado `user` é lido como `atendente` — o mais restrito. Nenhuma migration promove
 ninguém.
 
+**A conta dona do painel** (migration `030`). Todo admin já tem acesso total; o que não
+existia era a garantia de que **sempre reste alguém** com esse acesso. O primeiro admin — o
+do `/setup` — é marcado como dono e **não pode ser apagado, desativado nem rebaixado**. Ele
+aparece com a etiqueta "dona do painel" na lista de usuários e na barra lateral.
+
+A garantia é um **trigger no banco**, não uma conferência em rota, e a razão é concreta: a
+tela de usuários só cria e lista, então toda edição de conta neste projeto foi feita à mão no
+SQL Editor do Supabase — foi assim que a senha de 27/08 foi redefinida. Guarda em rota
+protege quem passa pela rota, e o SQL Editor não passa. Um `active = false` na linha errada
+deixaria o painel sem ninguém que administre, e a saída seria outro UPDATE no banco: o mesmo
+gesto que causou o problema. É a escolha da `023`, onde "instância nasce desligada" é
+trigger e não convenção.
+
+Proteger **não é congelar**: nome, senha, e-mail e setor mudam normalmente, e passar a
+titularidade é permitido e deliberado (desmarcar a antiga, marcar outra conta admin). O
+mesmo texto de recusa existe em TypeScript (`porqueNaoPodeMexer`), para que a tela explique
+o motivo em vez de vazar um erro de trigger em inglês.
+
+**Você sempre sabe em que conta está.** A barra lateral mostra nome, e-mail e papel logo
+acima de "Sair", e a faixa vermelha do agente desligado passou a dizer "desligado por
+**você** (fulano@)" quando a conta nomeada é a sua. Antes o painel dizia "agente desligado
+por studioneedbr@gmail.com" para alguém que não tinha, em tela nenhuma, como saber se aquele
+e-mail era o dele — e a pergunta que isso levanta ("fui eu que desliguei?") é a que decide
+se a pessoa religa agora ou vai procurar quem desligou.
+
 **Garantias:**
 
 - nenhuma rota responde sem sessão (allowlist exata em `lib/auth/public-paths.ts`);
@@ -1175,6 +1200,12 @@ passando**.
       definição entre `knowledge.ts` e `training.ts` desfeita: vencia a mais permissiva
 - [x] **`baseUrl` fora do `tsconfig.json`** (§12) — não fazia nada além de ser erro no
       editor, e o comentário do `middleware.ts` creditava a ele uma correção que não é dele
+- [x] **A conta ativa aparece no painel** (§6) — barra lateral com nome, e-mail e papel, e
+      a faixa do agente desligado dizendo "por você" quando a conta nomeada é a sua. Antes
+      o painel nomeava uma conta e não havia tela nenhuma que dissesse qual era a sua
+- [x] **A conta dona do painel** (§6, migration `030`) — o primeiro admin não pode ser
+      apagado, desativado nem rebaixado, e a trava é trigger no banco porque é no SQL
+      Editor que as contas deste projeto são editadas
 
 **Segurando de propósito até as primeiras cem conversas**
 
@@ -1189,7 +1220,10 @@ de descobrir, em três semanas, que metade não era necessária.
 - [ ] **Lacunas de conhecimento** (o que perguntaram e a base não cobre)
 - [ ] **Versionamento de prompt** + bateria de casos de teste no simulador
 - [ ] **Filtros salvos, mapa de origem, métricas por versão de prompt**
-- [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco
+- [ ] **Trocar senha pelo painel** — hoje só dá para mexer direto no banco. Senha não é
+      recuperável (scrypt, mão única): o que falta é poder DEFINIR uma nova, a própria e —
+      para um admin — a de outra conta. É o que responde "me manda o login de fulano", que
+      hoje não tem resposta possível
 - [ ] **Dashboard e CRM por pessoa** — escopo a fechar
 - [x] **Treinar o agente** — as abas deixaram de ser da base comercial; falta a
       **primeira gravação de verdade** (§13: `agent_config` ainda só tem `chave_geral`).
@@ -1236,6 +1270,8 @@ de descobrir, em três semanas, que metade não era necessária.
   receita no painel do escritório;
 - as **regras do material oficial entram em todo prompt** e não se editam pela tela;
 - **`funilId` e `etapaId` são só de humano** — o agente não move card;
+- **a conta dona do painel não se apaga, não se desativa e não se rebaixa** — e a trava é
+  um trigger no banco, porque é lá que as contas deste projeto sempre foram editadas;
 - **nada de `<select>`, `<input type="date">` ou `window.confirm` nativos** na interface.
 
 ---
@@ -1245,7 +1281,7 @@ de descobrir, em três semanas, que metade não era necessária.
 ```bash
 npm run setup     # instala em imigrar-agent/
 npm run dev       # http://localhost:3000
-npm test          # 794 testes
+npm test          # 804 testes
 npm run typecheck
 npm run migrar    # aplica no banco só as migrations que faltam (precisa de DATABASE_URL)
 ```

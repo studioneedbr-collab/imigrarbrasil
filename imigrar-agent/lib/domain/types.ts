@@ -182,6 +182,13 @@ export interface User {
   role: "admin" | "advogado" | "atendente" | "user";
   setor?: LeadSetor | null; // null/admin = vê tudo; senão restringe ao setor
   active: boolean;
+  /**
+   * A CONTA DONA DO PAINEL — no máximo uma, e ela não se apaga, não se desativa e não se
+   * rebaixa. A garantia não é do código: é um trigger no banco (migration 030), porque a
+   * única forma de editar conta neste projeto sempre foi UPDATE à mão no SQL Editor, e é
+   * lá que o `active = false` na linha errada acontece.
+   */
+  dono?: boolean;
   createdAt: string;
 }
 
