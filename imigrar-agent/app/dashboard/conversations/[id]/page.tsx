@@ -515,13 +515,18 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
               </p>
             ) : (
               messages.map((m) => {
-                const isUser = m.role === "user";
+                // QUEM FICA À DIREITA É O NOSSO LADO. O painel é a visão de QUEM ATENDE,
+                // não a de quem escreve de fora: a bolha azul da direita é a Ana (ou o
+                // atendente que assumiu) e a branca da esquerda é a pessoa atendida.
+                // Estava invertido, e quem abria a conversa lia o próprio atendimento
+                // como se fosse o cliente.
+                const isAgent = m.role === "assistant";
                 return (
-                  <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                  <div key={m.id} className={`flex ${isAgent ? "justify-end" : "justify-start"}`}>
                     <div className="max-w-[80%]">
                       <div
                         className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                          isUser
+                          isAgent
                             ? "rounded-br-md bg-ib-mar text-white"
                             : "rounded-bl-md border border-ib-line bg-white text-ib-ink"
                         }`}
@@ -545,7 +550,7 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                             ) : (
                               <span
                                 className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-                                  isUser ? "bg-white/15" : "bg-ib-papel text-ib-ink"
+                                  isAgent ? "bg-white/15" : "bg-ib-papel text-ib-ink"
                                 }`}
                               >
                                 <Icon name="doc" className="h-3.5 w-3.5" />
@@ -560,10 +565,10 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                       </div>
                       <p
                         className={`mt-1 font-mono text-[11px] tabular-nums text-ib-slate ${
-                          isUser ? "text-right" : "text-left"
+                          isAgent ? "text-right" : "text-left"
                         }`}
                       >
-                        {isUser ? "Cliente" : "Agente"} · {fmtTime(m.createdAt)}
+                        {isAgent ? "Agente" : "Cliente"} · {fmtTime(m.createdAt)}
                       </p>
                     </div>
                   </div>
