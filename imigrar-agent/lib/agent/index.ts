@@ -464,10 +464,11 @@ export async function respondToConversation(
 
   // ─── O VERIFICADOR DE SAÍDA ───
   //
-  // A última leitura antes de a mensagem sair. Corta duas coisas que o prompt proíbe e o
+  // A última leitura antes de a mensagem sair. Corta três coisas que o prompt proíbe e o
   // modelo escreve assim mesmo, sempre por gentileza: o parecer sobre a situação da
-  // pessoa ("sua entrada ficou regular") e o anúncio de um encaminhamento que não houve.
-  // Ver lib/agent/verificador-de-saida.ts.
+  // pessoa ("sua entrada ficou regular"), o anúncio de um encaminhamento que não houve, e
+  // a promessa de enviar documento ("vou te mandar o orçamento") — que o agente não
+  // produz. Ver lib/agent/verificador-de-saida.ts.
   const revisao = revisarTurno(reply, {
     idioma: idiomaDetectado ?? convBefore?.idioma,
     encaminhou: transferred,

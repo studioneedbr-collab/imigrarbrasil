@@ -169,6 +169,60 @@ export function anunciaEncaminhamento(frase: string): boolean {
   return ANUNCIA_ENCAMINHAMENTO.some((re) => re.test(t));
 }
 
+// ─── "VOU TE ENVIAR O ORÇAMENTO" ───
+//
+// A Ana só escreve texto: não gera imagem, não monta PDF, não anexa arquivo e não manda
+// link de pagamento. O prompt diz isso, e mesmo assim esta é a frase com a maior pressão
+// de todo o domínio — porque no atendimento humano da Imigrar Brasil ela é a frase mais
+// repetida que existe ("vou te enviar o orçamento", "já mando o contrato", "te envio o
+// link"). Lá quem escreve é uma pessoa do time, que de fato prepara e manda o arquivo
+// depois. A Ana não prepara nada e não manda nada.
+//
+// O custo do vazamento é silencioso e alto: quem lê "vou te mandar o orçamento" para de
+// procurar e fica esperando um arquivo que não sai de lugar nenhum. É o mesmo dano de
+// "já passei para o time" sem ter passado, e por isso mora ao lado dele.
+//
+// O QUE NÃO É CORTADO, de propósito: falar do documento sem prometer enviá-lo ("o
+// orçamento quem monta é o time jurídico") e o link da Defensoria, que a Ana passa e deve
+// continuar passando. Por isso todo padrão exige VERBO DE ENVIO EM PRIMEIRA PESSOA junto
+// de um SUBSTANTIVO DE DOCUMENTO — e "link" sozinho não conta, só "link de pagamento".
+
+const NOMES_DOC_PT =
+  "orcamento|orcamentos|proposta|contrato|procuracao|boleto|nota fiscal|recibo|comprovante|planilha|pdf|arquivo|anexo|formulario|link de pagamento|link para pagamento|link para pagar|chave pix";
+const NOMES_DOC_ES =
+  "presupuesto|propuesta|contrato|poder notarial|factura|recibo|comprobante|planilla|pdf|archivo|adjunto|formulario|enlace de pago|link de pago";
+const NOMES_DOC_EN =
+  "quote|quotation|proposal|contract|invoice|receipt|spreadsheet|pdf|file|attachment|form|payment link";
+
+const PROMETE_ENVIO: RegExp[] = [
+  // "vou te enviar o orçamento" / "posso preparar o contrato" / "já mando o boleto"
+  new RegExp(
+    `\\b(vou|posso|irei|ja vou|vamos|podemos|consigo)\\s+(te\\s+|lhe\\s+|voce\\s+)?(enviar|mandar|encaminhar|anexar|preparar|gerar|montar|emitir|providenciar|disponibilizar)\\b[^.!?]{0,45}\\b(${NOMES_DOC_PT})\\b`,
+  ),
+  // Mesma promessa no presente: "te envio o orçamento", "já preparo o contrato"
+  new RegExp(
+    `\\b(ja\\s+)?(te\\s+|lhe\\s+)?(envio|mando|encaminho|anexo|preparo|gero|monto|emito)\\b[^.!?]{0,45}\\b(${NOMES_DOC_PT})\\b`,
+  ),
+  // "segue o orçamento" / "aqui está a proposta" / "em anexo o contrato"
+  new RegExp(`\\b(segue|seguem|em anexo|aqui esta|aqui vai|aqui estao)\\b[^.!?]{0,30}\\b(${NOMES_DOC_PT})\\b`),
+  new RegExp(
+    `\\b(voy a|puedo|vamos a|podemos)\\s+(enviarte|mandarte|pasarte|enviar|mandar|preparar|generar|adjuntar|emitir)\\b[^.!?]{0,45}\\b(${NOMES_DOC_ES})\\b`,
+  ),
+  new RegExp(`\\b(te\\s+)?(envio|mando|adjunto|preparo|genero)\\b[^.!?]{0,45}\\b(${NOMES_DOC_ES})\\b`),
+  new RegExp(
+    `\\b(i|we)\\s*('ll|'ll be| will| can| am going to| are going to)\\s+(send|share|attach|prepare|generate|forward|issue)\\b[^.!?]{0,45}\\b(${NOMES_DOC_EN})\\b`,
+  ),
+  new RegExp(
+    `\\b(je vais|je peux|nous allons|nous pouvons)\\s+(vous\\s+)?(envoyer|transmettre|preparer|generer|joindre)\\b[^.!?]{0,45}\\b(devis|proposition|contrat|facture|recu|pdf|fichier|piece jointe|formulaire|lien de paiement)\\b`,
+  ),
+];
+
+/** A mensagem promete enviar, anexar ou preparar um documento? */
+export function prometeEnvio(frase: string): boolean {
+  const t = normalizar(frase);
+  return PROMETE_ENVIO.some((re) => re.test(t));
+}
+
 // ─── UMA PERGUNTA POR MENSAGEM ───
 //
 // O prompt sempre disse "UMA pergunta por vez, nunca duas". Numa conversa real de 28/08 a
@@ -234,15 +288,22 @@ export function revisarTurno(
   // bruto: se a primeira pergunta for cortada por dar parecer, quem passa a ser "a
   // primeira" é a seguinte — e ela tem de ficar, senão a mensagem sai sem pergunta
   // nenhuma e a conversa morre ali.
+  // `prometeEnvio` não depende de `encaminhou`: a Ana não produz documento em situação
+  // nenhuma, nem antes nem depois de o caso ir para o time.
   const sobreviventes = frases.filter(
-    (f) => !f.trim() || !(qualificaSituacao(f) || (!opts.encaminhou && anunciaEncaminhamento(f))),
+    (f) =>
+      !f.trim() ||
+      !(qualificaSituacao(f) || prometeEnvio(f) || (!opts.encaminhou && anunciaEncaminhamento(f))),
   );
   const excedentes = new Set(perguntasExcedentes(sobreviventes).map((i) => sobreviventes[i]));
 
   const mantidas = frases.filter((f) => {
     if (!f.trim()) return true;
     const proibida =
-      qualificaSituacao(f) || (!opts.encaminhou && anunciaEncaminhamento(f)) || excedentes.has(f);
+      qualificaSituacao(f) ||
+      prometeEnvio(f) ||
+      (!opts.encaminhou && anunciaEncaminhamento(f)) ||
+      excedentes.has(f);
     if (proibida) {
       cortes.push(f.trim());
       return false;

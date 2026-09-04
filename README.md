@@ -60,10 +60,11 @@ as migrations com `npm --prefix imigrar-agent run migrar` (aplica só o que falt
 
 ### Testes
 
-`npm test` — 695 testes, todos passando. Cobrem webhook, sessão, transbordo e
+`npm test` — 851 testes, todos passando. Cobrem webhook, sessão, transbordo e
 anti-loop, o atendimento do domínio (gatilhos de transbordo jurídico, "não inventar
-informação migratória", "não falar de honorários", triagem de nacionalidade/onde a pessoa
-está/o que ela procura), a recuperação do material oficial e a detecção de idioma, o CRM (funis e etapas) e o mapa do
+informação migratória", "não falar de honorários", "não prometer enviar documento", triagem de
+nacionalidade/onde a pessoa está/o que ela procura), a recuperação do material oficial e a
+detecção de idioma, o CRM (funis e etapas) e o mapa do
 atendimento — este último com um teste que falha se o mapa passar a apontar para arquivo que
 não existe mais, porque mapa que mente é pior do que mapa nenhum.
 
@@ -101,6 +102,37 @@ invenção. Para ver a personalidade completa, configure a chave.
 recupera o material oficial a cada turno e injeta no prompt; sem Supabase, sem
 `OPENAI_API_KEY` ou com a tabela `rag_chunks` vazia, ele devolve vazio em silêncio e o
 agente volta a dizer que não tem a informação. Confira em `/api/health` → `rag`.
+
+## O que as conversas reais ensinaram (e o que não ensinaram)
+
+A equipe entregou dezesseis conversas do WhatsApp do atendimento real para o agente
+estudar. A atendente daquelas conversas é uma **pessoa do time**: ela passa valor, afirma
+prazo, pede CPF, manda orçamento e fecha contrato. Nada disso é trabalho da Ana, e nada
+disso entrou nela.
+
+O que entrou foi **o jeito de escrever** e **as perguntas que se faz**:
+
+- bolha curta em vez de parágrafo; `"Perfeito"` sozinho como confirmação vale, `"Perfeito!"`
+  carimbando a frase continua proibido — a distinção está no prompt porque sem ela a Ana
+  perdia junto o que mais aproxima a escrita dela da de uma pessoa;
+- corrigir o próprio erro na hora, explicar a demora com o motivo real, fechar curto;
+- um sétimo ramo de entrevista (**RAMO G** — trabalho, investimento, nômade digital, missão
+  religiosa, estudo), que era o buraco: cinco das dezesseis conversas caíam ali;
+- perguntas que as conversas provaram decisivas — se o casamento é formal e **onde** foi
+  registrado; **desde quando** a pessoa tem o documento, que não é desde quando ela mora aqui;
+- três objeções que apareciam cedo e eram respondidas no improviso: pedido de orçamento,
+  atendimento presencial e "posso te ligar?".
+
+**A Ana não produz nem envia documento** — e isso não depende só do prompt. Nenhuma das
+cinco tools oferecidas ao modelo gera arquivo, e o verificador de saída
+(`lib/agent/verificador-de-saida.ts`) corta a frase que promete enviar orçamento, contrato,
+boleto ou link de pagamento, mesmo depois de o caso já ter ido ao time. É a frase mais
+repetida do atendimento humano — lá quem escreve prepara e manda o arquivo depois; a Ana
+não prepara nada, e quem lê "vou te mandar o orçamento" fica esperando o que não vem.
+
+A pasta `conversa/` está no `.gitignore`. São exportações com CPF, RG, passaporte, chave
+Pix e IBAN de clientes reais — o que foi aprendido delas está no código, destilado e sem
+dado de ninguém.
 
 ## Identidade visual
 

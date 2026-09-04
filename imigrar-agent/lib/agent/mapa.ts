@@ -197,9 +197,9 @@ export const ETAPAS: EtapaDoMapa[] = [
     titulo: "Verificador de saída",
     tipo: "rede",
     oQue:
-      "A última leitura antes de a mensagem sair. Corta frase que dá parecer sobre o caso e frase que anuncia um encaminhamento que não aconteceu. O corte fica registrado.",
+      "A última leitura antes de a mensagem sair. Corta frase que dá parecer sobre o caso, frase que anuncia um encaminhamento que não aconteceu e frase que promete enviar orçamento, contrato ou qualquer arquivo. O corte fica registrado.",
     porQue:
-      "O modelo escreve as duas coisas por gentileza, e as duas machucam: uma afirma o que só o advogado pode afirmar; a outra deixa alguém aflito esperando um telefonema que ninguém agendou.",
+      "O modelo escreve as três coisas por gentileza, e as três machucam: a primeira afirma o que só o advogado pode afirmar; as outras duas deixam alguém esperando — um telefonema que ninguém agendou, ou um documento que o agente não produz.",
     caminhos: [
       { se: "cortou alguma frase", entao: "vira evento “parecer barrado” em Saúde da operação" },
     ],
@@ -265,6 +265,12 @@ export const CENARIOS_FIXOS: CenarioFixo[] = [
     resposta:
       "Liga o sinal de prazo e o tipo, escreve o objetivo na ficha, classifica como prazo correndo e encaminha. NÃO calcula data limite nem diz quantos dias sobram — a data quem apura é uma pessoa, olhando o documento.",
     onde: "classificacao.ts · lead-capture.ts",
+  },
+  {
+    pergunta: "“Vocês me mandam um orçamento?” / “Manda o contrato”",
+    resposta:
+      "Não manda e não promete mandar. O agente só escreve texto: não gera PDF, não anexa arquivo e não passa link de pagamento. Diz que orçamento e contrato são o time jurídico que prepara e envia, e encaminha. Se escrever “vou te enviar” mesmo assim, o verificador corta a frase antes de sair.",
+    onde: "knowledge.ts (guardrails) · verificador-de-saida.ts · tools.ts",
   },
   {
     pergunta: "“Não tenho como pagar”",

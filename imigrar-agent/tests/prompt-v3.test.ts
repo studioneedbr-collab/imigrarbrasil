@@ -62,8 +62,8 @@ describe("v3 — o silêncio factual sobre o Mercosul", () => {
 describe("v3 — a entrevista por ramo", () => {
   const entrevista = DEFAULT_KNOWLEDGE.sections.find((s) => s.id === "qualificacao")!.body;
 
-  it("tem os seis ramos, cada um com o seu conjunto", () => {
-    for (const ramo of ["RAMO A", "RAMO B", "RAMO C", "RAMO D", "RAMO E", "RAMO F"]) {
+  it("tem os sete ramos, cada um com o seu conjunto", () => {
+    for (const ramo of ["RAMO A", "RAMO B", "RAMO C", "RAMO D", "RAMO E", "RAMO F", "RAMO G"]) {
       expect(entrevista, `sem ${ramo}`).toContain(ramo);
     }
   });
