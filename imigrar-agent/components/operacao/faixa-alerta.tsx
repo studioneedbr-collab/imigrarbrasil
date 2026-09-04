@@ -4,6 +4,7 @@ import { saudeEmCache } from "@/lib/operacao/saude";
 import { fmtDate } from "@/components/dashboard/ui";
 import { lerChaveGeral } from "@/lib/agent/estado";
 import { faixaDaChaveGeral } from "@/lib/agent/ativacao";
+import { getSession } from "@/lib/auth/guard";
 
 /**
  * QUANDO A CAPTAÇÃO PARA, O PAINEL PRECISA GRITAR.
@@ -26,12 +27,15 @@ import { faixaDaChaveGeral } from "@/lib/agent/ativacao";
  * estado que ALGUÉM escolheu, e portanto alguém pode desfazer agora.
  */
 export default async function FaixaAlerta() {
-  const [saude, chave] = await Promise.all([
+  const [saude, chave, sessao] = await Promise.all([
     saudeEmCache().catch(() => null),
     lerChaveGeral().catch(() => null),
+    getSession().catch(() => null),
   ]);
 
-  const agenteDesligado = chave ? faixaDaChaveGeral(chave) : null;
+  // O e-mail de quem está lendo entra na frase: "desligado por você (fulano@)" responde,
+  // no próprio aviso, a pergunta que ele levantava e não respondia.
+  const agenteDesligado = chave ? faixaDaChaveGeral(chave, sessao?.email) : null;
   if (agenteDesligado) {
     return (
       <div

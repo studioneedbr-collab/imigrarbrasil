@@ -67,7 +67,8 @@ const mapTransferTicket = (r: Record<string, any>): TransferTicket => ({
 });
 const mapUser = (r: Record<string, any>): User => ({
   id: r.id, email: r.email, passwordHash: r.password_hash, name: r.name ?? undefined,
-  role: r.role, setor: r.setor ?? null, active: r.active, createdAt: r.created_at,
+  role: r.role, setor: r.setor ?? null, active: r.active, dono: r.dono ?? false,
+  createdAt: r.created_at,
 });
 const mapMessage = (r: DbMessage): Message => ({
   id: r.id, conversationId: r.conversation_id, role: r.role as Message["role"],
@@ -1325,7 +1326,8 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
     return ((data as Record<string, any>[] | null) ?? []).map((r) => ({
       id: r.id, email: r.email, name: r.name ?? undefined, role: r.role,
-      setor: r.setor ?? null, active: r.active, createdAt: r.created_at,
+      setor: r.setor ?? null, active: r.active, dono: r.dono ?? false,
+      createdAt: r.created_at,
     }));
   }
 }

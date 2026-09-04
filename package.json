@@ -9,6 +9,8 @@
     "test": "npm --prefix imigrar-agent run test",
     "lint": "npm --prefix imigrar-agent run lint",
     "typecheck": "npm --prefix imigrar-agent exec tsc -- --noEmit",
+    "migrar": "npm --prefix imigrar-agent run migrar --",
+    "senha": "npm --prefix imigrar-agent run senha --",
     "setup": "npm --prefix imigrar-agent install"
   }
 }

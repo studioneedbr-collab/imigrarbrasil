@@ -24,6 +24,30 @@ import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { atividadeDaConversa } from "@/lib/dashboard/periodo";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, ConversationStatus } from "@/lib/domain/types";
+import type { LeadVerdict } from "@/lib/agent/lead-score";
+
+/**
+ * A conversa como a lista a recebe: o veredito vem junto quando este contato NÃO é um
+ * caso do time jurídico (fornecedor, candidato, imprensa, perfil de Defensoria, opt-out).
+ * Sem ele, nota 0 na tabela é ambígua — pode ser quem mandou só "oi" e pode ser gente
+ * esperando resposta de outro setor.
+ */
+type ConversaNaLista = Conversation & {
+  verdict?: LeadVerdict;
+  verdictLabel?: string;
+  verdictReason?: string;
+};
+
+const VERDICT_CHIP: Record<LeadVerdict, string> = {
+  prioritario: "bg-ib-danger/10 text-ib-danger",
+  qualificado: "bg-ib-success/12 text-[#15803D]",
+  em_qualificacao: "bg-ib-mar/10 text-ib-mar",
+  frio: "bg-slate-100 text-ib-slate",
+  dpu: "bg-ib-carimbo/10 text-ib-carimbo",
+  fora_do_funil: "bg-ib-warn/10 text-ib-warn",
+  fora_do_escopo: "bg-ib-warn/10 text-ib-warn",
+  desqualificado: "bg-slate-100 text-ib-slate",
+};
 
 const PAGE_SIZE = 10;
 
@@ -56,7 +80,7 @@ function hoursSince(iso?: string | null): number {
  */
 export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "producao" | "teste" }) {
   const router = useRouter();
-  const [conversations, setConversations] = useState<Conversation[] | null>(null);
+  const [conversations, setConversations] = useState<ConversaNaLista[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   /*
    * ERRO DE EXCLUIR NÃO É ERRO DE CARREGAR.
@@ -73,8 +97,65 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ConversationStatus | "all">("all");
   const [page, setPage] = useState(1);
-  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ConversaNaLista | null>(null);
   const [deleting, setDeleting] = useState(false);
+  /**
+   * SELEÇÃO MÚLTIPLA. Só existe para administrador — quem não pode excluir uma conversa
+   * também não pode excluir trinta, e mostrar a caixinha para quem vai levar 403 é a
+   * mesma promessa quebrada que a lixeira fazia antes de existir a checagem de papel.
+   */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pendingBulk, setPendingBulk] = useState(false);
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function doBulkDelete() {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    setDeleting(true);
+    setErroExcluir(null);
+    const snapshot = conversations;
+    setConversations((prev) => (prev ? prev.filter((x) => !selected.has(x.id)) : prev));
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) {
+        throw new Error(
+          res.status === 403
+            ? "Só um administrador pode excluir conversas. Peça a quem administra o painel."
+            : "A exclusão falhou no servidor. Tente de novo em instantes.",
+        );
+      }
+      const data = (await res.json()) as { deleted: string[]; failed: string[] };
+      // O que o servidor não conseguiu apagar volta para a lista: sumir da tela sem ter
+      // sumido do banco é a pior das duas mentiras possíveis aqui.
+      if (data.failed?.length && snapshot) {
+        const restaurar = snapshot.filter((c) => data.failed.includes(c.id));
+        setConversations((prev) => (prev ? [...restaurar, ...prev] : prev));
+        setErroExcluir(
+          `${data.failed.length} conversa(s) não puderam ser excluídas e continuam na lista.`,
+        );
+      }
+      setSelected(new Set());
+      setPendingBulk(false);
+    } catch (err) {
+      setConversations(snapshot);
+      setErroExcluir(err instanceof Error ? err.message : "A exclusão falhou.");
+      setPendingBulk(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function doDelete() {
     const c = pendingDelete;
@@ -98,6 +179,11 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
               : "A exclusão falhou no servidor. Tente de novo em instantes.",
         );
       }
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(c.id);
+        return next;
+      });
       setPendingDelete(null);
     } catch (err) {
       setConversations(snapshot);
@@ -138,7 +224,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
           { cache: "no-store" },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { conversations: Conversation[] };
+        const data = (await res.json()) as { conversations: ConversaNaLista[] };
         if (!active) return;
         // Ordem pela ÚLTIMA MENSAGEM, não pela criação: numa fila de atendimento, quem
         // acabou de responder tem de estar no topo. Ordenando por criação, o cliente que
@@ -199,6 +285,23 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
     const start = (clampedPage - 1) * PAGE_SIZE;
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, clampedPage]);
+
+  // Conta só o que ainda está na lista: a seleção sobrevive ao refetch de 20s e à
+  // paginação, e um contador que soma conversa já apagada mente no diálogo de confirmação.
+  const selectedCount = useMemo(
+    () => (conversations ?? []).filter((c) => selected.has(c.id)).length,
+    [conversations, selected],
+  );
+  const pageAllSelected = pageItems.length > 0 && pageItems.every((c) => selected.has(c.id));
+
+  function togglePage() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (pageAllSelected) pageItems.forEach((c) => next.delete(c.id));
+      else pageItems.forEach((c) => next.add(c.id));
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -333,10 +436,53 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
             </Card>
           ) : (
             <Card className="overflow-hidden">
+          {ehAdmin && selectedCount > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ib-line bg-ib-bruma/60 px-5 py-3">
+              <span className="text-sm text-ib-ink">
+                <span className="font-semibold tabular-nums">{selectedCount}</span>{" "}
+                {selectedCount === 1 ? "conversa selecionada" : "conversas selecionadas"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="rounded-lg border border-ib-line bg-white px-3 py-1.5 text-xs text-ib-slate transition hover:text-ib-ink"
+                >
+                  Limpar seleção
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set(filtered.map((c) => c.id)))}
+                  className="rounded-lg border border-ib-line bg-white px-3 py-1.5 text-xs text-ib-slate transition hover:text-ib-ink"
+                >
+                  Selecionar todas ({filtered.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingBulk(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ib-danger/30 bg-ib-danger/5 px-3 py-1.5 text-xs font-medium text-ib-danger transition hover:bg-ib-danger/10"
+                >
+                  <Icon name="trash" className="h-3.5 w-3.5" />
+                  Excluir selecionadas
+                </button>
+              </div>
+            </div>
+          ) : null}
           <div className="overflow-x-auto console-scroll">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-ib-line bg-ib-papel/70 text-[11px] uppercase tracking-[0.08em] text-ib-slate">
                 <tr>
+                  {ehAdmin ? (
+                    <th className="w-10 px-5 py-3">
+                      <input
+                        type="checkbox"
+                        checked={pageAllSelected}
+                        onChange={togglePage}
+                        aria-label="Selecionar todas as conversas desta página"
+                        className="h-4 w-4 cursor-pointer rounded border-ib-line accent-ib-casa"
+                      />
+                    </th>
+                  ) : null}
                   <th className="px-5 py-3 font-semibold">Contato</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 font-semibold">Lead score</th>
@@ -349,8 +495,21 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                   <tr
                     key={c.id}
                     onClick={() => router.push(`/dashboard/conversations/${c.id}`)}
-                    className="cursor-pointer border-b border-ib-line/70 transition last:border-0 hover:bg-ib-bruma/50"
+                    className={`cursor-pointer border-b border-ib-line/70 transition last:border-0 hover:bg-ib-bruma/50 ${
+                      selected.has(c.id) ? "bg-ib-bruma/60" : ""
+                    }`}
                   >
+                    {ehAdmin ? (
+                      <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(c.id)}
+                          onChange={() => toggleOne(c.id)}
+                          aria-label={`Selecionar conversa com ${c.contactName ?? c.whatsappNumber}`}
+                          className="h-4 w-4 cursor-pointer rounded border-ib-line accent-ib-casa"
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-5 py-3.5">
                       <span className="font-medium text-ib-ink">
                         {c.contactName ?? c.whatsappNumber}
@@ -380,7 +539,16 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <ScoreBar score={c.leadScore} />
+                      {c.verdict ? (
+                        <span
+                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-medium ${VERDICT_CHIP[c.verdict]}`}
+                          title={c.verdictReason}
+                        >
+                          {c.verdictLabel}
+                        </span>
+                      ) : (
+                        <ScoreBar score={c.leadScore} />
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums text-ib-slate">
                       {fmtDateShort(c.createdAt)} · {fmtTime(c.createdAt)}
@@ -420,6 +588,22 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={pendingBulk}
+        loading={deleting}
+        title="Excluir conversas selecionadas"
+        message={
+          <>
+            <span className="font-semibold tabular-nums">{selectedCount}</span>{" "}
+            {selectedCount === 1 ? "conversa" : "conversas"} e todo o histórico serão
+            removidos. Esta ação não pode ser desfeita.
+          </>
+        }
+        confirmLabel={`Excluir ${selectedCount}`}
+        onConfirm={doBulkDelete}
+        onCancel={() => setPendingBulk(false)}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

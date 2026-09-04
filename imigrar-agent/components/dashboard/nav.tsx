@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/dashboard/ui";
+import { PAPEL_LABEL, normalizarPapel, type Papel } from "@/lib/auth/papeis";
 
 type NavLink = {
   href: string;
@@ -167,13 +168,35 @@ export default function DashboardNav() {
   // null = ainda carregando. Enquanto não sabemos o papel, o item admin fica
   // fora — melhor aparecer um instante depois do que piscar e sumir.
   const [role, setRole] = useState<"admin" | "user" | null>(null);
+  /**
+   * QUEM ESTÁ LOGADO. O painel nunca disse.
+   *
+   * Não é conforto: este sistema tem contas com poderes diferentes (quem exporta dado
+   * sensível, quem mexe em usuário, quem desliga o agente para a empresa inteira) e a
+   * faixa vermelha do topo chega a NOMEAR uma conta — "agente desligado por fulano@" —
+   * para alguém que não tinha como saber se aquele fulano era ele mesmo. Sem isto, a
+   * pergunta "posso fazer isto?" e a pergunta "fui eu que fiz isto?" ficavam as duas sem
+   * resposta na tela.
+   */
+  const [conta, setConta] = useState<
+    { nome: string | null; email: string; papel: Papel; dono: boolean } | null
+  >(null);
 
   useEffect(() => {
     let alive = true;
     fetch("/api/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { role?: string } | null) => {
-        if (alive) setRole(d?.role === "admin" ? "admin" : "user");
+      .then((d: { role?: string; email?: string; name?: string | null; dono?: boolean } | null) => {
+        if (!alive) return;
+        setRole(d?.role === "admin" ? "admin" : "user");
+        if (d?.email) {
+          setConta({
+            nome: d.name ?? null,
+            email: d.email,
+            papel: normalizarPapel(d.role),
+            dono: !!d.dono,
+          });
+        }
       })
       .catch(() => alive && setRole("user"));
     return () => {
@@ -250,6 +273,37 @@ export default function DashboardNav() {
       ))}
 
       <div className="my-4 hidden h-px bg-white/10 md:block" />
+
+      {/* A CONTA ATIVA, logo acima de "Sair" — que é onde a pessoa olha quando a pergunta
+          surge. Papel junto do nome porque as duas dúvidas aparecem no mesmo momento:
+          "quem sou eu aqui" e "por que este item não aparece para mim". */}
+      {conta ? (
+        <div className="mb-1 rounded-lg bg-white/[0.06] px-3 py-2">
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold leading-tight text-white">
+            <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-ib-selo" />
+            <span className="min-w-0 truncate">{conta.nome || conta.email}</span>
+          </p>
+          {/* O e-mail nunca é truncado no title: duas contas do mesmo escritório costumam
+              diferir só no fim, e é justamente o fim que some no corte. */}
+          <p className="mt-0.5 truncate text-[11px] leading-tight text-white/45" title={conta.email}>
+            {conta.nome ? conta.email : PAPEL_LABEL[conta.papel]}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] leading-tight text-white/45">
+            {conta.nome ? <span>{PAPEL_LABEL[conta.papel]}</span> : null}
+            {/* A CONTA DONA se identifica aqui porque é a informação que responde "posso
+                perder o acesso a este painel?". Ela é a única que não se apaga, não se
+                desativa e não se rebaixa — nem por UPDATE à mão no banco. */}
+            {conta.dono ? (
+              <span
+                title="Conta dona do painel: não pode ser apagada, desativada nem rebaixada."
+                className="rounded bg-ib-selo/20 px-1.5 py-px font-semibold text-ib-selo"
+              >
+                dona do painel
+              </span>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
 
       <button
         type="button"

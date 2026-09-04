@@ -534,7 +534,7 @@ export async function respondToConversation(
   try {
     const msgs = await repo.listMessages(conversationId);
     const lead = await repo.getLeadByConversation(conversationId);
-    const { score } = computeLeadScore({ messages: msgs, lead });
+    const { score, verdict } = computeLeadScore({ messages: msgs, lead, conversation: conv });
     if (conv && conv.leadScore !== score) {
       await repo.updateConversation(conversationId, { leadScore: score });
     }
@@ -544,7 +544,11 @@ export async function respondToConversation(
       const terminal = ["desqualificado", "perdido", "ganho", "transferido"];
       let stage = lead.stage;
       if (!terminal.includes(lead.stage ?? "novo")) {
-        if (score >= 45 && (!lead.stage || lead.stage === "novo")) stage = "qualificado";
+        // Sobe pelo VEREDITO, não por um número redondo: `score >= 45` promovia quem
+        // apenas conversou bastante, e o motor agora só diz "qualificado"/"prioritário"
+        // quando há caso descrito com intenção declarada ou prazo correndo.
+        const promove = verdict === "qualificado" || verdict === "prioritario";
+        if (promove && (!lead.stage || lead.stage === "novo")) stage = "qualificado";
       }
       if (stage !== lead.stage || lead.score !== score) {
         await repo.upsertLead(conversationId, { score, stage });

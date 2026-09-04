@@ -660,7 +660,12 @@ export class MemoryRepository implements Repository {
     const user: User = {
       id: id("user"), email: data.email, passwordHash: data.passwordHash,
       // Default 'atendente' (o mais restrito), nunca 'admin': quem precisa de mais pede.
-      name: data.name, role: data.role ?? "atendente", setor: (data.setor as User["setor"]) ?? null, active: true, createdAt: now(),
+      name: data.name, role: data.role ?? "atendente", setor: (data.setor as User["setor"]) ?? null, active: true,
+      // O PRIMEIRO ADMIN É O DONO — a mesma regra que a migration 030 aplica no banco.
+      // Sem isso o repositório de memória (dev e testes) descreveria um sistema em que a
+      // conta dona não existe, e a proteção só apareceria em produção.
+      dono: (data.role ?? "atendente") === "admin" && !Array.from(this.users.values()).some((u) => u.dono),
+      createdAt: now(),
     };
     this.users.set(data.email.toLowerCase(), user);
     return user;

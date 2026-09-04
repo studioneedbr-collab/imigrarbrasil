@@ -172,10 +172,20 @@ export function decidirAtendimento(ctx: ContextoDeAtendimento): DecisaoDeAtendim
  */
 export const CHAVE_GERAL_PADRAO: ChaveGeral = { ligada: true, autor: null, em: null, motivo: null };
 
-/** O que a faixa vermelha do topo mostra quando a chave geral está desligada. */
-export function faixaDaChaveGeral(chave: ChaveGeral): string | null {
+/**
+ * O que a faixa vermelha do topo mostra quando a chave geral está desligada.
+ *
+ * `voce` é o e-mail de quem está lendo a faixa, e existe por um motivo concreto: o painel
+ * mostrava "Agente desligado por studioneedbr@gmail.com" para alguém que não tinha como
+ * saber se aquele e-mail era o dele. Uma frase que nomeia uma conta sem dizer se é a SUA
+ * transforma um aviso em charada — e a pergunta que ela levanta ("fui eu que desliguei?")
+ * é exatamente a que decide se a pessoa religa agora ou vai procurar quem desligou.
+ */
+export function faixaDaChaveGeral(chave: ChaveGeral, voce?: string | null): string | null {
   if (chave.ligada) return null;
-  const quem = chave.autor || "alguém";
+  const autor = (chave.autor ?? "").trim();
+  const souEu = !!autor && !!voce && autor.toLowerCase() === voce.trim().toLowerCase();
+  const quem = autor ? (souEu ? `você (${autor})` : autor) : "alguém";
   const quando = chave.em ? new Date(chave.em).toLocaleString("pt-BR") : "data desconhecida";
   const motivo = (chave.motivo ?? "").trim() || "sem motivo registrado";
   return `Agente desligado por ${quem} desde ${quando} — ${motivo}`;

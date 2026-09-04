@@ -37,6 +37,8 @@ interface UserRow {
   email: string;
   name?: string;
   role: Papel | "user";
+  /** A conta dona do painel. Ver migration 030 e lib/auth/papeis.ts. */
+  dono?: boolean;
   setor?: Setor | null;
   active: boolean;
   createdAt: string;
@@ -189,6 +191,17 @@ export default function UsersPage() {
                       <p className="truncate text-sm font-medium text-ib-ink">
                         {u.name || u.email}
                       </p>
+                      {/* A CONTA DONA. Fica visível na lista porque a pergunta que ela
+                          responde é operacional: quem é a conta que garante que este
+                          painel nunca fica sem administrador. */}
+                      {u.dono ? (
+                        <span
+                          title="Conta dona do painel: não pode ser apagada, desativada nem rebaixada, nem por UPDATE à mão no banco."
+                          className="shrink-0 rounded bg-ib-casa/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ib-casa ring-1 ring-inset ring-ib-casa/20"
+                        >
+                          dona do painel
+                        </span>
+                      ) : null}
                       <span
                         className="flex items-center gap-1 shrink-0"
                         title={u.active ? "Ativo" : "Inativo"}

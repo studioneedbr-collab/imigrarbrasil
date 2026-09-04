@@ -222,3 +222,39 @@ describe("nível 3 — o agente se cala depois de encaminhar", () => {
     expect(d.acao).toBe("silencio");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A FAIXA PRECISA DIZER SE A CONTA QUE ELA NOMEIA É A SUA
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// O painel mostrava "Agente desligado por studioneedbr@gmail.com" para alguém que não
+// tinha como saber, em tela nenhuma, se aquele e-mail era o dele. Uma frase que nomeia uma
+// conta sem dizer se é a sua vira charada — e a pergunta que ela levanta ("fui eu que
+// desliguei?") é a que decide se a pessoa religa agora ou vai procurar quem desligou.
+describe("de quem é a conta que desligou o agente", () => {
+  const desligada = {
+    ligada: false,
+    autor: "studioneedbr@gmail.com",
+    em: "2026-08-28T07:16:13.000Z",
+    motivo: "numero errado",
+  };
+
+  it("diz “você” quando quem lê é quem desligou", () => {
+    const faixa = faixaDaChaveGeral(desligada, "studioneedbr@gmail.com")!;
+    expect(faixa).toContain("por você (studioneedbr@gmail.com)");
+  });
+
+  it("não confunde maiúsculas nem espaço colado no e-mail", () => {
+    expect(faixaDaChaveGeral(desligada, "  StudioNeedBR@Gmail.com ")!).toContain("por você");
+  });
+
+  it("nomeia a outra conta quando não foi você", () => {
+    const faixa = faixaDaChaveGeral(desligada, "victor@needbr.com")!;
+    expect(faixa).toContain("por studioneedbr@gmail.com");
+    expect(faixa).not.toContain("você");
+  });
+
+  it("sem sessão, continua nomeando a conta — nunca chuta que foi você", () => {
+    expect(faixaDaChaveGeral(desligada)!).not.toContain("você");
+  });
+});
