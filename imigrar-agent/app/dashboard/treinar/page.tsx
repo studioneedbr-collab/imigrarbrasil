@@ -13,6 +13,7 @@ import {
 } from "@/components/dashboard/ui";
 import {
   LENGTH_LABEL,
+  PERSONA_MAX,
   TONE_LABEL,
   type GlossaryTerm,
   type GuardrailsConfig,
@@ -311,6 +312,17 @@ export default function TreinarPage() {
       setFeedback({ kind: "error", text: "A persona precisa de ao menos 10 caracteres." });
       return;
     }
+    // O teto vale no servidor de qualquer jeito. Conferir aqui é para a recusa vir COM a
+    // conta feita — "está com 8.412, o limite é 8.000" — em vez de um erro genérico depois
+    // de a pessoa ter escrito o texto inteiro e clicado em salvar.
+    if (draft.persona.trim().length > PERSONA_MAX) {
+      setTab("identidade");
+      setFeedback({
+        kind: "error",
+        text: `A persona está com ${draft.persona.trim().length.toLocaleString("pt-BR")} caracteres e o limite é ${PERSONA_MAX.toLocaleString("pt-BR")}. Corte o excedente ou peça para aumentarmos o limite.`,
+      });
+      return;
+    }
     if (draft.sections.some((s) => !s.title.trim())) {
       setTab("empresa");
       setFeedback({ kind: "error", text: "Toda seção precisa de um título." });
@@ -606,7 +618,7 @@ function TabIdentidade({ draft, patch }: { draft: Draft; patch: (p: Partial<Draf
             className={areaCls}
             placeholder="Você é o assistente virtual da Imigrar Brasil…"
           />
-          <CharCount value={draft.persona} />
+          <CharCount value={draft.persona} max={PERSONA_MAX} />
         </div>
       </Card>
 

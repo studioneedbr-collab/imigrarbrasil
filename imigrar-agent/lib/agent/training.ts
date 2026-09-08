@@ -88,6 +88,19 @@ export function normalizeReasoning(v: unknown): ReasoningBlock[] {
 export type Tone = "profissional_calorosa" | "formal" | "direta";
 export type MessageLength = "curtas" | "medias" | "detalhadas";
 
+/**
+ * Teto da persona, em caracteres.
+ *
+ * Ele mora aqui, e não solto dentro do schema da API, porque a TELA precisa do mesmo
+ * número: um limite que só existe no servidor vira uma recusa no clique de salvar, depois
+ * de a pessoa ter escrito o texto inteiro. Foi exatamente o que aconteceu — o contador da
+ * aba Identidade mostrava só "N caracteres", sem teto nenhum à vista, e quem passou do
+ * limite recebeu a mensagem crua do validador e teve que adivinhar a causa.
+ *
+ * Para aumentar: mude aqui. A tela e a API acompanham.
+ */
+export const PERSONA_MAX = 8000;
+
 export interface Identity {
   agentName: string;
   companyName: string;

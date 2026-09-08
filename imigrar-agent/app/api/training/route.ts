@@ -11,6 +11,7 @@ import {
 import {
   BEHAVIOR_RULES,
   DEFAULT_TRAINING,
+  PERSONA_MAX,
   normalizeGuardrails,
   normalizeIdentity,
   normalizeObjections,
@@ -62,7 +63,11 @@ const identitySchema = z.object({
 });
 
 const bodySchema = z.object({
-  persona: z.string().trim().min(10).max(8000),
+  persona: z
+    .string()
+    .trim()
+    .min(10, "está curta demais — escreva pelo menos 10 caracteres")
+    .max(PERSONA_MAX, `passou de ${PERSONA_MAX.toLocaleString("pt-BR")} caracteres`),
   identity: identitySchema,
   reasoning: z
     .array(
@@ -143,6 +148,42 @@ const bodySchema = z.object({
     .max(200)
     .optional(),
 });
+
+/**
+ * A MENSAGEM DO VALIDADOR, EM PORTUGUÊS.
+ *
+ * O zod escreve em inglês e escreve para programador: "Invalid input", "Too big: expected
+ * string to have <=8000 characters". Numa tela que a equipe usa em português, isso chegou
+ * ao cliente como um enigma — ele abriu chamado perguntando se era o tamanho do texto, sem
+ * ter como saber. O campo já vinha no erro; o que faltava era dizer O QUE ele tem de errado.
+ *
+ * Onde o schema define uma mensagem própria (a persona define), ela vence esta tradução.
+ */
+function mensagemEmPortugues(issue: z.ZodError["issues"][number]): string {
+  // Mensagem escrita à mão no schema — o zod só usa a dele quando não há uma nossa, e as
+  // dele são todas em inglês.
+  if (issue.message && !/^(Invalid|Too big|Too small|Required|Expected)/.test(issue.message)) {
+    return issue.message;
+  }
+  switch (issue.code) {
+    case "too_big": {
+      const unidade = issue.origin === "array" ? "itens" : "caracteres";
+      return `passou do limite de ${Number(issue.maximum).toLocaleString("pt-BR")} ${unidade}`;
+    }
+    case "too_small": {
+      const unidade = issue.origin === "array" ? "itens" : "caracteres";
+      return Number(issue.minimum) <= 1
+        ? "está vazio e é obrigatório"
+        : `precisa de pelo menos ${Number(issue.minimum).toLocaleString("pt-BR")} ${unidade}`;
+    }
+    case "invalid_type":
+      return "não foi enviado, ou veio num formato que não é o esperado";
+    case "invalid_value":
+      return "está com um valor que a tela não oferece";
+    default:
+      return "está com um valor inválido";
+  }
+}
 
 export async function PUT(req: NextRequest) {
   const auth = await requireAdmin();
@@ -229,8 +270,9 @@ export async function PUT(req: NextRequest) {
     if (err instanceof z.ZodError) {
       const issue = err.issues[0];
       const onde = issue?.path?.length ? issue.path.join(" › ") : "algum campo";
+      const porque = issue ? mensagemEmPortugues(issue) : "está com um valor inválido";
       return NextResponse.json(
-        { error: `Não salvei: ${onde} — ${issue?.message ?? "valor inválido"}.`, campo: issue?.path },
+        { error: `Não salvei: ${onde} ${porque}.`, campo: issue?.path },
         { status: 400 },
       );
     }
