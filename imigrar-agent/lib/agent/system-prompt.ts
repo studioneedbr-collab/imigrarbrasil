@@ -119,12 +119,37 @@ async function getFaqBlock(): Promise<string> {
   return `\n\n════════ PERGUNTAS FREQUENTES (ensinadas pela equipe — use a IDEIA da resposta com AS SUAS PALAVRAS, tratando como verdade) ════════\n${lines}`;
 }
 
+/**
+ * O PROMPT CRU, E POR QUE ELE É UMA ARMADILHA.
+ *
+ * `agent_config.system_prompt` é um override herdado da tela antiga de configuração (hoje
+ * um redirect para /dashboard/treinar). Enquanto ele existir no banco, ele vence TUDO que
+ * a tela de treinar edita — persona, seções, objeções, regras, raciocínio, técnico — e só
+ * o briefing, o FAQ e o material oficial continuam entrando.
+ *
+ * O problema não é o override existir: é ele ser INVISÍVEL. A prévia da aba "Testar" é
+ * montada a partir de knowledge_base + treinamento, então ela mostrava um prompt que o
+ * agente não estava usando, e quem editasse a tela veria "Salvo" sem nada mudar na
+ * conversa. Por isso ele agora tem nome e é consultável — /api/training o devolve, e a
+ * tela avisa.
+ *
+ * O piso de 50 caracteres mora aqui, num lugar só: chave vazia ou com um resto de teste
+ * não é override.
+ */
+const PROMPT_CRU_MINIMO = 50;
+
+/** O override cru, se houver um valendo. `null` quando a tela de treinar é quem manda. */
+export async function getPromptCru(): Promise<string | null> {
+  const raw = await getRepository().getConfig<string>("system_prompt");
+  return typeof raw === "string" && raw.length > PROMPT_CRU_MINIMO ? raw : null;
+}
+
 // System prompt efetivo. Precedência:
-// 1) override raw "system_prompt" (avançado), se definido;
+// 1) override raw "system_prompt" (legado — ver getPromptCru), se definido;
 // 2) prompt montado a partir da Base de Conhecimento.
 // Em ambos os casos, o briefing e o FAQ da empresa (do dashboard) são anexados ao final.
 export async function getSystemPrompt(): Promise<string> {
-  const raw = await getRepository().getConfig<string>("system_prompt");
+  const raw = await getPromptCru();
   const [briefingBlock, faqBlock] = await Promise.all([getBriefingBlock(), getFaqBlock()]);
   // ═══ O MATERIAL OFICIAL ENTRA SEMPRE, E POR ÚLTIMO ═══
   //
@@ -134,7 +159,7 @@ export async function getSystemPrompt(): Promise<string> {
   // a mensagem pede pesquisa; as regras que impedem a Ana de dar parecer sobre o caso de
   // alguém não podem depender disso. Ver lib/agent/material-oficial.ts.
   const material = blocoMaterialOficial();
-  if (raw && raw.length > 50) return raw + briefingBlock + faqBlock + material;
+  if (raw) return raw + briefingBlock + faqBlock + material;
   const [kb, training] = await Promise.all([getKnowledgeBase(), getTrainingConfig()]);
   return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material;
 }

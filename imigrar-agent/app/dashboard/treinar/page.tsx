@@ -236,6 +236,9 @@ export default function TreinarPage() {
   const [saved, setSaved] = useState<Draft | null>(null);
   const [behaviorRules, setBehaviorRules] = useState<BehaviorRuleMeta[]>([]);
   const [preview, setPreview] = useState("");
+  // O override legado de agent_config.system_prompt, quando existe. Enquanto ele estiver
+  // no banco, nada desta tela chega ao agente — ver getPromptCru() em lib/agent.
+  const [promptCru, setPromptCru] = useState<string | null>(null);
   const [material, setMaterial] = useState<MaterialOficialResposta | null>(null);
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
 
@@ -269,6 +272,7 @@ export default function TreinarPage() {
         setSaved(structuredClone(loaded));
         setBehaviorRules(d.behaviorRules ?? []);
         setPreview(d.preview ?? "");
+        setPromptCru(d.promptCru ?? null);
         setMaterial(d.materialOficial ?? null);
         if (sRes.ok) {
           const s = (await sRes.json()) as { mode?: string };
@@ -341,16 +345,53 @@ export default function TreinarPage() {
       const d = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         preview?: string;
+        promptCru?: string | null;
         error?: string;
       };
       if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       if (d.preview) setPreview(d.preview);
+      setPromptCru(d.promptCru ?? null);
       setSaved(structuredClone(draft));
-      setFeedback({ kind: "success", text: "Salvo. O agente já está usando isso." });
+      // "O agente já está usando isso" seria mentira com o override legado no banco —
+      // gravou, sim, mas o agente continua lendo o prompt cru. Ver a aba Testar.
+      setFeedback(
+        d.promptCru
+          ? {
+              kind: "error",
+              text: "Salvo, MAS o agente não está usando: há um prompt cru antigo no banco que vence esta tela. Veja o aviso na aba Testar.",
+            }
+          : { kind: "success", text: "Salvo. O agente já está usando isso." },
+      );
     } catch (err) {
       setFeedback({ kind: "error", text: err instanceof Error ? err.message : "Erro ao salvar" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Joga fora o prompt cru legado e devolve o comando do agente a esta tela.
+   *
+   * Não é "restaurar padrões": aquilo mexe no rascunho e espera um Salvar. Aqui a escrita
+   * é imediata e no banco, porque enquanto essa chave existir tudo o que se salvar nesta
+   * tela é gravado e ignorado — e a confusão que isso gera é justamente o que se está
+   * removendo.
+   */
+  async function descartarPromptCru() {
+    try {
+      const res = await fetch("/api/training?descartar=prompt_cru", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setPromptCru(null);
+      setFeedback({
+        kind: "success",
+        text: "Prompt cru descartado. O agente passou a usar o que está nesta tela.",
+      });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Erro ao descartar o prompt cru",
+      });
     }
   }
 
@@ -484,7 +525,15 @@ export default function TreinarPage() {
         <TabTecnico draft={draft} patch={patch} onRestore={() => restore("technical")} />
       ) : null}
       {tab === "material" ? <TabMaterial material={material} /> : null}
-      {tab === "testar" ? <TabTestar saved={saved} preview={preview} dirty={dirty} /> : null}
+      {tab === "testar" ? (
+        <TabTestar
+          saved={saved}
+          preview={preview}
+          dirty={dirty}
+          promptCru={promptCru}
+          onDescartarPromptCru={descartarPromptCru}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1565,10 +1614,14 @@ function TabTestar({
   saved,
   preview,
   dirty,
+  promptCru,
+  onDescartarPromptCru,
 }: {
   saved: Draft | null;
   preview: string;
   dirty: boolean;
+  promptCru: string | null;
+  onDescartarPromptCru: () => void;
 }) {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -1622,6 +1675,36 @@ function TabTestar({
     <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
       {/* Esquerda — configurações ativas */}
       <div className="space-y-4">
+        {/* ── O OVERRIDE LEGADO ──
+            Fica ACIMA de tudo e em vermelho porque é a única situação em que esta tela
+            inteira não vale nada: enquanto essa chave existir, o agente lê o texto abaixo
+            e ignora persona, seções, objeções, regras, raciocínio e técnico. Antes disso
+            aparecer aqui, o sintoma era "salvei e não mudou nada". */}
+        {promptCru ? (
+          <Card className="border-ib-danger/30 bg-ib-danger/5 p-5">
+            <BlockHeading
+              eyebrow="Atenção"
+              title="O agente não está usando esta tela"
+              description="Há um prompt cru gravado no banco, de uma tela de configuração antiga. Ele vence tudo o que se edita aqui — persona, seções, objeções, regras, raciocínio e conhecimento técnico. Só o briefing, as perguntas frequentes e o material oficial continuam entrando."
+            />
+            <div className="pt-4">
+              <button type="button" onClick={onDescartarPromptCru} className={btnPrimary}>
+                <Icon name="bolt" className="h-4 w-4" />
+                Descartar o prompt cru e usar esta tela
+              </button>
+              <details className="group mt-3">
+                <summary className="cursor-pointer list-none text-xs font-medium text-ib-slate underline-offset-2 hover:underline">
+                  Ver o prompt cru que está valendo ({promptCru.length.toLocaleString("pt-BR")}{" "}
+                  caracteres)
+                </summary>
+                <pre className="console-scroll mt-2 max-h-72 overflow-auto rounded-lg bg-ib-ink p-4 font-mono text-[11px] leading-relaxed text-ib-bruma">
+                  {promptCru}
+                </pre>
+              </details>
+            </div>
+          </Card>
+        ) : null}
+
         <Card className="p-5">
           <BlockHeading
             eyebrow="Em produção"

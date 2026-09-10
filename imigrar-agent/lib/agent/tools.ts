@@ -3,6 +3,7 @@ import { getRepository } from "@/lib/data";
 import { env } from "@/lib/env";
 import { sendMessage } from "@/lib/whatsapp/send";
 import { detectTransfer } from "@/lib/agent/transfer";
+import { getTrainingConfig } from "@/lib/agent/system-prompt";
 import { avaliarEncaminhamentoComercial } from "@/lib/agent/transfer-gate";
 import { qualificacaoFaltando } from "@/lib/agent/lead-capture";
 import { buscarChunks, filtrarRelevantes, citacaoDe } from "@/lib/agent/rag";
@@ -256,10 +257,26 @@ export async function executeTool(
           .map((m) => m.content)
           .join("  ");
         const falta = qualificacaoFaltando(lead);
+
+        // AS REGRAS DO PAINEL VALEM AQUI TAMBÉM.
+        //
+        // Este `detectTransfer` era chamado sem regra nenhuma, e sem regra ele cai na lista
+        // fixa de lib/agent/knowledge.ts. O resultado é que /dashboard/treinar só valia
+        // metade: o motor determinístico já passava as regras editadas (ver fallback.ts),
+        // mas no caminho do DeepSeek — o que roda em produção — uma categoria nova
+        // cadastrada pela equipe não contava no freio, e uma regra DESLIGADA continuava
+        // contando. Quem edita uma regra de encaminhamento espera que ela valha nos dois.
+        //
+        // Se a leitura do treinamento falhar, `undefined` devolve o comportamento antigo
+        // (lista do código) — um freio com a régua velha é melhor que um freio que sumiu.
+        const regrasDoPainel = await getTrainingConfig()
+          .then((t) => t.transferRules)
+          .catch(() => undefined);
+
         const portao = avaliarEncaminhamentoComercial({
           dossieCompleto: falta.completo,
           textoRecente,
-          assuntoExigePessoa: !!detectTransfer(`${textoRecente} ${i.reason}`),
+          assuntoExigePessoa: !!detectTransfer(`${textoRecente} ${i.reason}`, regrasDoPainel),
         });
         if (!portao.liberado) {
           return {

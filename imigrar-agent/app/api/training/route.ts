@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import { buildSystemPrompt, type KnowledgeBase } from "@/lib/agent/knowledge";
 import {
   getKnowledgeBase,
+  getPromptCru,
   getTrainingConfig,
   trainingToOverrides,
 } from "@/lib/agent/system-prompt";
@@ -34,11 +35,12 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const repo = getRepository();
-  const [kb, training, briefing, faq] = await Promise.all([
+  const [kb, training, briefing, faq, promptCru] = await Promise.all([
     getKnowledgeBase(),
     getTrainingConfig(),
     repo.getConfig<Record<string, string>>("briefing"),
     repo.getConfig<FaqItem[]>("faq"),
+    getPromptCru(),
   ]);
   return NextResponse.json({
     persona: kb.persona,
@@ -52,6 +54,10 @@ export async function GET() {
     // escondendo justamente a parte que ninguém pode editar.
     preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
     materialOficial: { regras: REGRAS_INVIOLAVEIS, documentos: MATERIAIS },
+    // O override legado, quando existe. A prévia acima continua sendo a desta tela — é ela
+    // que mostra o efeito do que se edita aqui. O que faltava era dizer que, com esta
+    // chave no banco, o agente não está usando essa prévia. Ver getPromptCru().
+    promptCru,
   });
 }
 
@@ -256,6 +262,9 @@ export async function PUT(req: NextRequest) {
       // salvar fazia as regras invioláveis SUMIREM do preview que o GET acabara de
       // mostrar, e a tela passava a descrever um agente que não existe.
       preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
+      // Vai junto para o aviso não sumir depois de salvar: quem acabou de gravar com o
+      // override ligado precisa continuar vendo que o agente não está usando isto.
+      promptCru: await getPromptCru(),
     });
   } catch (err) {
     console.error("[training:PUT]", err instanceof Error ? err.message : err);
@@ -289,6 +298,17 @@ export async function PUT(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
+
+  // DESCARTAR O OVERRIDE LEGADO.
+  //
+  // Grava string vazia em vez de apagar a linha: o repositório expõe setConfig e não um
+  // delete, e vazio já não passa pelo piso do getPromptCru(). O texto antigo some, que é o
+  // que se pediu — por isso o botão da tela mostra o prompt inteiro antes de perguntar.
+  if (req.nextUrl.searchParams.get("descartar") === "prompt_cru") {
+    await getRepository().setConfig("system_prompt", "");
+    return NextResponse.json({ ok: true, promptCru: null });
+  }
+
   const bloco = req.nextUrl.searchParams.get("restore");
   switch (bloco) {
     case "reasoning":
