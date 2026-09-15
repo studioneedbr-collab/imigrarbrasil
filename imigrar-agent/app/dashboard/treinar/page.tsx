@@ -26,6 +26,7 @@ import {
   type TransferRuleConfig,
   type WorkSchedule,
 } from "@/lib/agent/training";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 
 /* ================================================================== */
 /* Tipos                                                              */
@@ -52,7 +53,8 @@ type Feedback = { kind: "success" | "error"; text: string } | null;
 
 type MaterialOficialResposta = {
   regras: string;
-  documentos: { arquivo: string; titulo: string; cobre: string; colecao: string }[];
+  /** O acervo que VALE (código menos removidos, mais acrescentados) — ver lib/agent/acervo.ts. */
+  documentos: DocumentoDoAcervo[];
 };
 
 type TabId =
@@ -1524,26 +1526,278 @@ function TabTecnico({
 }
 
 /* ================================================================== */
-/* TAB 7 — Material oficial (só leitura)                              */
+/* TAB 7 — Material oficial                                           */
 /* ================================================================== */
 
 /**
- * O QUE A ANA NUNCA ESQUECE — e o que esta tela NÃO edita.
+ * O QUE A ANA NUNCA ESQUECE, E O ACERVO QUE ELA LÊ.
  *
- * Todo o resto do treinamento é reescrevível: persona, seções, objeções, regras de
- * encaminhamento, vocabulário. Este bloco não é, e mostrá-lo aqui é o ponto: quem ajusta
- * o tom da Ana numa tarde precisa saber que existem seis regras que continuam valendo
- * depois do ajuste, e por quê.
+ * A aba tem duas metades com naturezas opostas, e é por isso que elas ficam juntas.
  *
- * As regras entram em TODO prompt, por último — ver lib/agent/material-oficial.ts. O RAG
- * (que insere trechos dos PDFs quando a pergunta pede) é condicional; elas não são.
+ * As REGRAS não se editam: entram em todo prompt, por último, inclusive depois de a persona
+ * ser reescrita. Mudar exige subir versão, de propósito — o que protege a pessoa do outro
+ * lado não pode ser apagado numa tarde de ajuste de tom.
+ *
+ * O ACERVO se edita, e desde agora pela tela: acrescentar um PDF o quebra em trechos e
+ * vetoriza na hora (ver lib/agent/ingestao.ts), e remover apaga esses trechos da base. Só
+ * administrador escreve aqui; quem atende vê a lista, porque é ela que evita prometer
+ * resposta sobre tema que o acervo não cobre.
  */
+const COLECAO_LABEL: Record<string, string> = {
+  cartilha: "Cartilha",
+  legislacao: "Legislação",
+  doutrina: "Doutrina",
+};
+
+type DocumentoDoAcervo = {
+  arquivo: string;
+  titulo: string;
+  cobre: string;
+  colecao: string;
+  atualizadoEm?: string;
+  paginas?: number;
+  trechos?: number;
+};
+
+type OrigemDoArquivo = "storage" | "repositorio" | "ausente";
+
+type AcervoResposta = {
+  documentos: DocumentoDoAcervo[];
+  adicionados: DocumentoDoAcervo[];
+  removidos: string[];
+  doCodigo: string[];
+  limiteMb: number;
+  maxTrechos: number;
+  indexacaoDisponivel: boolean;
+  podeEditar: boolean;
+  /** Onde o PDF de cada documento está hoje — ver lib/agent/acervo-arquivos.ts. */
+  arquivos: Record<string, OrigemDoArquivo>;
+  storageDisponivel: boolean;
+  soNoRepositorio: number;
+};
+
 function TabMaterial({ material }: { material: MaterialOficialResposta | null }) {
-  const COLECAO_LABEL: Record<string, string> = {
-    cartilha: "Cartilha",
-    legislacao: "Legislação",
-    doutrina: "Doutrina",
-  };
+  const [acervo, setAcervo] = useState<AcervoResposta | null>(null);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [aRemover, setARemover] = useState<DocumentoDoAcervo | null>(null);
+  const [removendo, setRemovendo] = useState(false);
+  const [zip, setZip] = useState<{ feitos: number; total: number } | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+
+  // Campos do formulário de inclusão.
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [titulo, setTitulo] = useState("");
+  const [cobre, setCobre] = useState("");
+  const [colecao, setColecao] = useState("cartilha");
+  const [atualizadoEm, setAtualizadoEm] = useState("");
+  const inputArquivo = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/material-oficial", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAcervo(d))
+      .catch(() => setAcervo(null));
+  }, []);
+
+  const limiteMb = acervo?.limiteMb ?? 4;
+  const podeEditar = !!acervo?.podeEditar;
+  const grandeDemais = !!arquivo && arquivo.size > limiteMb * 1024 * 1024;
+
+  function limparFormulario() {
+    setArquivo(null);
+    setTitulo("");
+    setCobre("");
+    setColecao("cartilha");
+    setAtualizadoEm("");
+    if (inputArquivo.current) inputArquivo.current.value = "";
+  }
+
+  async function adicionar() {
+    if (!arquivo || enviando) return;
+    setFeedback(null);
+    // O teto é conferido aqui também, e não só no servidor: passando do limite da
+    // plataforma, a requisição é recusada ANTES de chegar ao nosso código e o erro chega
+    // como falha de rede, sem uma frase que explique nada.
+    if (grandeDemais) {
+      setFeedback({
+        kind: "error",
+        text: `O arquivo tem ${(arquivo.size / 1024 / 1024).toFixed(1)} MB e o limite é ${limiteMb} MB. Comprima ou divida o PDF.`,
+      });
+      return;
+    }
+    setEnviando(true);
+    try {
+      const form = new FormData();
+      form.append("arquivo", arquivo);
+      form.append("titulo", titulo);
+      form.append("cobre", cobre);
+      form.append("colecao", colecao);
+      form.append("atualizadoEm", atualizadoEm);
+      const res = await fetch("/api/material-oficial", { method: "POST", body: form });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setAcervo((a) => (a ? { ...a, ...d } : a));
+      limparFormulario();
+      setFeedback({
+        kind: d.avisoArquivo ? "error" : "success",
+        text: d.avisoArquivo
+          ? d.avisoArquivo
+          : `“${d.adicionado.titulo}” entrou no acervo: ${d.adicionado.paginas} páginas em ${d.adicionado.trechos} trechos indexados. O agente já pode usar.`,
+      });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Falha ao adicionar o documento",
+      });
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  /**
+   * Manda para o Supabase os PDFs que ainda só existem dentro do deploy.
+   *
+   * Roda uma vez na vida do projeto. Depois dela o acervo inteiro tem um lugar só, e o
+   * repositório volta a ser o que deve ser: semente e rede de segurança.
+   */
+  async function sincronizar() {
+    if (sincronizando) return;
+    setSincronizando(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/material-oficial/sincronizar", { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (d.arquivos) {
+        setAcervo((a) =>
+          a
+            ? {
+                ...a,
+                arquivos: d.arquivos,
+                soNoRepositorio: Object.values(
+                  d.arquivos as Record<string, OrigemDoArquivo>,
+                ).filter((o) => o === "repositorio").length,
+              }
+            : a,
+        );
+      }
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      const enviados = (d.enviados as string[]).length;
+      setFeedback({
+        kind: "success",
+        text: enviados
+          ? `${enviados} documento(s) enviado(s) ao Supabase. O acervo inteiro está lá agora.`
+          : "Nada a enviar — todos os documentos já estavam no Supabase.",
+      });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Falha ao sincronizar com o Supabase",
+      });
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
+  /** Dispara o "Salvar como" do navegador a partir de bytes já em memória. */
+  function salvarArquivo(nome: string, bytes: Uint8Array, tipo: string) {
+    // O cast existe porque o Uint8Array tipado do TS admite SharedArrayBuffer, que não é
+    // BlobPart. Aqui os bytes sempre vêm de um ArrayBuffer comum (fetch ou fflate).
+    const url = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: tipo }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nome;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * O ZIP É MONTADO AQUI, NO NAVEGADOR — e isso é uma decisão, não uma preguiça.
+   *
+   * O acervo inteiro passa de 20 MB. Montar o zip no servidor significaria devolver esses
+   * 20 MB num único corpo de resposta, que é exatamente o tamanho que a plataforma corta —
+   * e um zip truncado é pior que download nenhum, porque parece ter dado certo. Baixando um
+   * arquivo por vez, cada resposta fica pequena e o limite nunca entra em jogo.
+   *
+   * Sem compressão (level 0) de propósito: PDF já é comprimido por dentro, então comprimir
+   * de novo gasta o processador de quem está na tela para economizar quase nada.
+   */
+  async function baixarTodos() {
+    if (zip) return;
+    setFeedback(null);
+    const lista = documentos;
+    setZip({ feitos: 0, total: lista.length });
+    try {
+      const { zipSync } = await import("fflate");
+      const arquivos: Record<string, Uint8Array> = {};
+      const falhas: string[] = [];
+      for (const d of lista) {
+        const res = await fetch(
+          `/api/material-oficial/arquivo?arquivo=${encodeURIComponent(d.arquivo)}`,
+          { cache: "no-store" },
+        );
+        if (res.ok) {
+          arquivos[d.arquivo] = new Uint8Array(await res.arrayBuffer());
+        } else {
+          falhas.push(d.arquivo);
+        }
+        setZip((z) => (z ? { ...z, feitos: z.feitos + 1 } : z));
+      }
+      if (Object.keys(arquivos).length === 0) {
+        throw new Error("Nenhum dos PDFs está disponível para download.");
+      }
+      const hoje = new Date().toISOString().slice(0, 10);
+      salvarArquivo(`material-oficial-${hoje}.zip`, zipSync(arquivos, { level: 0 }), "application/zip");
+      // Falha parcial é dita, e com o nome de cada arquivo: um zip com seis dos sete
+      // documentos, baixado em silêncio, é alguém confiando num acervo incompleto.
+      setFeedback(
+        falhas.length
+          ? {
+              kind: "error",
+              text: `Zip gerado sem ${falhas.length} documento(s): ${falhas.join(", ")}. Os demais estão no arquivo.`,
+            }
+          : { kind: "success", text: `Zip com ${lista.length} documento(s) gerado.` },
+      );
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Falha ao gerar o zip",
+      });
+    } finally {
+      setZip(null);
+    }
+  }
+
+  async function remover() {
+    if (!aRemover || removendo) return;
+    setRemovendo(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(
+        `/api/material-oficial?arquivo=${encodeURIComponent(aRemover.arquivo)}`,
+        { method: "DELETE" },
+      );
+      const d = await res.json().catch(() => ({}));
+      if (d.documentos) setAcervo((a) => (a ? { ...a, ...d } : a));
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setFeedback({
+        kind: "success",
+        text: `“${aRemover.titulo}” saiu do acervo e os trechos dele foram apagados da base.`,
+      });
+      setARemover(null);
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Falha ao remover o documento",
+      });
+      setARemover(null);
+    } finally {
+      setRemovendo(false);
+    }
+  }
+
+  const documentos = acervo?.documentos ?? material?.documentos ?? [];
+  const doCodigo = new Set(acervo?.doCodigo ?? []);
 
   return (
     <div className="space-y-5">
@@ -1568,23 +1822,270 @@ function TabMaterial({ material }: { material: MaterialOficialResposta | null })
         <BlockHeading
           eyebrow="Acervo"
           title="Os documentos que sustentam as respostas"
-          description="Ficam em material-oficial/, são quebrados em trechos pela ingestão e recuperados a cada mensagem que pede pesquisa. A Ana sabe desta lista: é o que a impede de prometer resposta sobre tema que o acervo não cobre."
+          description="Cada um é quebrado em trechos e recuperado a cada mensagem que pede pesquisa. A Ana conhece esta lista: é o que a impede de prometer resposta sobre tema que o acervo não cobre — e o que faz ela usar o que foi acrescentado."
+          right={
+            documentos.length > 0 ? (
+              <button
+                type="button"
+                onClick={baixarTodos}
+                disabled={!!zip}
+                className={btnGhost}
+              >
+                <Icon name="doc" className="h-4 w-4" />
+                {zip ? `Baixando ${zip.feitos}/${zip.total}…` : "Baixar todos (.zip)"}
+              </button>
+            ) : null
+          }
         />
+
+        {feedback ? (
+          <p
+            className={`mt-4 rounded-xl px-3 py-2 text-xs font-medium ${
+              feedback.kind === "success"
+                ? "border border-ib-success/25 bg-ib-success/8 text-ib-success"
+                : "border border-ib-danger/25 bg-ib-danger/8 text-ib-danger"
+            }`}
+          >
+            {feedback.text}
+          </p>
+        ) : null}
+
+        {documentos.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-ib-danger/30 bg-ib-danger/5 px-3 py-3 text-xs leading-relaxed text-ib-danger">
+            O acervo está vazio. Sem nenhum documento, o agente não tem fonte para requisito,
+            prazo ou procedimento — ele vai acolher, triar e encaminhar tudo ao time jurídico.
+          </p>
+        ) : null}
+
+        {/* ── O QUE AINDA SÓ EXISTE DENTRO DO DEPLOY ──
+            Enquanto houver documento só no repositório, o acervo está em dois lugares com
+            naturezas diferentes: um muda quando a equipe sobe algo, o outro só muda com
+            deploy. O aviso some sozinho depois da sincronização. */}
+        {acervo && acervo.storageDisponivel && acervo.soNoRepositorio > 0 ? (
+          <div className="mt-4 rounded-xl border border-ib-warn/25 bg-ib-warn/8 px-3 py-3">
+            <p className="text-xs font-medium leading-relaxed text-[#9A6212]">
+              {acervo.soNoRepositorio} documento(s) ainda existem só dentro do deploy, e não no
+              Supabase. Eles funcionam, mas somem a cada mudança de infraestrutura e não
+              acompanham o que a equipe sobe.
+            </p>
+            {podeEditar ? (
+              <button
+                type="button"
+                onClick={sincronizar}
+                disabled={sincronizando}
+                className={`mt-2.5 ${btnGhost}`}
+              >
+                <Icon name="bolt" className="h-4 w-4" />
+                {sincronizando ? "Enviando…" : "Enviar ao Supabase"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <ul className="mt-4 divide-y divide-ib-line">
-          {(material?.documentos ?? []).map((d) => (
+          {documentos.map((d) => (
             <li key={d.arquivo} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
               <span className="text-sm font-semibold text-ib-ink">{d.titulo}</span>
               <span className="rounded-full bg-ib-papel px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ib-slate ring-1 ring-inset ring-ib-line">
                 {COLECAO_LABEL[d.colecao] ?? d.colecao}
               </span>
+              {doCodigo.has(d.arquivo) ? null : (
+                <span className="rounded-full bg-ib-bruma px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ib-mar">
+                  Adicionado aqui
+                </span>
+              )}
               <span className="w-full text-xs leading-relaxed text-ib-slate sm:w-auto sm:flex-1">
                 {d.cobre}
               </span>
-              <span className="font-mono text-[11px] text-ib-slate">{d.arquivo}</span>
+              <span className="font-mono text-[11px] text-ib-slate">
+                {d.arquivo}
+                {d.trechos ? ` · ${d.trechos} trechos` : ""}
+                {/* Só o que NÃO está no Supabase é anunciado: "storage" é o estado normal e
+                    marcar o normal treina o olho a ignorar a etiqueta. */}
+                {acervo?.arquivos?.[d.arquivo] === "repositorio" ? " · só no deploy" : ""}
+                {acervo?.arquivos?.[d.arquivo] === "ausente" ? " · sem arquivo" : ""}
+              </span>
+              {/* Link de verdade, e não fetch: o navegador cuida do "Salvar como", da barra
+                  de progresso e do arquivo grande sem passar nada pela memória da página.
+                  Some quando não há arquivo em lugar nenhum — um botão que só entrega 404 é
+                  pior do que a ausência dele. */}
+              {acervo?.arquivos?.[d.arquivo] === "ausente" ? null : (
+                <a
+                  href={`/api/material-oficial/arquivo?arquivo=${encodeURIComponent(d.arquivo)}`}
+                  className="rounded-lg border border-ib-line px-2 py-1 text-[11px] font-medium text-ib-mar transition hover:border-ib-mar/40 hover:bg-ib-bruma/40"
+                >
+                  Baixar
+                </a>
+              )}
+              {podeEditar ? (
+                <button
+                  type="button"
+                  onClick={() => setARemover(d)}
+                  className="rounded-lg border border-ib-line px-2 py-1 text-[11px] font-medium text-ib-danger transition hover:border-ib-danger/40 hover:bg-ib-danger/5"
+                >
+                  Remover
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
+
+        {acervo && !podeEditar ? (
+          <p className="mt-4 text-xs leading-relaxed text-ib-slate">
+            Acrescentar ou remover documento é restrito a administradores — o acervo é a base
+            jurídica de tudo que o agente afirma.
+          </p>
+        ) : null}
       </Card>
+
+      {podeEditar ? (
+        <Card className="p-5">
+          <BlockHeading
+            eyebrow="Acrescentar"
+            title="Subir um documento novo"
+            description="O PDF é lido, quebrado em trechos e vetorizado na hora. A partir do momento em que aparece na lista acima, o agente já responde com base nele."
+          />
+
+          {acervo && !acervo.indexacaoDisponivel ? (
+            <p className="mt-4 rounded-xl border border-ib-warn/25 bg-ib-warn/8 px-3 py-2 text-xs font-medium text-[#9A6212]">
+              A indexação está indisponível (falta o Supabase ou a chave de embeddings). Subir
+              agora recusaria o arquivo — o documento entraria na lista sem o agente conseguir
+              ler nada dele.
+            </p>
+          ) : null}
+
+          <div className="grid gap-4 pt-5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label htmlFor="mat-arquivo" className="text-xs font-semibold text-ib-ink">
+                Arquivo PDF
+              </label>
+              <input
+                ref={inputArquivo}
+                id="mat-arquivo"
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+                className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2 text-sm text-ib-ink file:mr-3 file:rounded-lg file:border-0 file:bg-ib-papel file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ib-ink"
+              />
+              <p
+                className={`mt-1.5 text-[11px] ${grandeDemais ? "font-semibold text-ib-danger" : "text-ib-slate"}`}
+              >
+                {arquivo
+                  ? `${(arquivo.size / 1024 / 1024).toFixed(1)} MB de ${limiteMb} MB`
+                  : `Até ${limiteMb} MB, com texto selecionável — PDF escaneado é recusado, porque o agente não conseguiria ler nada dele.`}
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="mat-titulo" className="text-xs font-semibold text-ib-ink">
+                Título
+              </label>
+              <input
+                id="mat-titulo"
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                placeholder="Cartilha de reunião familiar"
+                className={`mt-1.5 ${inputCls}`}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="mat-colecao" className="text-xs font-semibold text-ib-ink">
+                Tipo
+              </label>
+              <select
+                id="mat-colecao"
+                value={colecao}
+                onChange={(e) => setColecao(e.target.value)}
+                className={`mt-1.5 ${inputCls}`}
+              >
+                <option value="cartilha">Cartilha — linguagem acessível</option>
+                <option value="legislacao">Legislação — texto da lei</option>
+                <option value="doutrina">Doutrina — interpretação</option>
+              </select>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-ib-slate">
+                Cartilha é consultada primeiro; lei e doutrina só quando a pergunta pede o
+                dispositivo.
+              </p>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="mat-cobre" className="text-xs font-semibold text-ib-ink">
+                O que este documento cobre
+              </label>
+              <textarea
+                id="mat-cobre"
+                value={cobre}
+                onChange={(e) => setCobre(e.target.value)}
+                rows={2}
+                placeholder="quem quer trazer cônjuge, filhos ou pais: requisitos, quem pode pedir e o que o pedido exige"
+                className={`mt-1.5 ${areaCls}`}
+              />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-ib-slate">
+                Esta frase vai para o prompt. É por ela que o agente decide usar o documento —
+                escreva em minúsculas, continuando a frase “o acervo cobre…”.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="mat-data" className="text-xs font-semibold text-ib-ink">
+                Atualizado em (opcional)
+              </label>
+              <input
+                id="mat-data"
+                value={atualizadoEm}
+                onChange={(e) => setAtualizadoEm(e.target.value)}
+                placeholder="fevereiro/2026"
+                className={`mt-1.5 ${inputCls}`}
+              />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-ib-slate">
+                Regra migratória muda por portaria. A data acompanha os trechos e ajuda a
+                saber o que precisa ser reconferido.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-ib-line pt-5">
+            <button
+              type="button"
+              onClick={adicionar}
+              disabled={enviando || !arquivo || !titulo.trim() || !cobre.trim() || grandeDemais}
+              className={btnPrimary}
+            >
+              <Icon name="bolt" className="h-4 w-4" />
+              {enviando ? "Lendo e indexando…" : "Adicionar ao acervo"}
+            </button>
+            {enviando ? (
+              <span className="text-xs text-ib-slate">
+                Pode levar um ou dois minutos num PDF grande — não feche a página.
+              </span>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+
+      <ConfirmDialog
+        open={!!aRemover}
+        title="Remover do acervo?"
+        message={
+          <>
+            <strong>{aRemover?.titulo}</strong> sai da lista que o agente conhece e todos os
+            trechos dele são apagados da base de busca. O agente para de responder com base
+            nesse material imediatamente.
+            {aRemover && doCodigo.has(aRemover.arquivo) ? (
+              <>
+                {" "}
+                Este é um dos documentos que vêm com o sistema: o PDF continua no repositório,
+                então dá para reindexá-lo depois se for preciso.
+              </>
+            ) : null}
+          </>
+        }
+        confirmLabel="Remover"
+        loading={removendo}
+        onConfirm={remover}
+        onCancel={() => setARemover(null)}
+      />
     </div>
   );
 }

@@ -20,7 +20,8 @@ import {
   normalizeTechnical,
   normalizeTransferRules,
 } from "@/lib/agent/training";
-import { MATERIAIS, REGRAS_INVIOLAVEIS, blocoMaterialOficial } from "@/lib/agent/material-oficial";
+import { REGRAS_INVIOLAVEIS, blocoMaterialOficial } from "@/lib/agent/material-oficial";
+import { acervoDoPrompt } from "@/lib/agent/acervo";
 import type { FaqItem } from "@/app/api/faq/route";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +36,13 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const repo = getRepository();
-  const [kb, training, briefing, faq, promptCru] = await Promise.all([
+  const [kb, training, briefing, faq, promptCru, acervo] = await Promise.all([
     getKnowledgeBase(),
     getTrainingConfig(),
     repo.getConfig<Record<string, string>>("briefing"),
     repo.getConfig<FaqItem[]>("faq"),
     getPromptCru(),
+    acervoDoPrompt(),
   ]);
   return NextResponse.json({
     persona: kb.persona,
@@ -52,8 +54,10 @@ export async function GET() {
     // O PREVIEW MOSTRA O PROMPT DE VERDADE. Sem o bloco do material oficial ele mostrava
     // menos do que a Ana recebe — e a tela que existe para ensinar o agente estava
     // escondendo justamente a parte que ninguém pode editar.
-    preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
-    materialOficial: { regras: REGRAS_INVIOLAVEIS, documentos: MATERIAIS },
+    preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(acervo),
+    // O acervo que VALE, não a constante do código: com a remoção pelo painel, mostrar os
+    // sete fixos aqui faria a tela listar documento que já saiu do prompt.
+    materialOficial: { regras: REGRAS_INVIOLAVEIS, documentos: acervo },
     // O override legado, quando existe. A prévia acima continua sendo a desta tela — é ela
     // que mostra o efeito do que se edita aqui. O que faltava era dizer que, com esta
     // chave no banco, o agente não está usando essa prévia. Ver getPromptCru().
@@ -261,7 +265,9 @@ export async function PUT(req: NextRequest) {
       // O mesmo prompt que o GET devolve — com o bloco do material oficial. Sem ele,
       // salvar fazia as regras invioláveis SUMIREM do preview que o GET acabara de
       // mostrar, e a tela passava a descrever um agente que não existe.
-      preview: buildSystemPrompt(kb, trainingToOverrides(training)) + blocoMaterialOficial(),
+      preview:
+        buildSystemPrompt(kb, trainingToOverrides(training)) +
+        blocoMaterialOficial(await acervoDoPrompt()),
       // Vai junto para o aviso não sumir depois de salvar: quem acabou de gravar com o
       // override ligado precisa continuar vendo que o agente não está usando isto.
       promptCru: await getPromptCru(),

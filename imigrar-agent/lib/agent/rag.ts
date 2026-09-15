@@ -168,6 +168,78 @@ export async function embeddingDaConsulta(texto: string): Promise<number[] | nul
   }
 }
 
+/**
+ * VETORES EM LOTE — para indexar documento, não para atender.
+ *
+ * A consulta do atendimento é uma frase por vez e tem cache; indexar um PDF são centenas de
+ * trechos, e uma chamada por trecho seria minutos de espera e centenas de requisições. Os
+ * dois provedores aceitam lote nativamente, então o lote é o caminho certo aqui.
+ *
+ * Devolve `null` no lote inteiro em caso de falha, e NÃO cai em vetor parcial: meio
+ * documento indexado é pior que documento nenhum, porque a busca passa a achar metade do
+ * assunto e ninguém descobre pelo resultado.
+ *
+ * Sem cache de propósito: trecho de documento não repete, e encher o cache da consulta com
+ * centenas de trechos jogaria fora justamente as perguntas que se repetem no atendimento.
+ */
+export async function embeddingsDeLote(textos: string[]): Promise<number[][] | null> {
+  if (textos.length === 0) return [];
+  const c = embeddingsConfig;
+  try {
+    if (c.provider === "openai") {
+      if (!c.openaiKey) return null;
+      const inicio = Date.now();
+      const res = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.openaiKey}` },
+        body: JSON.stringify({ model: c.model, input: textos, dimensions: c.dim }),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        console.error("[rag] lote de embeddings falhou:", res.status);
+        await registrarChamada({
+          provedor: "openai", modelo: c.model, tipo: "embedding",
+          duracaoMs: Date.now() - inicio, ok: false, erro: `HTTP ${res.status}`,
+        });
+        return null;
+      }
+      const json = (await res.json()) as {
+        data?: { index?: number; embedding?: number[] }[];
+        usage?: UsoDeTokens;
+      };
+      const { entrada } = tokensDe(json.usage);
+      await registrarChamada({
+        provedor: "openai", modelo: c.model, tipo: "embedding",
+        tokensEntrada: entrada, duracaoMs: Date.now() - inicio, ok: true,
+      });
+      // A API devolve `index`; ordenar por ele é o que garante trecho e vetor casados.
+      const linhas = (json.data ?? [])
+        .slice()
+        .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+        .map((d) => d.embedding);
+      if (linhas.length !== textos.length || linhas.some((v) => !Array.isArray(v))) return null;
+      return linhas as number[][];
+    }
+    if (!c.url) return null;
+    const res = await fetch(`${c.url.replace(/\/+$/, "")}/embed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs: textos, normalize: true }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.error("[rag] lote de embeddings (tei) falhou:", res.status);
+      return null;
+    }
+    const json = (await res.json()) as number[][];
+    if (!Array.isArray(json) || json.length !== textos.length) return null;
+    return json;
+  } catch (err) {
+    console.error("[rag] lote indisponível:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────── busca
 
 export interface BuscaOpcoes {

@@ -112,13 +112,27 @@ pergunta pede. Estas regras valem SEMPRE, inclusive quando nenhum trecho foi ins
  * A lista dos documentos, para o prompt. Fica junto das regras: sem ela a Ana sabe que
  * "existe material oficial" e não sabe DE QUÊ — e passa a encaminhar pergunta que o
  * acervo responde, ou a prometer resposta sobre tema que ele não cobre.
+ *
+ * RECEBE a lista em vez de ler a constante: desde que a tela de treinar acrescenta e
+ * remove documento (ver lib/agent/acervo.ts), o acervo do prompt é o do BANCO, e não os
+ * sete do código. O padrão continua sendo a lista fixa para não quebrar quem chama isto
+ * sem repositório à mão — teste de prompt, prévia, mapa.
  */
-export function blocoDoAcervo(): string {
-  const linhas = MATERIAIS.map((m) => `· ${m.titulo}: ${m.cobre}`).join("\n");
+export function blocoDoAcervo(materiais: MaterialOficial[] = MATERIAIS): string {
+  // ACERVO VAZIO É UM ESTADO POSSÍVEL, e precisa ser dito com palavras.
+  //
+  // Com a remoção pelo painel, alguém pode tirar o último documento. A montagem antiga
+  // produziria "O acervo disponível cobre:" seguido de nada — uma lista vazia que o modelo
+  // lê como ruído e ignora, voltando a responder de memória, que é exatamente o que este
+  // bloco existe para impedir. Vazio tem de virar instrução explícita.
+  if (materiais.length === 0) {
+    return `NÃO HÁ MATERIAL OFICIAL CARREGADO NESTE MOMENTO. Você não tem fonte para nenhuma informação de procedimento, requisito, prazo ou documento. Responda apenas o que é acolhimento e triagem, diga com naturalidade que quem tem essa informação é o time jurídico, e encaminhe.`;
+  }
+  const linhas = materiais.map((m) => `· ${m.titulo}: ${m.cobre}`).join("\n");
   return `O acervo disponível cobre:\n${linhas}\nTema fora dessa lista: diga que não é a sua área e encaminhe ao time.`;
 }
 
 /** O bloco inteiro — regras + acervo. É o que `getSystemPrompt` acrescenta sempre. */
-export function blocoMaterialOficial(): string {
-  return `\n\n${REGRAS_INVIOLAVEIS}\n\n${blocoDoAcervo()}`;
+export function blocoMaterialOficial(materiais?: MaterialOficial[]): string {
+  return `\n\n${REGRAS_INVIOLAVEIS}\n\n${blocoDoAcervo(materiais)}`;
 }

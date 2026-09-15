@@ -6,6 +6,7 @@ import {
   type PromptOverrides,
 } from "@/lib/agent/knowledge";
 import { blocoMaterialOficial } from "@/lib/agent/material-oficial";
+import { acervoDoPrompt } from "@/lib/agent/acervo";
 import {
   DEFAULT_TRAINING,
   buildBehaviorRulesBlock,
@@ -150,7 +151,14 @@ export async function getPromptCru(): Promise<string | null> {
 // Em ambos os casos, o briefing e o FAQ da empresa (do dashboard) são anexados ao final.
 export async function getSystemPrompt(): Promise<string> {
   const raw = await getPromptCru();
-  const [briefingBlock, faqBlock] = await Promise.all([getBriefingBlock(), getFaqBlock()]);
+  const [briefingBlock, faqBlock, acervo] = await Promise.all([
+    getBriefingBlock(),
+    getFaqBlock(),
+    // O acervo do BANCO, não os sete do código: é o que a tela de treinar acrescenta e
+    // remove. Sem isto, subir um documento o indexaria na base e a Ana continuaria dizendo
+    // que o assunto não é a área dela — porque o prompt dela listaria só os sete.
+    acervoDoPrompt(),
+  ]);
   // ═══ O MATERIAL OFICIAL ENTRA SEMPRE, E POR ÚLTIMO ═══
   //
   // Por último porque é a última coisa que o modelo lê antes de responder. E SEMPRE —
@@ -158,7 +166,7 @@ export async function getSystemPrompt(): Promise<string> {
   // equipe reescrever a persona inteira na tela de treinar. O RAG injeta trecho só quando
   // a mensagem pede pesquisa; as regras que impedem a Ana de dar parecer sobre o caso de
   // alguém não podem depender disso. Ver lib/agent/material-oficial.ts.
-  const material = blocoMaterialOficial();
+  const material = blocoMaterialOficial(acervo);
   if (raw) return raw + briefingBlock + faqBlock + material;
   const [kb, training] = await Promise.all([getKnowledgeBase(), getTrainingConfig()]);
   return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material;

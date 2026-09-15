@@ -36,6 +36,26 @@ const securityHeaders = [
 const nextConfig = {
   // Não anuncia o framework no header X-Powered-By.
   poweredByHeader: false,
+
+  // OS SETE PDFs PRECISAM VIAJAR COM A FUNÇÃO DE DOWNLOAD.
+  //
+  // Eles ficam em material-oficial/, na raiz do repositório — um nível acima desta pasta. A
+  // rota os lê por caminho montado em runtime, e o rastreamento de arquivos do Next não vê
+  // caminho montado: sem esta entrada, baixar uma das sete cartilhas funciona perfeitamente
+  // na máquina de quem programou e responde 404 na Vercel, que é o pior jeito de descobrir.
+  //
+  // O escopo é a rota, e não o app inteiro, de propósito: são ~21 MB, e não há razão para
+  // carregá-los dentro de toda função serverless do painel.
+  experimental: {
+    outputFileTracingIncludes: {
+      "/api/material-oficial/arquivo": ["../material-oficial/**/*.pdf"],
+      // A sincronização lê os mesmos PDFs para empurrá-los ao Supabase. Sem esta segunda
+      // entrada ela responderia "arquivo não encontrado" para os sete, justamente no
+      // ambiente onde a sincronização precisa acontecer.
+      "/api/material-oficial/sincronizar": ["../material-oficial/**/*.pdf"],
+    },
+  },
+
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

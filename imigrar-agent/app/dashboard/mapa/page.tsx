@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import { MapaDoAtendimento } from "@/components/mapa/mapa";
 import { getTrainingConfig } from "@/lib/agent/system-prompt";
+import { acervoDoPrompt } from "@/lib/agent/acervo";
 import { ACERVO_DO_MAPA, CENARIOS_FIXOS, CLASSIFICACOES_DO_MAPA, ETAPAS } from "@/lib/agent/mapa";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function MapaPage() {
   const training = await getTrainingConfig().catch(() => null);
+  // O acervo que VALE, e não a constante do código: desde que a tela de treinar remove
+  // documento, um mapa que desenhasse os sete fixos mostraria material que já saiu do
+  // prompt — e este mapa existe justamente para não mentir sobre o agente.
+  const acervo = await acervoDoPrompt().catch(() => ACERVO_DO_MAPA);
 
   // O que a equipe cadastrou, virando cenário. Objeção é "o que ela diz quando ouve X";
   // regra de encaminhamento é "o que faz a conversa sair da Ana e ir para uma pessoa".
@@ -67,7 +72,7 @@ export default async function MapaPage() {
         cenariosFixos={CENARIOS_FIXOS}
         cenariosConfigurados={cenariosConfigurados}
         classificacoes={CLASSIFICACOES_DO_MAPA}
-        acervo={ACERVO_DO_MAPA}
+        acervo={acervo}
       />
     </div>
   );
