@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRepository } from "@/lib/data";
 import { Card, PageHeader, fmtDate } from "@/components/dashboard/ui";
+import { AbasDeConversas } from "@/components/dashboard/abas";
 import BotaoTratar from "./_tratar";
 import type { TipoEventoOperacao } from "@/lib/domain/types";
 
@@ -44,6 +45,7 @@ export default async function AudiosPage({
 
   return (
     <div className="space-y-6">
+      <AbasDeConversas />
       <PageHeader
         eyebrow="Saúde da operação"
         title="Falhas de transcrição"

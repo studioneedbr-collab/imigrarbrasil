@@ -3,6 +3,7 @@ import AutoRefresh from "@/components/dashboard/auto-refresh";
 import { AvisoDeCorte } from "@/components/dashboard/paginacao";
 import { Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import QuadroCrm from "@/components/crm/quadro";
+import { AbasDeAtendimento } from "@/components/dashboard/abas";
 import { getSession } from "@/lib/auth/guard";
 import { normalizarPapel } from "@/lib/auth/papeis";
 import { getRepository } from "@/lib/data";
@@ -46,6 +47,7 @@ export default async function CrmPage() {
 
   return (
     <div className="space-y-4">
+      <AbasDeAtendimento />
       <AutoRefresh seconds={60} />
 
       <PageHeader

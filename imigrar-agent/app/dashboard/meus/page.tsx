@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getRepository } from "@/lib/data";
 import { getSession } from "@/lib/auth/guard";
 import { Card, PageHeader } from "@/components/dashboard/ui";
+import { AbasDeAtendimento } from "@/components/dashboard/abas";
 import { LinhaDaFila } from "@/components/fila/linha";
 import ConcluirLembrete from "./_concluir";
 import FilaDeFollowup from "@/components/followup/fila-de-hoje";
@@ -159,6 +160,7 @@ export default async function MeusAtendimentosPage() {
 
   return (
     <div className="space-y-5">
+      <AbasDeAtendimento />
       <PageHeader
         eyebrow="Acompanhamento"
         title="Meus atendimentos"

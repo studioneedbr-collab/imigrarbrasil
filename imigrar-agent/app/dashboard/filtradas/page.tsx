@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, PageHeader } from "@/components/dashboard/ui";
+import { AbasDeConversas } from "@/components/dashboard/abas";
 import { ChipIdioma } from "@/components/fila/linha";
 import BotaoResgatar from "./_resgatar";
 import { AvisoDeCorte, Paginacao } from "@/components/dashboard/paginacao";
@@ -36,6 +37,7 @@ export default async function FiltradasPage({
 
   return (
     <div className="space-y-6">
+      <AbasDeConversas />
       <AvisoDeCorte corte={corte} />
 
       <PageHeader

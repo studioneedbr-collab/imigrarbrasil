@@ -21,6 +21,7 @@ import {
   CONVERSATION_STATUSES,
 } from "@/components/dashboard/ui";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { AbasDeConversas } from "@/components/dashboard/abas";
 import { atividadeDaConversa } from "@/lib/dashboard/periodo";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, ConversationStatus } from "@/lib/domain/types";
@@ -305,6 +306,9 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
 
   return (
     <div className="space-y-6">
+      {/* A faixa só aparece na operação real: "Ensaios" não é um recorte do que entrou
+          pelo WhatsApp, e oferecer as abas ali seria convidar a sair do ensaio sem dizer. */}
+      {ambiente === "producao" ? <AbasDeConversas /> : null}
       <PageHeader
         eyebrow={ambiente === "teste" ? "Ensaio" : "Atendimento"}
         title={ambiente === "teste" ? "Ensaios" : "Conversas"}

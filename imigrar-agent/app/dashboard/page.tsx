@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AutoRefresh from "@/components/dashboard/auto-refresh";
+import { AbasDeAtendimento } from "@/components/dashboard/abas";
 import { Icon } from "@/components/dashboard/ui";
 import { LinhaDaFila } from "@/components/fila/linha";
 import { Paginacao } from "@/components/dashboard/paginacao";
@@ -257,6 +258,8 @@ export default async function FilaPage({
     <div className="space-y-5">
       <AutoRefresh seconds={30} />
 
+      <AbasDeAtendimento />
+
       {/* CABEÇALHO ENXUTO. A descrição de três linhas explicando quantos blocos a tela
           tem saiu: os blocos agora se anunciam sozinhos, e quem abre esta tela trinta
           vezes por dia não relê a legenda. O que sobrou é o título e para onde ir. */}
@@ -270,10 +273,6 @@ export default async function FilaPage({
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/dashboard/crm" className={btnAtalho}>
-            <Icon name="activity" className="h-4 w-4 text-ib-slate" />
-            CRM
-          </Link>
           <Link href="/dashboard/filtradas" className={btnAtalho}>
             <Icon name="search" className="h-4 w-4 text-ib-slate" />
             Filtradas

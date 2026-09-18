@@ -11,6 +11,7 @@ import {
   SkeletonRows,
   fmtDate,
 } from "@/components/dashboard/ui";
+import { AbasDeConversas } from "@/components/dashboard/abas";
 
 export interface DocumentRow {
   messageId: string;
@@ -58,8 +59,9 @@ export default function DocumentosPage() {
 
   return (
     <div className="space-y-6 pt-6">
+      <AbasDeConversas />
       <PageHeader
-        eyebrow="CRM"
+        eyebrow="Conversas"
         title="Documentos"
         description="Tudo que os clientes, colaboradores e candidatos enviaram pelo WhatsApp — com o conteúdo já lido pelo agente."
       />

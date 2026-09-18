@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/dashboard/ui";
 import { PAPEL_LABEL, normalizarPapel, type Papel } from "@/lib/auth/papeis";
+import { rotaAtiva } from "@/lib/dashboard/abas";
 
 type NavLink = {
   href: string;
@@ -13,6 +14,13 @@ type NavLink = {
   adminOnly?: boolean;
   /** A linha embaixo do nome. Diz o que a tela É, não o que ela faz. */
   nota?: string;
+  /**
+   * As outras rotas que acendem este item — as abas que moram dentro dele.
+   *
+   * Sem isto, abrir "Meus" apagava o item do menu inteiro: nada ficava aceso, e a tela
+   * parecia estar fora do painel. Ver lib/dashboard/abas.ts.
+   */
+  ativoEm?: string[];
 };
 type NavGroup = { section: string | null; links: NavLink[] };
 
@@ -20,7 +28,8 @@ type NavGroup = { section: string | null; links: NavLink[] };
  * O MENU SEGUE A FILA DE PRAZOS.
  *
  * A tela inicial não é uma visão geral: é a fila de trabalho, e ela responde a uma
- * pergunta — o que vence primeiro. Por isso "Fila" é o primeiro item e leva a /dashboard.
+ * pergunta — o que vence primeiro. Por isso "Atendimento" é o primeiro item, leva a
+ * /dashboard e abre na aba Fila.
  *
  * Saíram daqui, com as telas: Propostas, Preços, Orçamento, Funcionários, Clientes,
  * Leads (o Kanban do funil de vendas) e Relatórios de receita. Eram a operação da base
@@ -30,31 +39,40 @@ type NavGroup = { section: string | null; links: NavLink[] };
  */
 const navGroups: NavGroup[] = [
   /*
-   * AS SEÇÕES TÊM NOME, E CADA ITEM DIZ O QUE É.
+   * DUAS ENTRADAS, E AS ABAS DENTRO DELAS.
    *
-   * O menu era um bloco sem título seguido de "Atendimento", e as duas primeiras telas
-   * — Fila e Conversas — não se distinguiam pelo nome. A pergunta que aparecia era
-   * literal: "Fila, Meus atendimentos, Conversas: não sei o que é o quê". As três são
-   * recortes do MESMO dado, e é isso que a linha embaixo do nome precisa dizer:
+   * Aqui havia oito itens para responder duas perguntas. "Fila", "Meus atendimentos",
+   * "CRM" e "Conversas" são quatro recortes do MESMO dado, e a pergunta que aparecia era
+   * literal: "Fila, Meus atendimentos, Conversas: não sei o que é o quê".
    *
-   *   Fila       o que vence primeiro, para todo o time
-   *   Meus       o mesmo recorte, só o que é seu
-   *   Conversas  toda mensagem que entrou, inclusive o que não virou caso
+   * A tentativa anterior foi explicar, com uma linha embaixo de cada nome. Ajudou e não
+   * resolveu, porque o problema não era falta de legenda: item de menu irmão de outro
+   * item de menu parece tela DIFERENTE. Recorte do mesmo assunto se mostra com aba — lado
+   * a lado, onde dá para comparar o que cada um responde.
    *
-   * Quem chega para trabalhar abre a primeira seção. As outras duas são manutenção do
-   * agente e gestão — coisas que se abre de vez em quando, não o dia inteiro.
+   *   Atendimento   Fila (o que vence primeiro) · Meus (o que é seu) · Funil (onde está)
+   *   Conversas     tudo que entrou · filtradas · documentos · áudios não lidos
+   *
+   * As rotas continuam as mesmas, uma por aba: `ativoEm` é o que faz o item do menu
+   * continuar aceso quando a pessoa está numa das abas de dentro.
    */
   {
     section: "Trabalho de hoje",
     links: [
-      { href: "/dashboard", label: "Fila", icon: "bolt", nota: "o que vence primeiro" },
       {
-        href: "/dashboard/meus",
-        label: "Meus atendimentos",
-        icon: "check",
-        nota: "os casos que são seus",
+        href: "/dashboard",
+        label: "Atendimento",
+        icon: "bolt",
+        nota: "a fila, os seus casos e o funil",
+        ativoEm: ["/dashboard/meus", "/dashboard/crm", "/dashboard/atendimentos"],
       },
-      { href: "/dashboard/crm", label: "CRM", icon: "activity", nota: "o funil, por etapa" },
+      {
+        href: "/dashboard/conversations",
+        label: "Conversas",
+        icon: "chat",
+        nota: "tudo que entrou no WhatsApp",
+        ativoEm: ["/dashboard/filtradas", "/dashboard/documentos", "/dashboard/audios"],
+      },
       // Fica no trabalho de hoje, e não em configuração, porque um motivo sem modelo no
       // idioma de alguém não dá erro: dá silêncio. Só quem passa por aqui descobre.
       {
@@ -62,39 +80,6 @@ const navGroups: NavGroup[] = [
         label: "Modelos de follow-up",
         icon: "chat",
         nota: "o que dizemos a quem espera",
-      },
-    ],
-  },
-  {
-    section: "Conversas",
-    links: [
-      {
-        href: "/dashboard/conversations",
-        label: "Conversas",
-        icon: "chat",
-        nota: "tudo que entrou no WhatsApp",
-      },
-      // Auditoria do que o agente descartou. Fica no menu, e não escondida numa aba,
-      // porque um agente que filtra demais só é descoberto por quem revisa isto.
-      {
-        href: "/dashboard/filtradas",
-        label: "Filtradas",
-        icon: "search",
-        nota: "o que o agente descartou",
-      },
-      {
-        href: "/dashboard/documentos",
-        label: "Documentos",
-        icon: "doc",
-        nota: "anexos recebidos",
-      },
-      // Um áudio não transcrito é um lead perdido. Fica no menu, e não escondido numa
-      // aba, porque essa perda não avisa que aconteceu.
-      {
-        href: "/dashboard/audios",
-        label: "Falhas de transcrição",
-        icon: "pulse",
-        nota: "áudios que não foram lidos",
       },
     ],
   },
@@ -154,9 +139,9 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-function isActive(pathname: string, href: string) {
-  if (href === "/dashboard") return pathname === "/dashboard";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, link: NavLink) {
+  if (rotaAtiva(pathname, link.href)) return true;
+  return (link.ativoEm ?? []).some((href) => rotaAtiva(pathname, href));
 }
 
 export default function DashboardNav() {
@@ -232,7 +217,7 @@ export default function DashboardNav() {
           ) : null}
           <div className="flex flex-row flex-wrap gap-1 md:flex-col">
             {group.links.map((link) => {
-              const active = isActive(pathname, link.href);
+              const active = isActive(pathname, link);
               return (
                 <Link
                   key={link.href}
