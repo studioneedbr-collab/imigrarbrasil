@@ -40,6 +40,9 @@ export const env = {
   // Em produção fica vazio se não configurado — e o webhook rejeita tudo (fail-closed),
   // em vez de aceitar um token público conhecido.
   webhookVerifyToken: devOnlyDefault(process.env.WEBHOOK_VERIFY_TOKEN ?? "", "imigrar_webhook_dev"),
+  // Segredo da captura de lead do site (formulário / chat do Danilo). Mesma postura do
+  // webhook: em produção, sem ele configurado a rota recusa tudo em vez de ficar aberta.
+  siteCaptureToken: devOnlyDefault(process.env.SITE_CAPTURE_TOKEN ?? "", "imigrar_site_dev"),
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
 };
 

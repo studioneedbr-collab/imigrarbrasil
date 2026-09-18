@@ -16,6 +16,20 @@ export type LeadStage = "novo"|"qualificado"|"orcado"|"transferido"|"ganho"|"per
 // fornecedor ou um jornalista cai na fila de quem está pedindo ajuda com um visto.
 export type LeadSetor = "comercial"|"operacional"|"rh"|"departamento_pessoal"|"suprimentos"|"diretoria";
 
+/**
+ * POR ONDE ESTE CASO CHEGOU.
+ *
+ * Quatro portas, e nenhuma delas é palpite: cada uma é um caminho de código diferente.
+ * `whatsapp` é o padrão porque durante meses foi a única — as linhas antigas do banco
+ * vieram todas dali, e a migration 031 as marca assim em vez de deixá-las em branco.
+ *
+ * Serve para duas perguntas que o escritório passa a conseguir fazer: "quanto o site
+ * está trazendo?" e "quais destes eu importei da planilha, e quais são atendimento de
+ * verdade?" — esta última, sem resposta, contamina toda métrica de captação no dia
+ * seguinte a uma carga inicial.
+ */
+export type OrigemLead = "whatsapp" | "site" | "importacao" | "manual";
+
 export interface Conversation {
   id: string;
   whatsappNumber: string;
@@ -133,6 +147,8 @@ export interface Lead extends LeadImigracao, PropostaComercial {
   stage: LeadStage;
   score: number;
   setor?: LeadSetor | null;
+  /** Por onde o caso chegou. Ver `OrigemLead`. O detalhe (qual formulário, qual planilha) fica em `notes`. */
+  origem?: OrigemLead | null;
 }
 
 export interface Followup {

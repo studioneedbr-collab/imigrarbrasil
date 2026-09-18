@@ -16,7 +16,8 @@ import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
 import { POR_PAGINA } from "@/lib/fila/paginacao";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
-import type { AtendimentoStatus, EtapaCrm, FunilCrm } from "@/lib/domain/types";
+import { ORIGEM_LABEL } from "@/lib/domain/rotulos";
+import type { AtendimentoStatus, EtapaCrm, FunilCrm, OrigemLead } from "@/lib/domain/types";
 
 /**
  * O CRM.
@@ -78,13 +79,41 @@ export default function QuadroCrm({
   // O card aberto em resumo. Guardamos o ID e não o objeto: depois de assumir, o lead
   // muda (ganha responsável) e um objeto congelado mostraria o estado anterior.
   const [aberto, setAberto] = useState<string | null>(null);
+  /**
+   * POR ONDE O CASO CHEGOU — `null` é "todas", e é o estado inicial.
+   *
+   * Filtra no cliente e não no servidor de propósito: os leads do quadro já estão todos
+   * aqui (a tela carrega a carga inteira, com aviso de corte quando estoura), e uma ida
+   * ao servidor por clique tornaria lento justamente o uso que este filtro tem — alternar
+   * entre "só o que veio do site" e "tudo" algumas vezes seguidas para comparar.
+   */
+  const [origem, setOrigem] = useState<OrigemLead | null>(null);
   const [assumindo, setAssumindo] = useState(false);
 
   const vivos = funis.filter((f) => !f.arquivado);
   const funil = vivos.find((f) => f.id === funilId) ?? funilPadrao(funis);
+  /**
+   * QUANTOS CASOS VIERAM DE CADA PORTA. Conta sobre TODOS os leads, e não sobre os
+   * filtrados — senão o número ao lado de cada opção mudaria conforme a opção escolhida,
+   * e um contador que muda de valor quando você olha para ele não conta nada.
+   */
+  const porOrigem = useMemo(() => {
+    const conta = new Map<OrigemLead, number>();
+    for (const l of leads) {
+      const o = (l.origem ?? "whatsapp") as OrigemLead;
+      conta.set(o, (conta.get(o) ?? 0) + 1);
+    }
+    return conta;
+  }, [leads]);
+
+  const filtrados = useMemo(
+    () => (origem ? leads.filter((l) => (l.origem ?? "whatsapp") === origem) : leads),
+    [leads, origem],
+  );
+
   const colunas = useMemo(
-    () => montarQuadro(leads, funil, etapas, agora),
-    [leads, funil, etapas, agora],
+    () => montarQuadro(filtrados, funil, etapas, agora),
+    [filtrados, funil, etapas, agora],
   );
   const doFunil = etapas.filter((e) => e.funilId === funil.id && !e.arquivada);
   const semDesfecho = faltamDesfechos(doFunil);
@@ -284,6 +313,36 @@ export default function QuadroCrm({
         ) : null}
       </div>
 
+      {/* ─── DE ONDE OS CASOS VIERAM ───
+          Aparece só quando há mais de uma porta na tela. Enquanto o WhatsApp for a única
+          origem, um filtro com uma opção só é um controle que não filtra nada — e um
+          controle inerte ensina a ignorar a barra inteira. Ele nasce no dia em que a
+          primeira carga da planilha ou o primeiro contato do site entram. */}
+      {porOrigem.size > 1 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-ib-slate">
+            Chegou por
+          </span>
+          <ChipDeOrigem
+            ativo={origem === null}
+            rotulo="Todas"
+            quantos={leads.length}
+            onClick={() => setOrigem(null)}
+          />
+          {(Object.keys(ORIGEM_LABEL) as OrigemLead[])
+            .filter((o) => porOrigem.has(o))
+            .map((o) => (
+              <ChipDeOrigem
+                key={o}
+                ativo={origem === o}
+                rotulo={ORIGEM_LABEL[o]}
+                quantos={porOrigem.get(o) ?? 0}
+                onClick={() => setOrigem((atual) => (atual === o ? null : o))}
+              />
+            ))}
+        </div>
+      ) : null}
+
       {funil.descricao ? (
         <p className="text-xs text-ib-slate">{funil.descricao}</p>
       ) : null}
@@ -443,5 +502,42 @@ export default function QuadroCrm({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * UMA OPÇÃO DO FILTRO DE ORIGEM.
+ *
+ * O número ao lado não é enfeite: é ele que responde a pergunta que o filtro levanta
+ * ("quanto o site está trazendo?") sem obrigar ninguém a clicar em cada opção e contar
+ * card na tela.
+ */
+function ChipDeOrigem({
+  ativo,
+  rotulo,
+  quantos,
+  onClick,
+}: {
+  ativo: boolean;
+  rotulo: string;
+  quantos: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition ${
+        ativo
+          ? "bg-ib-mar text-white"
+          : "bg-white text-ib-slate ring-1 ring-inset ring-ib-line hover:text-ib-ink"
+      }`}
+    >
+      {rotulo}
+      <span className={`font-mono tabular-nums ${ativo ? "opacity-80" : "opacity-60"}`}>
+        {quantos}
+      </span>
+    </button>
   );
 }

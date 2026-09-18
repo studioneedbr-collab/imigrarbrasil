@@ -1,5 +1,12 @@
 import { ChipIdioma, Nacionalidade } from "@/components/fila/linha";
-import { AINDA_NAO_AJUDA, PRAZO_TIPO_LABEL, desde, paraQuando, rotuloContato } from "@/lib/domain/rotulos";
+import {
+  AINDA_NAO_AJUDA,
+  ORIGEM_LABEL,
+  PRAZO_TIPO_LABEL,
+  desde,
+  paraQuando,
+  rotuloContato,
+} from "@/lib/domain/rotulos";
 import { MOTIVO_ESPERA_LABEL, type MotivoEspera } from "@/lib/followup/motivos";
 import {
   diasDoRelogio,
@@ -83,6 +90,20 @@ export function CardDoAtendimento({
         {!contato.conhecido ? (
           <span className="shrink-0 rounded bg-ib-papel px-1 py-0.5 text-[10px] font-medium text-ib-slate ring-1 ring-inset ring-ib-line">
             sem nome ainda
+          </span>
+        ) : null}
+        {/* DE ONDE ESTE CASO VEIO — e só quando NÃO veio do WhatsApp.
+            Carimbar "WhatsApp" em todo card seria escrever a mesma palavra dezenas de
+            vezes numa tela em que o espaço é o recurso escasso. O chip existe para
+            responder "por que este aqui é diferente?": quem veio do site nunca escreveu
+            para o nosso número, e quem veio de uma planilha nunca conversou com ninguém —
+            as duas coisas mudam o que se faz ao pegar o caso. */}
+        {lead.origem && lead.origem !== "whatsapp" ? (
+          <span
+            title={`Chegou por: ${ORIGEM_LABEL[lead.origem]}`}
+            className="shrink-0 rounded bg-ib-bruma px-1 py-0.5 text-[10px] font-medium text-ib-carimbo ring-1 ring-inset ring-ib-mar/20"
+          >
+            {ORIGEM_LABEL[lead.origem]}
           </span>
         ) : null}
       </div>

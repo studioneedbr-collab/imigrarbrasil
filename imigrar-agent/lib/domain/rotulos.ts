@@ -5,7 +5,14 @@
 // detalhe, na aba de filtradas e nas métricas — quatro grafias diferentes da mesma
 // coisa é como um time deixa de confiar no painel.
 
-import type { AtendimentoStatus, Classificacao, Intencao, MotivoPerda, PrazoTipo } from "@/lib/domain/types";
+import type {
+  AtendimentoStatus,
+  Classificacao,
+  Intencao,
+  MotivoPerda,
+  OrigemLead,
+  PrazoTipo,
+} from "@/lib/domain/types";
 import { formatarTelefone } from "@/lib/whatsapp/telefone";
 import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 
@@ -28,6 +35,14 @@ export const CLASSIFICACAO_AJUDA: Record<Classificacao, string> = {
   DPU: "Perfil de gratuidade — encaminhado à Defensoria Pública da União.",
   CURIOSO: "Perguntou por curiosidade, sem caso concreto.",
   FORA_ESCOPO: "Outro país de destino, ou outra área do direito.",
+};
+
+/** Por onde o caso chegou, na tela. Ver `OrigemLead`. */
+export const ORIGEM_LABEL: Record<OrigemLead, string> = {
+  whatsapp: "WhatsApp",
+  site: "Site",
+  importacao: "Importado",
+  manual: "Cadastrado à mão",
 };
 
 export const ATENDIMENTO_LABEL: Record<AtendimentoStatus, string> = {

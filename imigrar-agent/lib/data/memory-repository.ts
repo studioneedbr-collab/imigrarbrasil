@@ -222,6 +222,9 @@ export class MemoryRepository implements Repository {
       whatsappNumber: conv?.whatsappNumber ?? "", status: "new",
       createdAt: now(), updatedAt: now(),
       stage: "novo", score: 0,
+      // A MESMA PORTA PADRÃO DO BANCO (migration 031): quem não diz de onde veio, veio
+      // do WhatsApp — que é a única porta que cria lead sem passar origem.
+      origem: "whatsapp",
       temPrazoCorrendo: false, atendimentoStatus: "novo",
     };
     // Datas caem fora: este é o caminho do agente — prazo processual e o relógio do

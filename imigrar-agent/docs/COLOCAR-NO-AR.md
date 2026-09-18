@@ -189,6 +189,24 @@ Qualquer `false` aí é um passo acima que não terminou.
 
 ---
 
+## 6b. Captura do site (opcional, mas é um passo de instalação)
+
+O formulário e o chat do site entram pela rota `/api/captura/site`, e o caso cai na
+primeira etapa do funil. Ela depende de um segredo, e **em produção, sem o segredo
+configurado, ela recusa tudo** — a mesma postura do webhook, pela mesma razão: uma porta
+que cria caso na fila sem prova nenhuma fica à mercê de quem descobrir a URL.
+
+1. Gere um segredo (`openssl rand -hex 24`) e grave como `SITE_CAPTURE_TOKEN` na Vercel.
+2. Passe ao desenvolvedor do site o mesmo segredo e
+   [docs/CAPTURA-DO-SITE.md](CAPTURA-DO-SITE.md) — é o contrato inteiro, com exemplo.
+3. Só se o site for chamar a rota de dentro do navegador: liste os domínios em
+   `SITE_CAPTURE_ORIGINS`. O caminho recomendado é o servidor do site chamar a rota, porque
+   no navegador o token fica à vista no código-fonte da página.
+
+Enquanto isso não for feito, nada quebra: o site continua como está e a rota responde 503.
+
+---
+
 ## 7. Primeiro acesso
 
 `https://agente.imigrarbrasil.com.br/setup` cria o administrador (senha de no mínimo 12 caracteres). A
