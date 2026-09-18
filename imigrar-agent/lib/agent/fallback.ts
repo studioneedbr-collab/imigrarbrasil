@@ -22,11 +22,21 @@ import { executeTool } from "@/lib/agent/tools";
 import { detectTransfer } from "@/lib/agent/transfer";
 import { findObjection } from "@/lib/agent/knowledge";
 import { getTrainingConfig } from "@/lib/agent/system-prompt";
-import { CASO_JURIDICO, EMERGENCIA, PEDIU_HUMANO } from "@/lib/agent/transfer-gate";
+import {
+  CASO_JURIDICO,
+  EMERGENCIA,
+  PEDIDO_DE_CONFIRMACAO,
+  PEDIU_HUMANO,
+} from "@/lib/agent/transfer-gate";
 import { ehFechamentoCordial } from "@/lib/agent/anti-loop";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
 import { idiomaDaConversa } from "@/lib/agent/idioma";
-import { mensagemSemConteudo, lerCaso, type CasoTriagem } from "@/lib/agent/triagem";
+import {
+  mensagemSemConteudo,
+  lerCaso,
+  nomeDaResposta,
+  type CasoTriagem,
+} from "@/lib/agent/triagem";
 import { semAcento } from "@/lib/agent/training";
 import type { AgentTurn, ToolCallTrace, AgentRunResult } from "@/lib/agent/runner";
 
@@ -143,6 +153,19 @@ type Passo = {
  * mais mudam o desfecho, e eram exatamente as que ninguém perguntava.
  */
 const PASSOS: Passo[] = [
+  {
+    // O NOME VEM PRIMEIRO. Ele não estava nesta lista, e o resultado era que este caminho
+    // NUNCA perguntava o nome: a ficha chegava ao advogado sem saber com quem ele ia
+    // falar, ou a pergunta aparecia lá no fim, quando o portão de encaminhamento cobrava.
+    // A ordem da abertura (nome → nacionalidade → onde está) é a da base de conhecimento.
+    falta: (c) => !c.nome,
+    pergunta: {
+      pt: "Antes de mais nada, como você se chama?",
+      es: "Antes que nada, ¿cómo te llamas?",
+      en: "Before anything else, what's your name?",
+    },
+    marca: /como voc[êe] se chama|c[óo]mo te llamas|what'?s your name/i,
+  },
   {
     falta: (c) => !c.nacionalidade,
     pergunta: {
@@ -522,7 +545,17 @@ export async function runFallback({
   // vem agora — e não uma posição guardada em lugar nenhum, que sairia de sincronia com o
   // que a pessoa já contou.
   const caso = lerCaso(allUserText);
-  const semNovidade = turnosSemNovidade(mensagensDaPessoa);
+  // O NOME RESPONDIDO SECO. `lerCaso` lê só o que a pessoa escreveu, e ali "Maria" é uma
+  // palavra solta como outra qualquer. Quem sabe que aquilo é um nome é a pergunta que
+  // veio antes — e ela está no histórico, não no texto dela. Sem isto, a pessoa responde
+  // o nome, o caso continua sem nome e a pergunta volta no turno seguinte.
+  const nomesRespondidos = nomesPorMensagem(history);
+  if (!caso.nome) caso.nome = [...nomesRespondidos].reverse().find(Boolean);
+  // E RESPONDER O NOME É NOVIDADE. A leitura de novidade relê o caso só pelo que a pessoa
+  // escreveu; para ela, "Maria" não acrescenta nada. O efeito era o pior possível: no
+  // turno em que a pessoa acabava de se apresentar, a conversa era encerrada como quem
+  // "só queria informação". Por isso os nomes entram na assinatura junto com o caso.
+  const semNovidade = turnosSemNovidade(mensagensDaPessoa, nomesRespondidos);
 
   // O idioma já gravado no contato é a rede para quando a mensagem de agora for curta
   // demais para identificar ("ok", "sim") — quem escreveu quatro mensagens em espanhol
@@ -558,7 +591,23 @@ export async function runFallback({
     // A tool tem portão próprio (transfer-gate): se ela segurou, ninguém foi chamado e
     // dizer que foi seria deixar uma pessoa aflita esperando um retorno que não existe.
     const passou = (result as { ok?: boolean })?.ok !== false;
-    if (passou) return { reply: `${texto}\n\n${ENCAMINHOU[fala]}`, toolCalls };
+    if (passou) {
+      // A PERGUNTA SAI QUANDO A RESPOSTA JÁ VEIO. As respostas de encaminhamento terminam
+      // pedindo autorização ("Posso passar o seu contato agora?") — e logo abaixo vinha
+      // "Já deixei o seu caso com o nosso time jurídico". Na mesma mensagem: pede licença
+      // e se responde sozinha.
+      //
+      // Não é deselegância de texto. Quem lê entende que foi passado adiante sem ter dito
+      // sim, e é justamente esse tipo de conversa que faz alguém parar de contar o que
+      // importa (ver o caso da Ana Rodríguez em lib/agent/transfer-gate.ts). Nestes
+      // caminhos o encaminhamento é o certo — risco, prazo correndo, pedido explícito —,
+      // então o que sai é a substância mais o aviso, sem a pergunta que já não cabe.
+      const semPergunta = semAPerguntaDeAutorizacao(texto);
+      return {
+        reply: semPergunta ? `${semPergunta}\n\n${ENCAMINHOU[fala]}` : ENCAMINHOU[fala],
+        toolCalls,
+      };
+    }
     // O portão segurou: ninguém foi chamado, então a conversa continua aqui. Mas UMA
     // PERGUNTA POR VEZ — se a resposta já termina perguntando ("quer que eu peça para
     // eles falarem com você?"), emendar a pergunta da triagem manda duas de uma vez, que
@@ -694,6 +743,40 @@ function proximaPergunta(caso: CasoTriagem, fala: Fala, jaDisseAlgo: string[]): 
 }
 
 /**
+ * O TEXTO SEM A PERGUNTA DE AUTORIZAÇÃO DO FINAL.
+ *
+ * Corta só a ÚLTIMA frase, e só quando ela é o pedido de autorização — as respostas são
+ * editáveis em /dashboard/treinar, e cortar por posição fixa apagaria o que a equipe
+ * escreveu. Se não sobrar nada, quem chama usa o aviso sozinho.
+ */
+function semAPerguntaDeAutorizacao(texto: string): string {
+  const frases = texto.trim().split(/(?<=[.!?])\s+/);
+  const ultima = frases[frases.length - 1]?.trim() ?? "";
+  if (frases.length > 1 && ultima.endsWith("?") && PEDIDO_DE_CONFIRMACAO.test(ultima)) {
+    return frases.slice(0, -1).join(" ").trim();
+  }
+  return texto.trim();
+}
+
+/**
+ * O NOME QUE CADA MENSAGEM DA PESSOA RESPONDEU — uma posição por mensagem dela, alinhada
+ * com `mensagensDaPessoa`.
+ *
+ * É uma lista, e não um nome só, porque ela tem dois leitores: o caso (que quer a
+ * apresentação mais recente — se alguém corrigiu o próprio nome, é a correção que vai
+ * para a ficha) e a leitura de novidade, que precisa saber em QUAL turno o nome chegou.
+ */
+function nomesPorMensagem(history: AgentTurn[]): (string | undefined)[] {
+  const nomes: (string | undefined)[] = [];
+  for (let i = 0; i < history.length; i++) {
+    if (history[i].role !== "user") continue;
+    const anterior = i > 0 && history[i - 1].role === "assistant" ? history[i - 1].content : "";
+    nomes.push(nomeDaResposta(anterior, history[i].content));
+  }
+  return nomes;
+}
+
+/**
  * Quantas mensagens seguidas da pessoa não acrescentaram NADA ao caso.
  *
  * É como o "não respondeu duas perguntas seguidas" do prompt vira número. A conta é feita
@@ -701,13 +784,19 @@ function proximaPergunta(caso: CasoTriagem, fala: Fala, jaDisseAlgo: string[]): 
  * caso que ler as N-1, aquela mensagem não trouxe nada. Não depende de guardar estado, e
  * por isso não sai de sincronia quando a pessoa responde três coisas de uma vez.
  */
-function turnosSemNovidade(mensagensDaPessoa: string[]): number {
-  const assinatura = (t: string) => JSON.stringify(lerCaso(t));
+function turnosSemNovidade(
+  mensagensDaPessoa: string[],
+  /** O nome que cada mensagem respondeu, quando respondeu. Ver `nomesPorMensagem`. */
+  nomesRespondidos: (string | undefined)[] = [],
+): number {
+  const assinatura = (ate: number) =>
+    JSON.stringify([
+      lerCaso(mensagensDaPessoa.slice(0, ate).join("  ")),
+      [...nomesRespondidos.slice(0, ate)].reverse().find(Boolean) ?? null,
+    ]);
   let contagem = 0;
   for (let i = mensagensDaPessoa.length; i > 0; i--) {
-    const ate = mensagensDaPessoa.slice(0, i).join("  ");
-    const antes = mensagensDaPessoa.slice(0, i - 1).join("  ");
-    if (assinatura(ate) !== assinatura(antes)) break;
+    if (assinatura(i) !== assinatura(i - 1)) break;
     contagem++;
   }
   return contagem;

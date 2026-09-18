@@ -277,6 +277,8 @@ function titleCase(s: string): string {
 export type Entrada = "com_controle" | "sem_controle";
 
 export interface CasoTriagem {
+  /** O nome dela. É o primeiro dos três da abertura, e era o que mais faltava na ficha. */
+  nome?: string;
   nacionalidade?: string;
   ondeEsta?: string;
   entrada?: Entrada;
@@ -388,6 +390,7 @@ export function lerCaso(textoDaConversa: string): CasoTriagem {
   const slots = extractSlots(t);
 
   const caso: CasoTriagem = {
+    nome: slots.name,
     nacionalidade: slots.nacionalidade,
     ondeEsta: slots.ondeEsta,
     objetivo: slots.caminhos,
@@ -432,19 +435,154 @@ function frasePerto(texto: string, termo: RegExp, negacao: RegExp): boolean {
   return frase ? negacao.test(frase) : false;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   O NOME — o primeiro dos três da abertura, e o que mais faltava na ficha
+
+   A regra do atendimento sempre foi pedir o nome logo no começo. O que acontecia na
+   prática era o contrário: a Ana entrevistava a pessoa inteira e só pedia o nome no fim,
+   já na hora de passar o caso — porque o portão de encaminhamento (lib/agent/tools.ts)
+   devolve "falta: o nome dela" e é ali que o modelo descobre o buraco.
+
+   Duas coisas produziam esse buraco, e as duas estão aqui:
+
+   1. A pessoa RESPONDIA o nome e a ficha não via. A leitura só reconhecia abertura
+      ("meu nome é Maria"), e quem responde "qual é o seu nome?" no WhatsApp responde
+      "Maria" — seco. O nome não entrava, o portão continuava cobrando e a Ana perguntava
+      de novo mais adiante. É o "ela pede o nome lá depois da conversa" relatado pelo time.
+   2. "Sou a venezuelana que entrou por Pacaraima" virava o nome "Venezuelana Que". Nome
+      errado na ficha é pior do que nome nenhum: ninguém desconfia dele, e alguém liga
+      chamando a pessoa por um gentílico.
+
+   `nomePlausivel` é o filtro único dos dois caminhos — o que vem de abertura e o que vem
+   como resposta à pergunta. Ele recusa em vez de chutar: ficha sem nome o time preenche,
+   ficha com nome errado ninguém corrige.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Sem acento e em caixa baixa, para a lista de recusa não precisar de variante. */
+function chave(palavra: string): string {
+  return palavra.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** Conectores de nome composto: não contam como palavra, e não vão para a ficha. */
+const CONECTORES_DE_NOME = new Set(["da", "de", "do", "das", "dos", "e", "del", "la", "van", "von", "bin", "al"]);
+
+/**
+ * O que chega no lugar do nome e NÃO é nome: saudação, cortesia, confirmação e as
+ * palavras da própria pergunta. Tudo que estiver aqui derruba a leitura inteira.
+ */
+const NAO_E_NOME = new Set(
+  [
+    // saudação e cortesia, nos três idiomas do atendimento
+    "oi", "ola", "opa", "eai", "bom", "boa", "dia", "tarde", "noite", "tudo", "bem", "obrigado",
+    "obrigada", "obg", "valeu", "por", "favor", "hola", "buenas", "buenos", "dias", "tardes",
+    "noches", "gracias", "hello", "hi", "hey", "good", "morning", "afternoon", "evening", "thanks",
+    "thank", "you", "please",
+    // confirmação e negação
+    "sim", "nao", "ok", "okay", "claro", "certo", "certa", "isso", "entendi", "entendido", "si",
+    "vale", "yes", "no", "sure",
+    // as palavras da própria pergunta, quando a pessoa a repete
+    "meu", "minha", "nome", "chamo", "chamar", "sou", "eu", "me", "mi", "nombre", "llamo", "soy",
+    "my", "name", "is", "im", "am", "call", "qual", "quem", "fala", "aqui", "senhor", "senhora",
+    "sr", "sra", "dona", "dono", "doutor", "doutora", "dr", "dra",
+    // as respostas que aparecem no lugar do nome e são outra coisa
+    "estou", "esta", "moro", "vivo", "cheguei", "preciso", "quero", "ajuda", "visto", "refugio",
+    "residencia", "documento", "passaporte", "brasil", "brazil", "advogado", "abogado",
+  ].map(chave),
+);
+
+/**
+ * O texto parece o nome de uma pessoa? Devolve o nome tratado, ou `undefined`.
+ *
+ * Até dois nomes vão para a ficha (o primeiro e o seguinte), que é o que o time usa para
+ * chamar alguém — sobrenome longo completo é trabalho do cadastro, não da triagem.
+ */
+export function nomePlausivel(bruto: string): string | undefined {
+  // Emoji, número e pontuação saem antes da contagem: "Maria 😊" e "Maria." são o nome.
+  //
+  // A limpeza tira o que NÃO é letra em vez de manter uma lista de letras aceitas. A
+  // diferença aparece em nome em alfabeto árabe, cirílico ou amárico — este atendimento
+  // recebe os três —, que uma classe `[A-Za-zÀ-ú]` apagaria inteiro. Apóstrofo e hífen
+  // ficam: D'Angelo e Marie-Claire são o nome da pessoa, não pontuação.
+  const limpo = (bruto ?? "")
+    // dígito, sublinhado e a pontuação ASCII, menos ' e -
+    .replace(/[\d!-&(-,.\/:-@[-^_`{-~]/g, " ")
+    // emoji e símbolos (inclusive os pares substitutos, que é como emoji chega aqui)
+    .replace(/[\u2000-\u2BFF\u3000-\u303F\uD800-\uDFFF\uFE00-\uFE0F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!limpo) return undefined;
+
+  const palavras = limpo.split(" ");
+  // Frase é frase, não nome. Quem responde cinco palavras está contando outra coisa.
+  if (palavras.length > 4) return undefined;
+
+  const uteis = palavras.filter((p) => !CONECTORES_DE_NOME.has(chave(p)));
+  if (!uteis.length || uteis.length > 3) return undefined;
+
+  for (const p of uteis) {
+    const k = chave(p);
+    if (k.length < 2 || k.length > 20) return undefined;
+    if (NAO_E_NOME.has(k)) return undefined;
+  }
+
+  // Gentílico não é nome. "Sou venezuelana" respondido à pergunta do nome é a
+  // nacionalidade, e ela já tem o seu campo.
+  if (NACIONALIDADES.some(([re]) => re.test(limpo))) return undefined;
+
+  return titleCase(uteis.slice(0, 2).join(" "));
+}
+
+/** Abertura de apresentação, nos três idiomas. O nome vem logo depois dela. */
+const ABERTURA_DE_NOME =
+  /(?:meu nome (?:é|eh|e)|me chamo|sou (?:o|a)|aqui (?:é|eh|quem fala é)|my name is|mi nombre es|me llamo)\s+([A-Za-zÀ-ú]+(?:\s+[A-Za-zÀ-ú]+)?)/i;
+
+/**
+ * A ÚLTIMA MENSAGEM DA ANA PERGUNTOU O NOME?
+ *
+ * Reconhece a pergunta pelas formas em que ela realmente sai — inclusive a forma educada
+ * ("como posso te chamar?"), que é a que o modelo mais usa.
+ */
+export const PERGUNTOU_O_NOME =
+  /\b(?:seu nome|teu nome|o seu nome|qual (?:é |eh )?o nome|como (?:voc[êe] )?se chama|como (?:eu )?(?:te |lhe )?(?:chamo|posso chamar)|posso (?:te )?chamar|tu nombre|su nombre|c[óo]mo te llamas|c[óo]mo se llama|your name|what'?s your name|may i (?:have|ask) your name)\b/i;
+
+/**
+ * O nome que veio COMO RESPOSTA à pergunta da Ana.
+ *
+ * Só roda quando a pergunta anterior foi essa — é o contexto que permite aceitar uma
+ * palavra solta como nome sem transformar toda mensagem curta da conversa em candidata.
+ */
+export function nomeDaResposta(
+  perguntaDoAgente: string,
+  resposta: string,
+): string | undefined {
+  if (!PERGUNTOU_O_NOME.test(perguntaDoAgente ?? "")) return undefined;
+  const bruto = (resposta ?? "").trim();
+  if (!bruto || mensagemSemConteudo(bruto)) return undefined;
+
+  // A apresentação completa continua valendo, e vem primeiro: "meu nome é Maria Silva".
+  const abertura = bruto.match(ABERTURA_DE_NOME)?.[1];
+  const daAbertura = abertura ? nomePlausivel(abertura) : undefined;
+  if (daAbertura) return daAbertura;
+
+  // O resto é a resposta seca — "Maria", "Maria Silva", "sou Maria", "é Maria mesmo".
+  // A saudação de entrada e o verbo de apresentação saem antes da leitura.
+  const semAbertura = bruto.replace(
+    /^(?:\s*(?:ol[áa]|oi|opa|hola|hi|hello)[,!.\s]+)?(?:(?:meu |mi )?nome (?:é|eh|e|es)|me chamo|me llamo|my name is|sou(?: o| a)?|soy|i'?m|i am|it'?s|[ée]|eh|es)\s+/i,
+    "",
+  );
+  return nomePlausivel(semAbertura);
+}
+
 export function extractSlots(raw: string): TriagemSlots {
   const texto = raw ?? "";
   const slots: TriagemSlots = {};
 
-  // Nome — as mesmas aberturas de sempre, que independem de domínio.
-  const nameMatch = texto.match(
-    /(?:meu nome (?:é|eh|e)|me chamo|sou (?:o|a)|aqui (?:é|eh|quem fala é)|my name is|mi nombre es|me llamo)\s+([A-Za-zÀ-ú]+(?:\s+[A-Za-zÀ-ú]+)?)/i,
-  );
-  if (nameMatch) {
-    const connectors = new Set(["da", "de", "do", "das", "dos", "e", "na", "no", "a", "o"]);
-    const parts = nameMatch[1].split(/\s+/).filter((w) => !connectors.has(w.toLowerCase()));
-    if (parts.length) slots.name = titleCase(parts.slice(0, 2).join(" "));
-  }
+  // Nome — as mesmas aberturas de sempre, agora passando pelo filtro que recusa
+  // gentílico e cortesia. Ver o bloco acima: "sou a venezuelana que entrou por Pacaraima"
+  // virava o nome "Venezuelana Que".
+  const abertura = texto.match(ABERTURA_DE_NOME)?.[1];
+  const nome = abertura ? nomePlausivel(abertura) : undefined;
+  if (nome) slots.name = nome;
 
   const email = texto.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
   if (email) slots.email = email[0].toLowerCase();

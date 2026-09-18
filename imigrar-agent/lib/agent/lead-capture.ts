@@ -10,7 +10,7 @@
 // Nunca sobrescreve o que já está gravado (o que veio da tool ou da mão de um atendente
 // vale mais que a heurística): só preenche buraco.
 
-import { extractSlots, semNumeroDeDocumento } from "@/lib/agent/triagem";
+import { extractSlots, nomeDaResposta, semNumeroDeDocumento } from "@/lib/agent/triagem";
 import {
   classificarAutomatico,
   detectarSinalDePrazo,
@@ -32,11 +32,29 @@ export { qualificacaoFaltando, type DossieFaltando } from "@/lib/domain/ficha";
 export function capturarDadosDoLead(
   textoDoCliente: string,
   lead: Lead | null,
+  /**
+   * O ÚLTIMO TURNO, em separado — é o que permite ler a resposta seca.
+   *
+   * `textoDoCliente` é a conversa inteira colada, e nela "Maria" é uma palavra solta no
+   * meio de tudo. Quem responde "qual é o seu nome?" no WhatsApp responde exatamente
+   * isso: uma palavra. Sem saber QUAL foi a pergunta anterior não dá para aceitá-la sem
+   * transformar todo "sim" e todo "Boa Vista" em nome de gente.
+   *
+   * Era por aqui que o nome se perdia: a pessoa respondia, a ficha continuava vazia, o
+   * portão de encaminhamento seguia cobrando e a Ana repetia a pergunta lá no fim.
+   */
+  ultimoTurno?: { perguntaDoAgente?: string | null; mensagem?: string | null },
 ): Partial<Lead> | null {
   const slots = extractSlots(textoDoCliente);
   const patch: Partial<Lead> = {};
 
+  const nomeRespondido =
+    !lead?.contactName && !slots.name && ultimoTurno?.perguntaDoAgente && ultimoTurno?.mensagem
+      ? nomeDaResposta(ultimoTurno.perguntaDoAgente, ultimoTurno.mensagem)
+      : undefined;
+
   if (slots.name && !lead?.contactName) patch.contactName = slots.name;
+  else if (nomeRespondido) patch.contactName = nomeRespondido;
   if (slots.email && !lead?.email) patch.email = slots.email;
   if (slots.nacionalidade && !lead?.clientType) patch.clientType = slots.nacionalidade;
   if (slots.ondeEsta && !lead?.region) patch.region = slots.ondeEsta;

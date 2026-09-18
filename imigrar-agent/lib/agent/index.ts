@@ -9,6 +9,7 @@ import { avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-g
 import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
+import { PERGUNTOU_O_NOME } from "@/lib/agent/triagem";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
 import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
@@ -240,6 +241,10 @@ export async function respondToConversation(
   const userTurns = rawMsgs.filter((m) => m.role === "user").length;
   const lastUserText = [...rawMsgs].reverse().find((m) => m.role === "user")?.content ?? "";
   const allUserText = rawMsgs.filter((m) => m.role === "user").map((m) => m.content).join("  ");
+  // A ÚLTIMA FALA DA ANA. Sobe para cá porque agora tem dois leitores: a captura do lead
+  // (para ler o nome respondido seco) e o portão de confirmação, mais abaixo.
+  const ultimaRespostaDoAgente =
+    [...rawMsgs].reverse().find((m) => m.role === "assistant")?.content ?? "";
 
   // O DOSSIÊ NÃO DEPENDE DO MODELO LEMBRAR DA TOOL. Quando o DeepSeek não chama
   // registrar_dados_lead — e ele esquece direto —, o painel ficava em "Coletando…"
@@ -248,7 +253,10 @@ export async function respondToConversation(
   // que está vazio.
   let knownLead = await repo.getLeadByConversation(conversationId);
   try {
-    const patch = capturarDadosDoLead(allUserText, knownLead);
+    const patch = capturarDadosDoLead(allUserText, knownLead, {
+      perguntaDoAgente: ultimaRespostaDoAgente,
+      mensagem: lastUserText,
+    });
     if (patch) knownLead = await repo.upsertLead(conversationId, patch);
   } catch (err) {
     console.error("[agent] captura automática do lead falhou:", err instanceof Error ? err.message : err);
@@ -294,8 +302,6 @@ export async function respondToConversation(
   // caso, e sim se a Ana pediu autorização para passar o contato e ainda não recebeu um
   // sim. Ver lib/agent/transfer-gate.ts — e a conversa da Ana Rodríguez, em que "me llamo
   // Ana Rodríguez, vivo en Boa Vista" foi lido como confirmação.
-  const ultimaRespostaDoAgente =
-    [...rawMsgs].reverse().find((m) => m.role === "assistant")?.content ?? "";
   const confirmacao = avaliarConfirmacao({
     ultimaRespostaDoAgente,
     ultimaMensagem: lastUserText,
@@ -341,10 +347,34 @@ export async function respondToConversation(
   // procura vaga na assessoria não recebe pergunta sobre nacionalidade e prazo de visto.
   const routed = classifyRouting(lastUserText);
   const ehAtendimentoMigratorio = setorLead === "comercial" && !pedeVaga && !routed;
+  // O NOME É O PRIMEIRO DOS TRÊS DA ABERTURA — e era o último a ser perguntado.
+  //
+  // A lista abaixo dizia, com todas as letras, "isto NÃO é a ordem das perguntas". O
+  // efeito prático era o relatado pelo time: a Ana entrevistava a pessoa inteira e só
+  // pedia o nome no fim, quando o portão de encaminhamento (lib/agent/tools.ts) devolvia
+  // "falta: o nome dela". Quem já contou a história inteira e recebe "e qual é mesmo o seu
+  // nome?" entende, com razão, que ninguém estava lendo.
+  //
+  // A ordem da abertura (nome → nacionalidade → onde está) está na base de conhecimento
+  // desde sempre. O que faltava era ela chegar até aqui, no turno em que a Ana decide o
+  // que responder — dois blocos do MESMO prompt discordando é como uma regra escrita vira
+  // regra ignorada.
+  //
+  // Pedir DUAS vezes é o outro erro, e ele não se conserta com prompt mais enfático: se a
+  // pergunta já saiu e a pessoa não respondeu, ela não quer responder agora. Insistir com
+  // quem chega com medo é o que faz alguém parar de escrever.
+  const jaPerguntouONome = rawMsgs.some(
+    (m) => m.role === "assistant" && PERGUNTOU_O_NOME.test(m.content),
+  );
+  const abrirPeloNome = !knownLead?.contactName && !jaPerguntouONome;
   if (ehAtendimentoMigratorio && userTurns >= 1) {
     systemPrompt += faltaNaTriagem.completo
       ? `\n\n════════ QUALIFICAÇÃO COMPLETA ════════\nVocê já sabe o que o time jurídico precisa para pegar este caso. Não pergunte mais nada de cadastro: ou você informa algo útil com o material oficial que tiver, ou encaminha (avisando e confirmando antes).`
-      : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\nIsto NÃO é a ordem das perguntas nem uma lista para despejar: é o que você precisa saber ao longo da conversa. Faça UMA pergunta por vez, na ordem que a conversa pedir, aproveitando o que a pessoa já contou sozinha, e comente algo útil entre uma coisa e outra. Se ela não quiser responder alguma, siga em frente sem insistir.\nNão segure o encaminhamento por causa desta lista: caso concreto, prazo correndo, situação irregular ou risco vão para o time jurídico mesmo com a lista pela metade.`;
+      : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\n${
+          abrirPeloNome
+            ? "O NOME VEM PRIMEIRO, e é a PRÓXIMA pergunta que você faz — nunca a última. Pergunte agora, sozinho, antes de entrar no ramo da situação dela, com uma frase sua (\"antes de mais nada, como você se chama?\"). Perguntar o nome lá no fim, na hora de passar o caso, é o erro que este bloco existe para impedir. EXCEÇÃO: se ela acabou de descrever risco, prazo correndo ou pedir um advogado, acolha e encaminhe primeiro — o nome vem depois, e a ficha vai como estiver.\n"
+            : ""
+        }O resto NÃO é a ordem das perguntas nem uma lista para despejar: é o que você precisa saber ao longo da conversa. Faça UMA pergunta por vez, na ordem que a conversa pedir, aproveitando o que a pessoa já contou sozinha, e comente algo útil entre uma coisa e outra. Se ela não quiser responder alguma, siga em frente sem insistir — inclusive o nome, que você pergunta UMA vez.\nNão segure o encaminhamento por causa desta lista: caso concreto, prazo correndo, situação irregular ou risco vão para o time jurídico mesmo com a lista pela metade.`;
   }
 
   // ─── MATERIAL OFICIAL (RAG) ───
