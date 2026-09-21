@@ -1,3 +1,5 @@
+import type { IconName } from "@/components/dashboard/ui";
+
 // AS DUAS FAMÍLIAS DE TELA DO PAINEL.
 //
 // O menu tinha oito itens para responder duas perguntas. "Fila", "Meus atendimentos",
@@ -19,27 +21,35 @@
 export interface Aba {
   href: string;
   label: string;
-  /** O que ESTE recorte responde. É a frase que distingue uma aba da irmã. */
+  /**
+   * O que ESTE recorte responde.
+   *
+   * SAIU DA TELA E VIROU TOOLTIP. Ela existia para distinguir uma aba da irmã, e fazia
+   * isso — ao custo de transformar uma faixa de navegação em quatro parágrafos. Com
+   * ícone e nome, a aba já se distingue de relance; a frase continua disponível para
+   * quem parar o cursor em cima, que é quem ainda tem a dúvida.
+   */
   nota: string;
+  icone: IconName;
 }
 
 /** O trabalho do dia: os três recortes da mesma carteira de casos. */
 export const ABAS_ATENDIMENTO: Aba[] = [
-  { href: "/dashboard", label: "Fila", nota: "o que vence primeiro" },
-  { href: "/dashboard/meus", label: "Meus", nota: "os casos que são seus" },
-  { href: "/dashboard/crm", label: "Funil", nota: "onde cada caso está" },
+  { href: "/dashboard", label: "Fila", nota: "o que vence primeiro", icone: "bolt" },
+  { href: "/dashboard/meus", label: "Meus", nota: "os casos que são seus", icone: "check" },
+  { href: "/dashboard/crm", label: "Funil", nota: "onde cada caso está", icone: "activity" },
   // A importação fica como aba do atendimento, e não como item de menu: ela é uma coisa
   // que se faz ao funil, não uma tela que se visita. Quem procura por ela está olhando o
   // quadro e pensando "preciso trazer aquela planilha para cá".
-  { href: "/dashboard/importar", label: "Importar", nota: "trazer uma planilha" },
+  { href: "/dashboard/importar", label: "Importar", nota: "trazer uma planilha", icone: "plus" },
 ];
 
 /** O que entrou pelo WhatsApp — inclusive o que não virou caso. */
 export const ABAS_CONVERSAS: Aba[] = [
-  { href: "/dashboard/conversations", label: "Conversas", nota: "tudo que entrou" },
-  { href: "/dashboard/filtradas", label: "Filtradas", nota: "o que o agente descartou" },
-  { href: "/dashboard/documentos", label: "Documentos", nota: "anexos recebidos" },
-  { href: "/dashboard/audios", label: "Áudios não lidos", nota: "falhas de transcrição" },
+  { href: "/dashboard/conversations", label: "Conversas", nota: "tudo que entrou", icone: "chat" },
+  { href: "/dashboard/filtradas", label: "Filtradas", nota: "o que o agente descartou", icone: "search" },
+  { href: "/dashboard/documentos", label: "Documentos", nota: "anexos recebidos", icone: "doc" },
+  { href: "/dashboard/audios", label: "Áudios não lidos", nota: "falhas de transcrição", icone: "pulse" },
 ];
 
 /**

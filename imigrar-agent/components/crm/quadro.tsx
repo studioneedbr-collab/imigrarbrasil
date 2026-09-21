@@ -11,7 +11,7 @@ import {
   type TipoDeMovimento,
 } from "@/components/crm/movimento";
 import { Selecao } from "@/components/dashboard/campos";
-import { Icon, btnGhost, btnPrimary } from "@/components/dashboard/ui";
+import { Icon, btnBarra, btnBarraAtivo, btnPrimary } from "@/components/dashboard/ui";
 import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
 
@@ -372,22 +372,32 @@ export default function QuadroCrm({
           ))}
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {/* PARA A PLANILHA. O quadro é onde o comercial trabalha, e é daqui que sai o
               pedido de "me manda isso em Excel". A exportação é escopada, registrada no
               log de acesso e restrita por papel — ver app/api/exportar/leads. */}
           {podeExportar ? (
-            <a href="/api/exportar/leads?escopo=fila" className={btnGhost}>
-              Exportar planilha
+            <a href="/api/exportar/leads?escopo=fila" className={btnBarra} title="Baixar os casos em CSV">
+              <Icon name="doc" className="h-4 w-4 text-ib-slate" />
+              Exportar
             </a>
+          ) : null}
+
+          {podeDesenhar ? (
+            <button
+              type="button"
+              onClick={() => setEditando((e) => !e)}
+              className={editando ? btnBarraAtivo : btnBarra}
+              title="Renomear, reordenar e criar colunas"
+            >
+              <Icon name="gear" className={`h-4 w-4 ${editando ? "text-white" : "text-ib-slate"}`} />
+              {editando ? "Fechar etapas" : "Editar etapas"}
+            </button>
           ) : null}
         </div>
 
         {podeDesenhar ? (
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setEditando((e) => !e)} className={btnGhost}>
-              {editando ? "Fechar etapas" : "Editar etapas"}
-            </button>
+          <div className="flex items-center gap-1.5">
             {criandoFunil ? (
               <span className="flex items-center gap-1">
                 <input
@@ -410,7 +420,13 @@ export default function QuadroCrm({
                 </button>
               </span>
             ) : (
-              <button type="button" onClick={() => setCriandoFunil(true)} className={btnGhost}>
+              <button
+                type="button"
+                onClick={() => setCriandoFunil(true)}
+                className={btnBarra}
+                title="Um funil é um conjunto de colunas para outro tipo de trabalho"
+              >
+                <Icon name="plus" className="h-4 w-4 text-ib-slate" />
                 Novo funil
               </button>
             )}

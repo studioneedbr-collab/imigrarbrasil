@@ -160,12 +160,12 @@ export default async function MeusAtendimentosPage() {
 
   return (
     <div className="space-y-5">
-      <AbasDeAtendimento />
       <PageHeader
         eyebrow="Acompanhamento"
         title="Meus atendimentos"
         description="O que está com você, separado por quem precisa agir. A fila mostra quem chegou; esta tela mostra quem está esperando."
       />
+      <AbasDeAtendimento />
 
       {/* FOLLOW-UPS DE HOJE vêm antes até da faixa de números: é o único trabalho desta
           tela que leva um minuto e some da lista quando é feito. Enterrado embaixo, ele

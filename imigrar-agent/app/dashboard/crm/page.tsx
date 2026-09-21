@@ -1,7 +1,6 @@
-import Link from "next/link";
 import AutoRefresh from "@/components/dashboard/auto-refresh";
 import { AvisoDeCorte } from "@/components/dashboard/paginacao";
-import { Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
+import { PageHeader } from "@/components/dashboard/ui";
 import QuadroCrm from "@/components/crm/quadro";
 import { AbasDeAtendimento } from "@/components/dashboard/abas";
 import { getSession } from "@/lib/auth/guard";
@@ -47,20 +46,15 @@ export default async function CrmPage() {
 
   return (
     <div className="space-y-4">
-      <AbasDeAtendimento />
       <AutoRefresh seconds={60} />
 
       <PageHeader
         eyebrow="CRM"
         title="Onde cada caso está"
         description="Cada coluna é uma etapa do trabalho; a Fila continua sendo quem ordena por urgência."
-        actions={
-          <Link href="/dashboard" className={btnGhost}>
-            <Icon name="bolt" className="h-4 w-4" />
-            Fila
-          </Link>
-        }
       />
+
+      <AbasDeAtendimento />
 
       <AvisoDeCorte corte={corte} />
 

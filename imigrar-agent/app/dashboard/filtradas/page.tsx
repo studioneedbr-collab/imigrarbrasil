@@ -37,7 +37,6 @@ export default async function FiltradasPage({
 
   return (
     <div className="space-y-6">
-      <AbasDeConversas />
       <AvisoDeCorte corte={corte} />
 
       <PageHeader
@@ -45,6 +44,7 @@ export default async function FiltradasPage({
         title="Conversas filtradas"
         description="O que o agente tirou da frente do time. Revise por amostragem: se alguém aqui tinha caso, devolva à fila — é assim que se descobre um agente descartando demais."
       />
+      <AbasDeConversas />
 
       {fila.filtradas.length === 0 ? (
         <Card className="p-6">

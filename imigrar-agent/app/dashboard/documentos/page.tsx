@@ -59,12 +59,12 @@ export default function DocumentosPage() {
 
   return (
     <div className="space-y-6 pt-6">
-      <AbasDeConversas />
       <PageHeader
         eyebrow="Conversas"
         title="Documentos"
         description="Tudo que os clientes, colaboradores e candidatos enviaram pelo WhatsApp — com o conteúdo já lido pelo agente."
       />
+      <AbasDeConversas />
 
       <div className="relative max-w-md">
         <Icon

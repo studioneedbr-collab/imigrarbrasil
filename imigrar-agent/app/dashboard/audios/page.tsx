@@ -45,7 +45,6 @@ export default async function AudiosPage({
 
   return (
     <div className="space-y-6">
-      <AbasDeConversas />
       <PageHeader
         eyebrow="Saúde da operação"
         title="Falhas de transcrição"
@@ -59,6 +58,7 @@ export default async function AudiosPage({
           </Link>
         }
       />
+      <AbasDeConversas />
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-ib-line bg-ib-papel/70 px-5 py-3">

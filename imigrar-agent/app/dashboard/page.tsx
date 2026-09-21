@@ -258,8 +258,6 @@ export default async function FilaPage({
     <div className="space-y-5">
       <AutoRefresh seconds={30} />
 
-      <AbasDeAtendimento />
-
       {/* CABEÇALHO ENXUTO. A descrição de três linhas explicando quantos blocos a tela
           tem saiu: os blocos agora se anunciam sozinhos, e quem abre esta tela trinta
           vezes por dia não relê a legenda. O que sobrou é o título e para onde ir. */}
@@ -284,6 +282,8 @@ export default async function FilaPage({
           </Link>
         </div>
       </div>
+
+      <AbasDeAtendimento />
 
       <MesaDeControle
         vencidos={vencidos}

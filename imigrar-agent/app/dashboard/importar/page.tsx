@@ -107,12 +107,12 @@ export default function ImportarPage() {
 
   return (
     <div className="space-y-5">
-      <AbasDeAtendimento />
       <PageHeader
         eyebrow="CRM"
         title="Importar planilha"
         description="Traz uma planilha de casos para o funil. Reimportar a mesma planilha atualiza os casos que já existem — não duplica."
       />
+      <AbasDeAtendimento />
 
       {erro ? (
         <div role="alert" className="rounded-xl border border-ib-danger/30 bg-ib-danger/[0.06] px-4 py-3 text-sm text-ib-danger">

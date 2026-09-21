@@ -306,9 +306,6 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
 
   return (
     <div className="space-y-6">
-      {/* A faixa só aparece na operação real: "Ensaios" não é um recorte do que entrou
-          pelo WhatsApp, e oferecer as abas ali seria convidar a sair do ensaio sem dizer. */}
-      {ambiente === "producao" ? <AbasDeConversas /> : null}
       <PageHeader
         eyebrow={ambiente === "teste" ? "Ensaio" : "Atendimento"}
         title={ambiente === "teste" ? "Ensaios" : "Conversas"}
@@ -337,6 +334,10 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
           ) : null
         }
       />
+
+      {/* A faixa só aparece na operação real: "Ensaios" não é um recorte do que entrou
+          pelo WhatsApp, e oferecer as abas ali seria convidar a sair do ensaio sem dizer. */}
+      {ambiente === "producao" ? <AbasDeConversas /> : null}
 
       {/* Falha ao EXCLUIR: fica acima da lista, que continua ali e utilizável. Some
           sozinho quando a pessoa fecha, porque não é um estado da tela — é um recado. */}

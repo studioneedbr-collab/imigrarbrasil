@@ -494,6 +494,24 @@ export const btnPrimary =
 export const btnGhost =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-ib-line bg-white px-4 py-2.5 text-sm font-semibold text-ib-ink transition hover:border-ib-mar/40 hover:bg-ib-bruma focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ib-mar";
 
+/**
+ * BOTÃO DE BARRA DE FERRAMENTAS.
+ *
+ * `btnGhost` tem o tamanho de uma ação principal (px-4 py-2.5). Numa barra com quatro
+ * deles lado a lado, acima do quadro, isso vira uma fileira de blocos brancos que pesa
+ * mais na tela do que o trabalho que está embaixo — e, como todos têm o mesmo peso,
+ * nenhum diz qual é o importante.
+ *
+ * Este é menor, carrega ícone e sabe ficar "ligado": quando a ação é um modo que está
+ * ativo (editar etapas, por exemplo), o botão precisa parecer pressionado, senão a
+ * pessoa clica de novo para conferir.
+ */
+export const btnBarra =
+  "inline-flex items-center gap-1.5 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-[13px] font-semibold text-ib-ink transition hover:border-ib-mar/40 hover:bg-ib-bruma focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ib-mar disabled:cursor-not-allowed disabled:opacity-50";
+
+export const btnBarraAtivo =
+  "inline-flex items-center gap-1.5 rounded-lg border border-ib-mar bg-ib-mar px-2.5 py-1.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-ib-carimbo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ib-mar";
+
 /* ------------------------------------------------------------------ */
 /* Pagination                                                          */
 /* ------------------------------------------------------------------ */
