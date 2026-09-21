@@ -629,7 +629,51 @@ add_action('admin_menu', function () {
         'imigrar-crm',
         'imigrar_tela_do_crm',
         'dashicons-migrate',
-        58
+        // A POSIÇÃO É FRACIONÁRIA DE PROPÓSITO.
+        //
+        // O WordPress guarda o menu num vetor indexado pela posição. Dois plugins pedindo
+        // o MESMO inteiro não brigam nem avisam: o segundo SOBRESCREVE o primeiro, e um
+        // dos dois menus simplesmente não existe — sem erro, sem log, sem nada. Num site
+        // com Elementor, Jetpack, Yoast, ACF e mais meia dúzia, 58 redondo é disputado.
+        // Um número quebrado é praticamente só nosso.
+        58.7
+    );
+});
+
+/**
+ * UM LINK "PAINEL" NA LISTA DE PLUGINS.
+ *
+ * Rede de segurança para o caso acima: se o menu lateral sumir por colisão de posição, ou
+ * se alguém simplesmente não o achar no meio de vinte itens, o caminho continua existindo
+ * ao lado de "Desativar", que é onde a pessoa já está olhando depois de instalar.
+ */
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), function ($links) {
+    array_unshift($links, sprintf(
+        '<a href="%s"><strong>Painel</strong></a>',
+        esc_url(admin_url('admin.php?page=imigrar-crm'))
+    ));
+    return $links;
+});
+
+/**
+ * O AVISO DE QUE FALTA O TOKEN, EM QUALQUER TELA DO ADMIN.
+ *
+ * Sem token o plugin está ativo e não faz nada — e esse é o pior estado possível, porque
+ * de fora ele é idêntico a "está funcionando". Quem acabou de instalar não tem motivo para
+ * suspeitar, e o defeito só apareceria quando alguém perguntasse por que não chegou lead
+ * nenhum na semana passada.
+ *
+ * Por isso o aviso não mora só no painel do plugin: ele aparece onde a pessoa estiver.
+ */
+add_action('admin_notices', function () {
+    if (!current_user_can('manage_options')) { return; }
+    if (imigrar_token()) { return; }
+    // Na própria tela do plugin o aviso já existe, com o campo logo abaixo.
+    if (($_GET['page'] ?? '') === 'imigrar-crm') { return; }
+    printf(
+        '<div class="notice notice-warning"><p><strong>Imigrar CRM está ativo, mas sem token — nenhum lead está sendo enviado.</strong> ' .
+        '<a href="%s">Configurar agora</a></p></div>',
+        esc_url(admin_url('admin.php?page=imigrar-crm'))
     );
 });
 
