@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { capturarDadosDoLead } from "@/lib/agent/lead-capture";
 import { comDdiProvavel } from "@/lib/whatsapp/telefone";
+import { IDIOMAS_DO_ESCOPO } from "@/lib/domain/idiomas";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -91,7 +92,42 @@ const schema = z
     mensagem: z.string().trim().max(4000).optional(),
     /** De onde no site veio: "formulario", "chat", "landing-vistos"… Vai para a ficha. */
     origem: z.string().trim().max(60).optional(),
-    idioma: z.string().trim().max(8).optional(),
+    /**
+     * EM QUE IDIOMA A PESSOA ESTAVA LENDO O SITE.
+     *
+     * Quem decide se o código serve é ESTA rota, e não quem chama. O site traduz com o
+     * GTranslate, que oferece alemão e italiano — idiomas que esta operação não atende
+     * (`IDIOMAS_DO_ESCOPO`). Filtrar do lado do WordPress significaria manter a lista de
+     * idiomas escrita também lá, num arquivo PHP noutro servidor, para sair de sincronia
+     * com esta em silêncio na primeira vez que a operação ganhasse um idioma novo. É o
+     * defeito que já apareceu quatro vezes neste projeto; a lista fica num lugar só.
+     *
+     * Código fora do escopo é DESCARTADO, não recusado: um alemão no seletor do site não
+     * pode custar o lead inteiro. E o idioma do widget é palpite fraco — o que a pessoa
+     * escrever no WhatsApp vale mais, e a detecção por texto continua mandando.
+     */
+    idioma: z
+      .string()
+      .trim()
+      .max(8)
+      .optional()
+      .transform((v) => {
+        const c = v?.toLowerCase().split(/[-_]/)[0] ?? "";
+        return (IDIOMAS_DO_ESCOPO as readonly string[]).includes(c) ? c : undefined;
+      }),
+    /**
+     * EM QUE PÁGINA A PESSOA ESTAVA e QUEM INDICOU (`?ref=` na URL). O formulário do site
+     * já carrega os dois — `page_url` e `afiliado_ref` — e sem estes campos eles morriam
+     * na porta: quem indicou deixaria de ser sabido justamente no caso em que a indicação
+     * é o motivo do contato.
+     *
+     * ELES NÃO PASSAM PELA TRIAGEM, e é de propósito. `mensagem` é texto que a PESSOA
+     * escreveu e por isso é lido em busca de nacionalidade, prazo e onde ela está; uma URL
+     * ou um código de afiliado não é fala de ninguém, e jogá-los na mesma leitura faria a
+     * triagem deduzir coisas de um endereço. Vão para a ficha, e só.
+     */
+    pagina: z.string().trim().max(300).optional(),
+    ref: z.string().trim().max(80).optional(),
     /**
      * ARMADILHA DE ROBÔ. Um campo escondido no formulário, que gente não vê e não
      * preenche. Vindo preenchido, é robô — e a resposta é 200 em silêncio, porque dizer
@@ -171,6 +207,8 @@ export async function POST(req: NextRequest) {
     const origem = dados.origem?.trim() || "formulário do site";
     const nota = [
       `Origem: ${origem}`,
+      dados.pagina ? `\nPágina: ${dados.pagina}` : "",
+      dados.ref ? `\nIndicação (ref): ${dados.ref}` : "",
       dados.mensagem ? `\nO que ela escreveu:\n${dados.mensagem}` : "",
     ].join("");
 

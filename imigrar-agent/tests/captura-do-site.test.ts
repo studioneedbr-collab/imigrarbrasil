@@ -247,3 +247,96 @@ describe("CORS", () => {
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
+
+// ── O QUE O FORMULÁRIO DO SITE CARREGA ALÉM DE NOME E TELEFONE ────────────────────
+//
+// O formulário real (plugin `ibexgo-leads`) manda `page_url` e `afiliado_ref` junto. Sem
+// os campos `pagina` e `ref`, essas duas coisas morriam na porta — e quem indicou deixaria
+// de ser sabido justamente no caso em que a indicação é o motivo do contato.
+describe("a página de origem e a indicação chegam à ficha", () => {
+  it("guarda de que página veio e quem indicou", async () => {
+    const res = await POST(
+      req(
+        {
+          nome: "Indicada",
+          telefone: "5511970000001",
+          pagina: "https://imigrarbrasil.com/nossos-servicos",
+          ref: "parceiro-boa-vista",
+        },
+        { token: segredoDeVerdade },
+      ),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.notes).toMatch(/nossos-servicos/);
+    expect(lead.notes).toMatch(/parceiro-boa-vista/);
+  });
+
+  // Uma URL não é fala de ninguém. Se ela passasse pela mesma leitura de `mensagem`, a
+  // triagem deduziria coisas de um endereço: o título de um artigo do blog viraria
+  // nacionalidade de quem só clicou nele.
+  //
+  // O endereço abaixo contém "do Haiti" DE PROPÓSITO — é o que a triagem reconhece (ver
+  // lib/agent/triagem.ts). Sem isso o teste passaria mesmo se a separação não existisse.
+  const artigoSobreHaiti = "https://imigrarbrasil.com/blog/o-visto-para-quem-vem-do-haiti";
+
+  it("não deduz nada da URL: a página não passa pela triagem", async () => {
+    const res = await POST(
+      req({ nome: "Só clicou", telefone: "5511970000002", pagina: artigoSobreHaiti }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.nacionalidade).toBeFalsy();
+  });
+
+  // O controle do teste acima: o MESMO texto, vindo como fala da pessoa, é lido. Se este
+  // parar de passar, a triagem mudou e o teste anterior virou decoração.
+  it("mas deduz do que a pessoa escreveu — é essa a diferença", async () => {
+    const res = await POST(
+      req(
+        { nome: "Escreveu", telefone: "5511970000006", mensagem: `Vi ${artigoSobreHaiti} e eu vim do Haiti` },
+        { token: segredoDeVerdade },
+      ),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.nacionalidade).toBe("Haiti");
+  });
+});
+
+// ── O IDIOMA DO SITE ──────────────────────────────────────────────────────────────
+//
+// O GTranslate do site oferece 6 idiomas; a operação atende 11, e as duas listas não são
+// a mesma. Quem decide o que serve é esta rota — filtrar do lado do WordPress seria manter
+// a lista de idiomas em dois servidores, esperando que alguém lembre dos dois.
+describe("o idioma do site é conferido aqui, não no WordPress", () => {
+  it("aceita um idioma do escopo", async () => {
+    const res = await POST(
+      req({ nome: "Yolanda", telefone: "5511970000003", idioma: "es" }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.idioma).toBe("es");
+  });
+
+  it("normaliza 'pt-BR' para 'pt'", async () => {
+    const res = await POST(
+      req({ nome: "Pedro", telefone: "5511970000004", idioma: "pt-BR" }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.idioma).toBe("pt");
+  });
+
+  // Alemão está no seletor do site e fora do atendimento. O lead ENTRA — recusá-lo por
+  // causa do idioma seria perder a pessoa por um ajuste de widget.
+  it("descarta o idioma fora do escopo sem perder o lead", async () => {
+    const res = await POST(
+      req({ nome: "Klaus", telefone: "5511970000005", idioma: "de" }, { token: segredoDeVerdade }),
+    );
+    expect(res.status).toBe(200);
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.idioma).toBeFalsy();
+  });
+});
