@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
@@ -39,6 +39,7 @@ const OPCOES_STATUS = COLUNAS.map((s) => ({
 export function GerenciarEtapas({
   funil,
   etapas,
+  contagem,
   podeApagarFunil,
   aoMudar,
   aoMudarFunil,
@@ -46,6 +47,15 @@ export function GerenciarEtapas({
 }: {
   funil: FunilCrm;
   etapas: EtapaCrm[];
+  /**
+   * Quantos casos estão em cada etapa AGORA.
+   *
+   * Existe por causa de uma pergunta que a tela não respondia na hora de apagar: "isto
+   * aqui tem gente dentro?". Apagar uma etapa não apaga caso nenhum — eles voltam a se
+   * distribuir pelo status —, mas quem clica não sabe disso, e quem sabe ainda precisa
+   * saber quantos vão se mexer.
+   */
+  contagem: Record<string, number>;
   podeApagarFunil: boolean;
   aoMudar: (etapas: EtapaCrm[]) => void;
   /** `null` significa funil apagado. */
@@ -58,6 +68,24 @@ export function GerenciarEtapas({
   const [status, setStatus] = useState<AtendimentoStatus>("em_atendimento");
   const [nomeFunil, setNomeFunil] = useState(funil.nome);
   const [confirmandoFunil, setConfirmandoFunil] = useState(false);
+  /**
+   * A ETAPA QUE ACABOU DE SER SALVA.
+   *
+   * Esta tela grava no `blur`: a pessoa digita o nome da coluna, clica em qualquer outro
+   * lugar e a gravação acontece — sem botão, sem aviso, sem nada mudando na tela. Quem
+   * não tem certeza de que salvou faz a única coisa possível, que é recarregar a página
+   * para conferir; e quem recarrega no meio de uma edição perde o campo em que estava.
+   * Um "salvo" que aparece e some em dois segundos custa nada e fecha essa dúvida.
+   */
+  const [salvo, setSalvo] = useState<string | null>(null);
+  /** Apagar coluna é destrutivo o bastante para pedir confirmação, como o funil já pedia. */
+  const [confirmandoEtapa, setConfirmandoEtapa] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!salvo) return;
+    const t = setTimeout(() => setSalvo(null), 2000);
+    return () => clearTimeout(t);
+  }, [salvo]);
 
   async function chamar<T>(url: string, init: RequestInit): Promise<T | null> {
     setOcupado(true);
@@ -100,12 +128,14 @@ export function GerenciarEtapas({
     });
     if (!c) return;
     aoMudar(etapas.map((e) => (e.id === id ? c.etapa : e)));
+    setSalvo(id);
   }
 
   async function apagar(id: string) {
     const c = await chamar<{ ok: true }>(`/api/crm/etapas/${id}`, { method: "DELETE" });
     if (!c) return;
     aoMudar(etapas.filter((e) => e.id !== id));
+    setConfirmandoEtapa(null);
   }
 
   /**
@@ -259,16 +289,59 @@ export function GerenciarEtapas({
                 >
                   →
                 </button>
-                <button
-                  type="button"
-                  disabled={ocupado || etapas.length <= 1}
-                  onClick={() => void apagar(e.id)}
-                  className="ml-1 text-xs font-semibold text-ib-slate underline hover:text-ib-danger disabled:no-underline disabled:opacity-40"
-                >
-                  apagar
-                </button>
+                {confirmandoEtapa === e.id ? (
+                  <span className="ml-1 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={ocupado}
+                      onClick={() => void apagar(e.id)}
+                      className="rounded bg-ib-danger px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      Apagar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmandoEtapa(null)}
+                      className="text-xs font-semibold text-ib-slate hover:underline"
+                    >
+                      cancelar
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={ocupado || etapas.length <= 1}
+                    onClick={() => setConfirmandoEtapa(e.id)}
+                    className="ml-1 text-xs font-semibold text-ib-slate underline hover:text-ib-danger disabled:no-underline disabled:opacity-40"
+                  >
+                    apagar
+                  </button>
+                )}
               </span>
             </div>
+
+            {/* O QUE ESTÁ DENTRO DESTA COLUNA, e o que acontece se ela sumir.
+                Apagar uma etapa não apaga caso nenhum: eles voltam a se distribuir pelo
+                status. Quem clica não sabe disso — e essa é exatamente a dúvida que faz
+                alguém não mexer no quadro, ou mexer com medo. */}
+            <p className="mt-1.5 text-[11px] text-ib-slate">
+              {confirmandoEtapa === e.id ? (
+                <span className="text-ib-danger">
+                  {(contagem[e.id] ?? 0) === 0
+                    ? "Não há caso nenhum nesta coluna. "
+                    : `${contagem[e.id]} ${contagem[e.id] === 1 ? "caso volta" : "casos voltam"} a se distribuir pelo status. `}
+                  Nada é apagado, só o desenho da coluna.
+                </span>
+              ) : (
+                <>
+                  {contagem[e.id] ?? 0} {(contagem[e.id] ?? 0) === 1 ? "caso" : "casos"} nesta
+                  coluna
+                  {salvo === e.id ? (
+                    <span className="ml-2 font-semibold text-ib-success">✓ salvo</span>
+                  ) : null}
+                </>
+              )}
+            </p>
             <input
               defaultValue={e.ajuda ?? ""}
               maxLength={AJUDA_MAX}

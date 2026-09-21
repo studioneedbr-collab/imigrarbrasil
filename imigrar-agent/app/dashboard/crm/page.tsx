@@ -5,7 +5,7 @@ import { Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import QuadroCrm from "@/components/crm/quadro";
 import { AbasDeAtendimento } from "@/components/dashboard/abas";
 import { getSession } from "@/lib/auth/guard";
-import { normalizarPapel } from "@/lib/auth/papeis";
+import { normalizarPapel, podeExportar } from "@/lib/auth/papeis";
 import { getRepository } from "@/lib/data";
 import { FUNIL_PADRAO, etapasPadrao } from "@/lib/crm/funil";
 import { carregarCargaDaFila } from "@/lib/fila/carregar";
@@ -70,6 +70,10 @@ export default async function CrmPage() {
         funis={temDesenho ? funis : [FUNIL_PADRAO]}
         etapas={temDesenho ? etapas : etapasPadrao()}
         podeDesenhar={temDesenho && (papel === "admin" || papel === "advogado")}
+        // Exportar é papel próprio, e não "quem desenha o quadro": atendente trabalha na
+        // fila e no detalhe, mas tirar a base de dentro do painel é outra coisa. A rota
+        // recusa de todo jeito — o que o flag evita é oferecer um botão que dá 403.
+        podeExportar={podeExportar(papel)}
       />
     </div>
   );

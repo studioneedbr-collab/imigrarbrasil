@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CardDoAtendimento } from "@/components/atendimentos/card";
 import { ResumoDoLead } from "@/components/atendimentos/resumo-modal";
@@ -11,7 +11,7 @@ import {
   type TipoDeMovimento,
 } from "@/components/crm/movimento";
 import { Selecao } from "@/components/dashboard/campos";
-import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
+import { Icon, btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
 import { POR_PAGINA } from "@/lib/fila/paginacao";
@@ -42,12 +42,39 @@ import type { AtendimentoStatus, EtapaCrm, FunilCrm, OrigemLead } from "@/lib/do
  * significa fechar o caso de alguém. Lá o card ganha um seletor de etapa, que faz
  * exatamente a mesma chamada.
  */
+/** Onde a escolha de colunas recolhidas fica guardada, no navegador de quem usa. */
+const CHAVE_RECOLHIDAS = "crm:colunas-recolhidas";
+
+/** Sem acento e em caixa baixa: quem digita "jose" precisa achar "José". */
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/**
+ * ONDE A BUSCA PROCURA.
+ *
+ * Nome e telefone são o óbvio. Os outros três não são: num quadro de imigração, procurar
+ * "venezuela", "refúgio" ou "Boa Vista" é tão comum quanto procurar alguém pelo nome — é
+ * assim que se acha o grupo de casos parecidos para tratar de uma vez. E o nome, aqui,
+ * falta com frequência: metade dos casos novos ainda está identificada pelo telefone.
+ */
+const CAMPOS_DA_BUSCA: Array<(l: LeadDaFila) => string | null | undefined> = [
+  (l) => l.contactName,
+  (l) => l.whatsappNumber,
+  (l) => l.nacionalidade ?? l.clientType,
+  (l) => l.objetivo ?? l.modalidadeProvavel,
+  (l) => l.region,
+  (l) => l.resumo,
+  (l) => l.responsavelNome,
+];
+
 export default function QuadroCrm({
   leads: iniciais,
   agoraISO,
   funis: funisIniciais,
   etapas: etapasIniciais,
   podeDesenhar,
+  podeExportar,
 }: {
   leads: LeadDaFila[];
   agoraISO: string;
@@ -55,6 +82,8 @@ export default function QuadroCrm({
   etapas: EtapaCrm[];
   /** Advogado e administrador desenham o quadro. Atendente usa o quadro desenhado. */
   podeDesenhar: boolean;
+  /** Quem pode tirar a base do painel em planilha. Ver lib/auth/papeis.ts. */
+  podeExportar: boolean;
 }) {
   const router = useRouter();
   const agora = useMemo(() => new Date(agoraISO), [agoraISO]);
@@ -88,6 +117,39 @@ export default function QuadroCrm({
    * entre "só o que veio do site" e "tudo" algumas vezes seguidas para comparar.
    */
   const [origem, setOrigem] = useState<OrigemLead | null>(null);
+  /** O texto da busca. Filtra junto com a origem — os dois se somam, não se substituem. */
+  const [busca, setBusca] = useState("");
+  /**
+   * AS COLUNAS RECOLHIDAS, por id de etapa.
+   *
+   * Guardado no navegador de quem usa, e não no banco: quais colunas alguém quer ver
+   * abertas é preferência de quem está olhando, e num quadro que o escritório desenha com
+   * doze etapas ela muda várias vezes por dia. Gravar no servidor faria a escolha de um
+   * atendente reorganizar a tela do outro.
+   */
+  const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(CHAVE_RECOLHIDAS);
+      if (salvo) setRecolhidas(new Set(JSON.parse(salvo) as string[]));
+    } catch {
+      // Navegador sem storage (janela anônima, cookies bloqueados): o quadro abre com
+      // tudo expandido, que é o estado correto de quem nunca escolheu nada.
+    }
+  }, []);
+  function alternarColuna(id: string) {
+    setRecolhidas((atual) => {
+      const proxima = new Set(atual);
+      if (proxima.has(id)) proxima.delete(id);
+      else proxima.add(id);
+      try {
+        localStorage.setItem(CHAVE_RECOLHIDAS, JSON.stringify(Array.from(proxima)));
+      } catch {
+        // Não poder lembrar a escolha não é motivo para não obedecê-la agora.
+      }
+      return proxima;
+    });
+  }
   const [assumindo, setAssumindo] = useState(false);
 
   const vivos = funis.filter((f) => !f.arquivado);
@@ -106,10 +168,21 @@ export default function QuadroCrm({
     return conta;
   }, [leads]);
 
-  const filtrados = useMemo(
-    () => (origem ? leads.filter((l) => (l.origem ?? "whatsapp") === origem) : leads),
-    [leads, origem],
-  );
+  const filtrados = useMemo(() => {
+    const termo = semAcento(busca.trim());
+    const digitos = busca.replace(/\D/g, "");
+    return leads.filter((l) => {
+      if (origem && (l.origem ?? "whatsapp") !== origem) return false;
+      if (!termo) return true;
+      // O TELEFONE SE BUSCA POR DÍGITO. Quem procura "99341-4083" no quadro está lendo o
+      // número de uma agenda ou de um bilhete, com a pontuação que estiver lá; comparar
+      // texto com texto erraria em toda grafia diferente da gravada.
+      if (digitos.length >= 4 && (l.whatsappNumber ?? "").replace(/\D/g, "").includes(digitos)) {
+        return true;
+      }
+      return CAMPOS_DA_BUSCA.some((campo) => semAcento(String(campo(l) ?? "")).includes(termo));
+    });
+  }, [leads, origem, busca]);
 
   const colunas = useMemo(
     () => montarQuadro(filtrados, funil, etapas, agora),
@@ -278,8 +351,19 @@ export default function QuadroCrm({
           ))}
         </div>
 
+        <div className="ml-auto flex items-center gap-2">
+          {/* PARA A PLANILHA. O quadro é onde o comercial trabalha, e é daqui que sai o
+              pedido de "me manda isso em Excel". A exportação é escopada, registrada no
+              log de acesso e restrita por papel — ver app/api/exportar/leads. */}
+          {podeExportar ? (
+            <a href="/api/exportar/leads?escopo=fila" className={btnGhost}>
+              Exportar planilha
+            </a>
+          ) : null}
+        </div>
+
         {podeDesenhar ? (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <button type="button" onClick={() => setEditando((e) => !e)} className={btnGhost}>
               {editando ? "Fechar etapas" : "Editar etapas"}
             </button>
@@ -310,6 +394,63 @@ export default function QuadroCrm({
               </button>
             )}
           </div>
+        ) : null}
+      </div>
+
+      {/* ─── BUSCA ───
+          Um quadro com doze colunas e centenas de cards não se lê rolando. A busca é o
+          jeito de responder "cadê o caso do fulano?" sem abrir coluna por coluna — e,
+          neste domínio, de juntar os casos parecidos ("venezuela", "refúgio", "Boa
+          Vista") para tratar de uma vez. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[16rem] flex-1 sm:max-w-sm">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ib-slate">
+            <Icon name="search" className="h-4 w-4" />
+          </span>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome, telefone, nacionalidade, caso…"
+            aria-label="Buscar casos no quadro"
+            className="w-full rounded-lg border border-ib-line bg-white py-2 pl-9 pr-9 text-sm text-ib-ink placeholder:text-ib-slate/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          />
+          {busca ? (
+            <button
+              type="button"
+              onClick={() => setBusca("")}
+              aria-label="Limpar a busca"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-xs font-semibold text-ib-slate hover:bg-ib-papel hover:text-ib-ink"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+
+        {/* QUANTOS SOBRARAM. Sem este número, uma busca que não acha nada é
+            indistinguível de um quadro vazio — e de um filtro de origem esquecido ligado. */}
+        {busca || origem ? (
+          <p className="text-xs text-ib-slate">
+            <span className="font-semibold text-ib-ink">{filtrados.length}</span> de {leads.length}{" "}
+            {leads.length === 1 ? "caso" : "casos"}
+            {filtrados.length === 0 ? " — nada bate com o que você procurou" : ""}
+          </p>
+        ) : null}
+
+        {recolhidas.size > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setRecolhidas(new Set());
+              try {
+                localStorage.removeItem(CHAVE_RECOLHIDAS);
+              } catch {
+                // sem storage, a escolha já valeu na tela
+              }
+            }}
+            className="ml-auto text-xs font-semibold text-ib-carimbo hover:underline"
+          >
+            Expandir as {recolhidas.size} colunas recolhidas
+          </button>
         ) : null}
       </div>
 
@@ -358,6 +499,10 @@ export default function QuadroCrm({
         <GerenciarEtapas
           funil={funil}
           etapas={doFunil}
+          // A contagem vem das colunas já montadas: é o mesmo número que o cabeçalho de
+          // cada coluna mostra. Recontar aqui, por outro caminho, seria a maneira mais
+          // fácil de a tela dizer 7 num lugar e 8 no outro.
+          contagem={Object.fromEntries(colunas.map((c) => [c.etapa.id, c.leads.length]))}
           podeApagarFunil={!funil.padrao && vivos.length > 1}
           aoMudar={(proximas) =>
             setEtapas((todas) => [...todas.filter((e) => e.funilId !== funil.id), ...proximas])
@@ -391,6 +536,50 @@ export default function QuadroCrm({
             const limite = visiveis[coluna.etapa.id] ?? POR_PAGINA;
             const mostrando = coluna.leads.slice(0, limite);
             const restam = coluna.leads.length - mostrando.length;
+
+            /* ─── A COLUNA RECOLHIDA ───
+               Vira uma faixa estreita com o nome de pé e a contagem. Continua sendo alvo
+               de arrasto: recolher uma coluna é dizer "não preciso ver o conteúdo agora",
+               e não "não quero mais mover nada para cá" — num funil de doze etapas, as
+               que se recolhem são justamente as de arquivo, que recebem card o tempo
+               todo. Some a coluna como destino e o arrasto passa a ter um buraco. */
+            if (recolhidas.has(coluna.etapa.id)) {
+              return (
+                <section
+                  key={coluna.etapa.id}
+                  aria-label={`${coluna.etapa.nome} (recolhida)`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setSobre(coluna.etapa.id);
+                  }}
+                  onDragLeave={() => setSobre((s) => (s === coluna.etapa.id ? null : s))}
+                  onDrop={() => soltar(coluna.etapa)}
+                  className={`flex w-12 shrink-0 snap-start flex-col items-center gap-2 rounded-xl border bg-ib-papel/50 py-3 transition ${
+                    sobre === coluna.etapa.id ? "border-ib-mar bg-ib-bruma" : "border-ib-line"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => alternarColuna(coluna.etapa.id)}
+                    aria-label={`Expandir ${coluna.etapa.nome}`}
+                    title={`Expandir ${coluna.etapa.nome}`}
+                    className="rounded px-1 text-[11px] font-semibold text-ib-slate hover:bg-white hover:text-ib-ink"
+                  >
+                    ›
+                  </button>
+                  <span className="rounded-full bg-white px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-ib-slate ring-1 ring-inset ring-ib-line">
+                    {coluna.leads.length}
+                  </span>
+                  <span
+                    className="flex-1 text-xs font-semibold uppercase tracking-wide text-ib-slate"
+                    style={{ writingMode: "vertical-rl" }}
+                  >
+                    {coluna.etapa.nome}
+                  </span>
+                </section>
+              );
+            }
+
             return (
               <section
                 key={coluna.etapa.id}
@@ -413,6 +602,15 @@ export default function QuadroCrm({
                     <span className="rounded-full bg-white px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-ib-slate ring-1 ring-inset ring-ib-line">
                       {coluna.leads.length}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => alternarColuna(coluna.etapa.id)}
+                      aria-label={`Recolher ${coluna.etapa.nome}`}
+                      title={`Recolher ${coluna.etapa.nome}`}
+                      className="-mr-1 rounded px-1 text-[11px] font-semibold text-ib-slate hover:bg-white hover:text-ib-ink"
+                    >
+                      ‹
+                    </button>
                   </div>
                   {coluna.etapa.ajuda ? (
                     <p className="mt-0.5 text-[11px] leading-snug text-ib-slate">{coluna.etapa.ajuda}</p>

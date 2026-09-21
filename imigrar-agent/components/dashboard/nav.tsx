@@ -12,8 +12,6 @@ type NavLink = {
   label: string;
   icon: IconName;
   adminOnly?: boolean;
-  /** A linha embaixo do nome. Diz o que a tela É, não o que ela faz. */
-  nota?: string;
   /**
    * As outras rotas que acendem este item — as abas que moram dentro dele.
    *
@@ -55,6 +53,12 @@ const navGroups: NavGroup[] = [
    *
    * As rotas continuam as mesmas, uma por aba: `ativoEm` é o que faz o item do menu
    * continuar aceso quando a pessoa está numa das abas de dentro.
+   *
+   * O MENU NÃO EXPLICA MAIS CADA ITEM. Havia uma linha de descrição embaixo de cada nome
+   * ("a fila, os seus casos e o funil"). Ela existia para desfazer a confusão entre as
+   * quatro telas irmãs — e as abas, que mostram os recortes lado a lado, resolvem isso
+   * melhor. Mantidas as duas, o rail virava um parágrafo por item: texto que ninguém relê
+   * depois da primeira semana ocupando a coluna inteira.
    */
   {
     section: "Trabalho de hoje",
@@ -63,14 +67,12 @@ const navGroups: NavGroup[] = [
         href: "/dashboard",
         label: "Atendimento",
         icon: "bolt",
-        nota: "a fila, os seus casos e o funil",
         ativoEm: ["/dashboard/meus", "/dashboard/crm", "/dashboard/atendimentos"],
       },
       {
         href: "/dashboard/conversations",
         label: "Conversas",
         icon: "chat",
-        nota: "tudo que entrou no WhatsApp",
         ativoEm: ["/dashboard/filtradas", "/dashboard/documentos", "/dashboard/audios"],
       },
       // Fica no trabalho de hoje, e não em configuração, porque um motivo sem modelo no
@@ -79,7 +81,6 @@ const navGroups: NavGroup[] = [
         href: "/dashboard/followup",
         label: "Modelos de follow-up",
         icon: "chat",
-        nota: "o que dizemos a quem espera",
       },
     ],
   },
@@ -94,9 +95,8 @@ const navGroups: NavGroup[] = [
         href: "/dashboard/mapa",
         label: "Mapa do atendimento",
         icon: "activity",
-        nota: "o que a Ana decide, e onde",
       },
-      { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear", nota: "o que ela sabe" },
+      { href: "/dashboard/treinar", label: "Treinar o agente", icon: "gear" },
       // A fila de sombra. Fica no menu, e não escondida dentro das conversas, porque na
       // fase de testes ela é o trabalho: cada rascunho ali é uma resposta esperando um
       // "podia ter saído?" — e uma pessoa do outro lado esperando alguém decidir.
@@ -105,11 +105,6 @@ const navGroups: NavGroup[] = [
       // Falha de LLM tem tela própria, e não uma aba dentro dos áudios: são dois
       // problemas com duas causas. Ver o comentário em app/dashboard/falhas-llm/page.tsx.
       { href: "/dashboard/falhas-llm", label: "Falhas de LLM", icon: "bolt" },
-      // O simulador é a mesma engine do WhatsApp numa conversa isolada. A aba "Ensaios"
-      // saiu daqui: uma tela inteira para reler conversa de teste é manutenção de uma
-      // lista que ninguém abre — quem acabou de testar um prompt está olhando a resposta
-      // na hora, no próprio simulador.
-      { href: "/simulate", label: "Simulador", icon: "external" },
     ],
   },
   {
@@ -119,21 +114,18 @@ const navGroups: NavGroup[] = [
         href: "/dashboard/metricas",
         label: "Métricas",
         icon: "activity",
-        nota: "tempo do time economizado",
       },
       {
         href: "/dashboard/acesso",
         label: "Acesso e retenção",
         icon: "shield",
         adminOnly: true,
-        nota: "quem viu o quê",
       },
       {
         href: "/dashboard/users",
         label: "Usuários",
         icon: "users",
         adminOnly: true,
-        nota: "quem entra no painel",
       },
     ],
   },
@@ -236,20 +228,7 @@ export default function DashboardNav() {
                     name={link.icon}
                     className={`h-[18px] w-[18px] shrink-0 ${active ? "text-ib-selo" : ""}`}
                   />
-                  {/* No celular o menu vira uma fileira horizontal de chips: a nota não
-                      cabe ali e some. No rail, ela é o que responde "o que é isto?". */}
-                  <span className="min-w-0">
-                    <span className="block truncate">{link.label}</span>
-                    {link.nota ? (
-                      <span
-                        className={`hidden truncate text-[11px] font-normal leading-tight md:block ${
-                          active ? "text-white/60" : "text-white/40"
-                        }`}
-                      >
-                        {link.nota}
-                      </span>
-                    ) : null}
-                  </span>
+                  <span className="min-w-0 truncate">{link.label}</span>
                 </Link>
               );
             })}

@@ -3,7 +3,7 @@ import { AgentStatus } from "@/components/dashboard/ui";
 import Topbar from "@/components/dashboard/topbar";
 import FloatingChat from "@/components/dashboard/floating-chat";
 import NewMessageAlerts from "@/components/dashboard/new-message-alerts";
-import { Marca, FaixaMrz } from "@/components/marca";
+import { Marca } from "@/components/marca";
 import FaixaAlerta from "@/components/operacao/faixa-alerta";
 import ChaveGeral from "@/components/agente/chave-geral";
 import SaudeRail from "@/components/operacao/saude-rail";
@@ -14,13 +14,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="w-full shrink-0 bg-gradient-to-b from-ib-casa to-ib-ink text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col">
         {/* Marca: versão negativa direto sobre o rail, sem chip branco atrás. */}
         <div className="border-b border-white/10 px-6 pb-4 pt-5">
+          {/* A FAIXA MRZ SAIU DAQUI.
+              Era elemento de marca (ver IDENTIDADE.md): a zona de leitura mecânica do
+              rodapé de um passaporte, "IB<BRA<ATENDIMENTO<<<<<<<". Para quem abre o painel
+              todo dia ela não passava marca nenhuma — passava a impressão de texto
+              quebrado, e foi relatada como bug. Enfeite que o time precisa aprender a
+              ignorar custa mais do que vale. O componente segue em components/marca.tsx e
+              o login continua com ele, onde é visto uma vez e faz sentido. */}
           <Marca tom="escuro" className="h-7 w-auto" />
-          {/* A faixa MRZ diz o que este console é, no idioma do documento de viagem. */}
-          <FaixaMrz
-            texto="IB BRA ATENDIMENTO"
-            largura={25}
-            className="mt-3.5 text-ib-selo/70"
-          />
         </div>
 
         {/* Nav (grows) — scroll próprio com barra fina e fade sutil no topo/base (ver .rail-scroll) */}
