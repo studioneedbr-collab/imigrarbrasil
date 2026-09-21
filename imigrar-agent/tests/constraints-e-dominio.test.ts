@@ -53,6 +53,35 @@ function valoresDoCheck(coluna: string): string[] | null {
   return Array.from(ultimo.matchAll(/'([^']+)'/g)).map((m) => m[1]);
 }
 
+/**
+ * O MESMO ESQUECIMENTO, NA OUTRA CAMADA.
+ *
+ * As rotas de etapa validavam o status com uma lista escrita à mão, e ela também ficou
+ * sem 'proposta_enviada'. O seletor da tela é montado a partir de `COLUNAS`, então ele
+ * OFERECIA a opção e salvar respondia 400 "Dados inválidos" — sem nada na tela explicando
+ * por quê.
+ *
+ * O conserto foi derivar o enum de `COLUNAS`. Este teste existe para que a cópia à mão
+ * não volte: uma lista de status literal dentro dessas rotas é o defeito, não o sintoma.
+ */
+describe("as rotas de etapa não têm cópia à mão dos status", () => {
+  const ROTAS = [
+    join(process.cwd(), "app", "api", "crm", "etapas", "route.ts"),
+    join(process.cwd(), "app", "api", "crm", "etapas", "[id]", "route.ts"),
+  ];
+
+  for (const rota of ROTAS) {
+    it(`${rota.split("/api/")[1]} deriva o status de COLUNAS`, () => {
+      const fonte = readFileSync(rota, "utf8");
+      expect(fonte, "a rota precisa importar COLUNAS").toContain('from "@/lib/fila/kanban"');
+      // `z.enum(["novo", …])` de volta no arquivo é a cópia que se quer impedir.
+      expect(fonte, "voltou uma lista de status escrita à mão").not.toMatch(
+        /z\.enum\(\s*\[\s*"novo"/,
+      );
+    });
+  }
+});
+
 describe("o check do banco acompanha o domínio", () => {
   // O defeito que motivou o arquivo. Se alguém acrescentar um status no código e
   // esquecer a migration, é aqui que aparece — e não numa carga de 76 leads.

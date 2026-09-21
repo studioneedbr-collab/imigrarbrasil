@@ -80,6 +80,17 @@ export function GerenciarEtapas({
   const [salvo, setSalvo] = useState<string | null>(null);
   /** Apagar coluna é destrutivo o bastante para pedir confirmação, como o funil já pedia. */
   const [confirmandoEtapa, setConfirmandoEtapa] = useState<string | null>(null);
+  /** O "salvo" do funil — mesma dúvida do nome da etapa, mesmo remédio. */
+  const [funilSalvo, setFunilSalvo] = useState(false);
+  /** A etapa em trânsito, enquanto alguém arrasta. */
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!funilSalvo) return;
+    const t = setTimeout(() => setFunilSalvo(false), 2000);
+    return () => clearTimeout(t);
+  }, [funilSalvo]);
 
   useEffect(() => {
     if (!salvo) return;
@@ -139,26 +150,49 @@ export function GerenciarEtapas({
   }
 
   /**
-   * Trocar duas etapas de lugar. São dois PATCH e não um "reordenar tudo": mover uma
-   * coluna é a operação real, e uma chamada por etapa mantém o log de acesso legível.
+   * REORDENAR — a lista inteira, numa decisão só.
+   *
+   * Eram dois PATCH em sequência. Quando o primeiro gravava e o segundo falhava, as duas
+   * etapas ficavam com a MESMA ordem e o quadro passava a se reorganizar sozinho, na cara
+   * de quem estava arrumando. Ver app/api/crm/etapas/ordem.
    */
-  async function trocar(i: number, j: number) {
+  async function reordenar(proximas: EtapaCrm[]) {
+    const antes = etapas;
+    // A tela anda primeiro. Arrastar precisa responder no dedo; se o servidor recusar, a
+    // ordem antiga volta e o erro aparece — que é melhor do que a coluna ficar presa no
+    // lugar por meio segundo a cada arrasto.
+    aoMudar(proximas.map((e, i) => ({ ...e, ordem: i })));
+    const c = await chamar<{ etapas: EtapaCrm[] }>("/api/crm/etapas/ordem", {
+      method: "POST",
+      body: JSON.stringify({ funilId: funil.id, ids: proximas.map((e) => e.id) }),
+    });
+    if (!c) {
+      aoMudar(antes);
+      return;
+    }
+    aoMudar(c.etapas);
+    setSalvo("ordem");
+  }
+
+  /** As setas continuam existindo: no celular não há arrasto, e no teclado também não. */
+  function trocar(i: number, j: number) {
     if (j < 0 || j >= etapas.length) return;
-    const a = etapas[i];
-    const b = etapas[j];
-    const c1 = await chamar<{ etapa: EtapaCrm }>(`/api/crm/etapas/${a.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ ordem: b.ordem }),
-    });
-    if (!c1) return;
-    const c2 = await chamar<{ etapa: EtapaCrm }>(`/api/crm/etapas/${b.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ ordem: a.ordem }),
-    });
-    if (!c2) return;
-    aoMudar(
-      etapas.map((e) => (e.id === a.id ? c1.etapa : e.id === b.id ? c2.etapa : e)),
-    );
+    const proximas = [...etapas];
+    [proximas[i], proximas[j]] = [proximas[j], proximas[i]];
+    void reordenar(proximas);
+  }
+
+  /** Soltou em cima de outra etapa: a arrastada ocupa aquela posição. */
+  function soltarEm(idDestino: string) {
+    const de = etapas.findIndex((e) => e.id === arrastando);
+    const para = etapas.findIndex((e) => e.id === idDestino);
+    setArrastando(null);
+    setSobre(null);
+    if (de < 0 || para < 0 || de === para) return;
+    const proximas = [...etapas];
+    const [movida] = proximas.splice(de, 1);
+    proximas.splice(para, 0, movida);
+    void reordenar(proximas);
   }
 
   return (
@@ -178,11 +212,20 @@ export function GerenciarEtapas({
                 void chamar<{ funil: FunilCrm }>(`/api/crm/funis/${funil.id}`, {
                   method: "PATCH",
                   body: JSON.stringify({ nome: nomeFunil.trim() }),
-                }).then((c) => c && aoMudarFunil(c.funil));
+                }).then((c) => {
+                  if (!c) return;
+                  aoMudarFunil(c.funil);
+                  setFunilSalvo(true);
+                });
               }
             }}
             className="mt-1 w-48 rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
           />
+          {/* O nome do funil gravava no blur sem nada mudar na tela — a mesma dúvida que
+              a etapa tinha, no campo logo acima dela. */}
+          <span className="mt-1 block h-4 text-[11px] font-semibold text-ib-success">
+            {funilSalvo ? "✓ salvo" : ""}
+          </span>
         </label>
 
         {!funil.padrao ? (
@@ -247,10 +290,44 @@ export function GerenciarEtapas({
       </div>
 
       {/* ─── As etapas ─── */}
+      {/* ARRASTAR PARA REORDENAR. O quadro ao lado já se organiza arrastando, e chegar
+          aqui e ter só duas setinhas é a inconsistência que faz alguém achar que a tela
+          está pela metade. As setas ficam: no celular não há arrasto, e no teclado
+          também não. */}
+      <p className="text-[11px] text-ib-slate">
+        Arraste para reordenar as colunas — ou use as setas.
+        {salvo === "ordem" ? (
+          <span className="ml-2 font-semibold text-ib-success">✓ ordem salva</span>
+        ) : null}
+      </p>
       <ul className="space-y-2">
         {etapas.map((e, i) => (
-          <li key={e.id} className="rounded-lg border border-ib-line bg-ib-papel/40 p-3">
+          <li
+            key={e.id}
+            draggable
+            onDragStart={() => setArrastando(e.id)}
+            onDragEnd={() => {
+              setArrastando(null);
+              setSobre(null);
+            }}
+            onDragOver={(ev) => {
+              ev.preventDefault();
+              setSobre(e.id);
+            }}
+            onDragLeave={() => setSobre((atual) => (atual === e.id ? null : atual))}
+            onDrop={() => soltarEm(e.id)}
+            className={`rounded-lg border bg-ib-papel/40 p-3 transition ${
+              arrastando === e.id ? "opacity-40" : ""
+            } ${sobre === e.id && arrastando !== e.id ? "border-ib-mar bg-ib-bruma" : "border-ib-line"}`}
+          >
             <div className="flex flex-wrap items-center gap-2">
+              <span
+                aria-hidden="true"
+                title="Arraste para reordenar"
+                className="cursor-grab select-none px-1 text-ib-slate active:cursor-grabbing"
+              >
+                ⠿
+              </span>
               <input
                 defaultValue={e.nome}
                 maxLength={NOME_MAX}

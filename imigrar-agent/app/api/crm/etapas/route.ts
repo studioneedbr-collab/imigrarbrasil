@@ -5,6 +5,8 @@ import { requireSession, forbidden } from "@/lib/auth/guard";
 import { normalizarPapel } from "@/lib/auth/papeis";
 import { registrarAcesso } from "@/lib/auth/auditoria";
 import { AJUDA_MAX, NOME_MAX } from "@/lib/crm/funil";
+import { COLUNAS } from "@/lib/fila/kanban";
+import type { AtendimentoStatus } from "@/lib/domain/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +23,24 @@ function podeDesenhar(role: unknown): boolean {
   return papel === "admin" || papel === "advogado";
 }
 
+/**
+ * O STATUS VEM DE `COLUNAS`, e não de uma lista escrita aqui.
+ *
+ * Havia uma cópia à mão — sem 'proposta_enviada', porque a etapa comercial (migration
+ * 027) nasceu depois dela. O efeito: o seletor da tela OFERECIA "Proposta enviada", e
+ * salvar respondia 400 "Dados inválidos". Foi o mesmo esquecimento que deixou o check do
+ * banco para trás, na mesma etapa, e nenhum dos dois dava sinal antes de alguém tentar.
+ *
+ * Derivar da constante fecha a porta: acrescentar uma coluna ao quadro passa a valer aqui
+ * sem ninguém precisar lembrar deste arquivo.
+ */
+const STATUS_DE_ETAPA = z.enum(COLUNAS as [AtendimentoStatus, ...AtendimentoStatus[]]);
+
 const criar = z.object({
   funilId: z.string().min(1),
   nome: z.string().trim().min(2, "Dê um nome à etapa.").max(NOME_MAX),
   ajuda: z.string().trim().max(AJUDA_MAX).nullable().optional(),
-  status: z.enum(["novo", "em_atendimento", "agendado", "fechado", "perdido"]),
+  status: STATUS_DE_ETAPA,
   ordem: z.number().int().min(0).max(99).optional(),
 });
 
