@@ -42,12 +42,60 @@ desativar por engano, não some ao trocar de tema e não é apagado por atualiza
 > carregado em toda página. Suba o arquivo como está, sem editar. Se precisar mudar algo,
 > confira a sintaxe antes.
 
-**3. Conferir.** Preencha o formulário do site com um nome de teste e **feche a aba na
+**3. Conferir a medição.** Numa **janela anônima** (logado você fica de fora, de
+propósito), abra o site, clique no ícone do WhatsApp e envie o formulário. No painel do
+Studio Need devem aparecer um `pageview`, um clique `whatsapp` e um envio
+`atendimento-online`.
+
+**4. Conferir a captura.** Preencha o formulário do site com um nome de teste e **feche a aba na
 hora do redirecionamento** (é o caso que a integração existe para pegar). O caso deve
 aparecer na coluna **Novo** do CRM em segundos, já com o nome.
 
 Não apareceu? O motivo está no `error_log` do WordPress, com o prefixo
 `[imigrar-captura]` — token errado, rota fora do ar ou campo do formulário renomeado.
+
+## A medição (Studio Need)
+
+O mesmo `mu-plugin` instala o `sn-track.js` antes do `</body>`. Ele conta pageview, clique
+e envio de formulário sozinho — mas **neste site, sem ajuda, ele mediria quase nada do que
+interessa**. Rodei o tracker real contra o HTML real das páginas, com e sem a marcação:
+
+| | sem marcação | com marcação |
+|---|---|---|
+| clique no WhatsApp | *nada* | `whatsapp` |
+| envio do formulário do topo | *sem rótulo* | `atendimento-online` |
+| envio do Fale Conosco | `Contato` | `fale-conosco` |
+
+Por quê:
+
+- **Não existe um único link `wa.me` no site.** O ícone de WhatsApp é um `<a>` que abre um
+  popup do Elementor. O tracker reconhece a intenção pelo `href` (`wa.me`, `tel:`,
+  `mailto:`) e, na falta dela, só mede o que parece botão — a regra procura
+  `btn|button|cta|acao|action` na classe, e `elementor-icon` não tem nenhuma. O clique
+  mais importante do site ficaria fora da conta, e o relatório diria "zero WhatsApp"
+  parecendo um dado em vez de um furo.
+- **O formulário do ibexgo não tem `name` nem `id`.** O rótulo sai de `data-sn-track`,
+  depois `name`, depois `id`; sem os três, o envio chega sem rótulo nenhum.
+- **O popup não está no HTML da página** — o Elementor o carrega depois, por AJAX. Por
+  isso a marcação é feita na hora do clique, e não na carga da página.
+
+**Quem trabalha no site não é medido.** Usuário logado que pode editar posts fica de fora,
+senão as visitas do escritório viram a maior parte do número num site de pouco movimento.
+Para conferir a instalação, **use uma janela anônima**.
+
+A chave `snk_…` fica no próprio arquivo: ela é pública por natureza, vai no código-fonte de
+toda página. Não confunda com o `IMIGRAR_CAPTURE_TOKEN`, que é segredo e mora no
+`wp-config.php`. Para trocar a chave sem editar o plugin, defina `IMIGRAR_SN_KEY`.
+
+> ⚠️ **O tracker manda os campos do formulário para o servidor do Studio Need**, além do
+> que o site já faz. Quem preenche o Fale Conosco manda nome, telefone, e-mail e mensagem
+> para lá também. É o comportamento documentado do próprio `sn-track.js`, e é uma decisão
+> que o cliente precisa saber que foi tomada — ainda mais num site com banner de
+> consentimento (CookieYes) instalado, que o tracker **não** consulta antes de medir.
+
+> O lead do formulário do topo passa a existir em **três lugares**: a lista do plugin
+> `ibexgo` no WordPress, o CRM e o Studio Need. Nenhum deles é duplicata dentro do CRM —
+> mas vale saber, para ninguém se assustar ao comparar contagens.
 
 ## O que o WordPress manda
 

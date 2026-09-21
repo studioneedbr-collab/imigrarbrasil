@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Imigrar Brasil — lead do site no CRM
- * Description: Manda para o CRM quem preenche o formulário do site, inclusive quem não completa o passo do WhatsApp.
+ * Description: Manda para o CRM quem preenche o formulário do site (inclusive quem não completa o passo do WhatsApp) e instala a medição do Studio Need.
  * Version: 1.0.0
  *
  * ── O BURACO QUE ISTO FECHA ───────────────────────────────────────────────────────
@@ -165,3 +165,125 @@ add_action('shutdown', function () {
             substr((string) wp_remote_retrieve_body($resposta), 0, 300));
     }
 }, 1);
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * MEDIÇÃO DO SITE (Studio Need)
+ *
+ * O `sn-track.js` conta sozinho: pageview, clique em botão e envio de formulário. Não
+ * precisa de marcação para funcionar — mas NESTE site, sem marcação, ele mede quase nada
+ * do que interessa. Três motivos concretos, todos verificados no HTML das páginas:
+ *
+ * 1. NÃO EXISTE UM ÚNICO LINK `wa.me` NO SITE. O ícone de WhatsApp é
+ *    `<a class="elementor-icon elementor-social-icon-whatsapp" href="#elementor-action…">`,
+ *    que abre um popup do Elementor. O tracker reconhece a INTENÇÃO pelo href (`wa.me`,
+ *    `tel:`, `mailto:`) e, na falta dela, só mede o que parece botão — a regra de classe
+ *    procura `btn|button|cta|acao|action`, e "elementor-icon" não tem nenhuma delas. O
+ *    clique mais importante do site cairia fora da conta, e o relatório diria "zero
+ *    WhatsApp" parecendo um dado em vez de um furo.
+ *
+ * 2. O FORMULÁRIO DO IBEXGO NÃO TEM `name` NEM `id` — é só `<form class="ibxgo-form">`.
+ *    O rótulo do envio sai de `data-sn-track`, depois `name`, depois `id`; sem os três,
+ *    o evento chega sem rótulo e os dois formulários do site viram a mesma linha.
+ *
+ * 3. O POPUP NÃO ESTÁ NO HTML DA PÁGINA. O Elementor carrega o conteúdo dele depois, por
+ *    AJAX. Marcar tudo uma vez no `DOMContentLoaded` não alcançaria o que ainda não
+ *    existe — por isso a marcação aqui é feita NA HORA DO EVENTO, e não na carga.
+ *
+ * ── POR QUE ISTO FUNCIONA SEM TOCAR NO TRACKER ──────────────────────────────────────
+ *
+ * O `sn-track.js` entra com `defer`: ele só executa depois que a página terminou de ser
+ * lida. O trecho abaixo é inline, então roda ANTES dele e registra seus ouvintes de
+ * `click` e `submit` primeiro. Ouvintes na mesma fase são chamados na ordem em que foram
+ * registrados — então, quando o tracker olha o elemento, o `data-sn-track` já está lá.
+ * É essa ordem que faz a marcação just-in-time funcionar; ela não é acidental.
+ * ═══════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * A chave do site. Ela é PÚBLICA por natureza — vai no código-fonte de toda página, à
+ * vista de qualquer visitante. Não é segredo e não se trata como tal (diferente do
+ * IMIGRAR_CAPTURE_TOKEN, esse sim fora deste arquivo). Fica como constante só para poder
+ * ser trocada pelo `wp-config.php` sem reeditar o plugin.
+ */
+if (!defined('IMIGRAR_SN_KEY')) {
+    define('IMIGRAR_SN_KEY', 'snk_otITHbs1z8VjDJ9thF5NL1Ut3gocSIKt');
+}
+if (!defined('IMIGRAR_SN_SRC')) {
+    define('IMIGRAR_SN_SRC', 'https://app.studioneed.com.br/sn-track.js');
+}
+
+/**
+ * QUEM TRABALHA AQUI NÃO É VISITA.
+ *
+ * Sem isto, cada vez que alguém do escritório abre o site para conferir um texto, a
+ * métrica ganha um pageview e os cliques de teste entram no ranking. Num site com pouco
+ * movimento — que é o caso — isso não é ruído: é a maior parte do número.
+ *
+ * O efeito colateral tem de ser lembrado na hora de conferir a instalação: logado, você
+ * NÃO se vê na medição. Confira numa janela anônima.
+ */
+function imigrar_mede_este_visitante() {
+    if (is_admin()) { return false; }
+    if (is_user_logged_in() && current_user_can('edit_posts')) { return false; }
+    return true;
+}
+
+/** A marcação, impressa ANTES do tracker — ver o bloco acima. */
+add_action('wp_footer', function () {
+    if (!imigrar_mede_este_visitante()) { return; }
+    ?>
+<script>
+/* Imigrar Brasil — rótulos da medição. Roda antes do sn-track.js (que é `defer`). */
+(function () {
+  "use strict";
+  try {
+    // Seletor → rótulo. O que NÃO está aqui continua sendo medido pelas regras próprias
+    // do tracker; esta lista existe só para o que ele não teria como adivinhar.
+    var ALVOS = [
+      // Os dois formulários do site, com nomes que se distinguem no relatório.
+      ["form.ibxgo-form", "atendimento-online"],
+      ["form.elementor-form[name='Contato']", "fale-conosco"],
+      // O ícone que abre o popup do WhatsApp. É o clique que a pergunta "quantas pessoas
+      // foram para o WhatsApp?" quer contar, e o único que o tracker não pega sozinho.
+      [".elementor-social-icon-whatsapp", "whatsapp"]
+    ];
+
+    function marcar(no) {
+      if (!no || no.nodeType !== 1 || !no.matches) { return; }
+      if (no.getAttribute("data-sn-track")) { return; }
+      for (var i = 0; i < ALVOS.length; i++) {
+        try {
+          if (no.matches(ALVOS[i][0])) { no.setAttribute("data-sn-track", ALVOS[i][1]); return; }
+        } catch (e) {}
+      }
+    }
+
+    // Subir a partir do alvo: o clique acontece no <svg> dentro do <a>, nunca no <a>.
+    // O teto de 12 saltos é o mesmo do tracker, pela mesma razão.
+    document.addEventListener("click", function (evento) {
+      try {
+        var no = evento.target, saltos = 0;
+        while (no && no.nodeType === 1 && saltos++ < 12) { marcar(no); no = no.parentNode; }
+      } catch (e) {}
+    }, true);
+
+    document.addEventListener("submit", function (evento) {
+      try { marcar(evento.target); } catch (e) {}
+    }, true);
+  } catch (e) {
+    // Medição nunca pode quebrar o site.
+  }
+})();
+</script>
+    <?php
+}, 98);
+
+/** O tracker. Prioridade maior que a da marcação: ele precisa vir depois. */
+add_action('wp_footer', function () {
+    if (!imigrar_mede_este_visitante()) { return; }
+    if (!IMIGRAR_SN_KEY || !IMIGRAR_SN_SRC) { return; }
+    printf(
+        '<!-- Studio Need — medição do site -->' . "\n" . '<script defer src="%s" data-sn-key="%s"></script>' . "\n",
+        esc_url(IMIGRAR_SN_SRC),
+        esc_attr(IMIGRAR_SN_KEY)
+    );
+}, 99);
