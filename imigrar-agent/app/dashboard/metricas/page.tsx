@@ -5,6 +5,8 @@ import { podeExportar } from "@/lib/auth/papeis";
 import { Card, Icon, PageHeader, btnGhost } from "@/components/dashboard/ui";
 import { carregarLeadsDaFila } from "@/lib/fila/carregar";
 import { calcularMetricas } from "@/lib/metricas";
+import { resumirFunil } from "@/lib/metricas/funil";
+import { ATENDIMENTO_LABEL, ORIGEM_LABEL } from "@/lib/domain/rotulos";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import { CLASSIFICACAO_LABEL } from "@/lib/domain/rotulos";
 import { rotuloPrazo, diasRestantes } from "@/lib/fila/ordenacao";
@@ -19,9 +21,19 @@ export const dynamic = "force-dynamic";
 /**
  * AS MÉTRICAS DESTE TIME.
  *
- * O painel que originou este código media receita, ticket médio e conversão. Nada disso
- * está aqui, de propósito: o que prova o valor deste produto é quanto tempo do time ele
- * economizou — e, do outro lado, se ele economizou tempo demais.
+ * O painel que originou este código media receita, ticket médio e conversão, e por um
+ * bom tempo nada disso esteve aqui: o que prova o valor DESTE produto é quanto tempo do
+ * time ele economizou — e, do outro lado, se ele economizou tempo demais. Essas continuam
+ * sendo as perguntas das abas Agente, Custo e Follow-up.
+ *
+ * A ABA FUNIL MUDOU ISSO, e a razão não é a mesma do painel de origem. Ela nasceu quando
+ * o CRM deixou de ser só o que a Ana atende: com o histórico do comercial dentro dele,
+ * "quanto tem de proposta na rua" e "de qual porta vieram os casos que fecharam" passaram
+ * a ser perguntas que só este painel consegue responder — e que ninguém consegue
+ * responder abrindo a planilha, porque a planilha parou de ser a verdade no dia da carga.
+ *
+ * O que continua fora: projeção, meta e comissão. Medir o que aconteceu é uma coisa;
+ * virar ferramenta de cobrança de vendedor é outra, e não é o que este painel é.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * POR QUE ABAS, E POR QUE O CABEÇALHO DE FILTRO É TÃO EXPLÍCITO.
@@ -51,6 +63,9 @@ const PERIODOS = [
 
 const ABAS = [
   { key: "visao", label: "Visão geral" },
+  // O FUNIL VEM LOGO DEPOIS DA VISÃO GERAL, e antes das abas do agente: é a aba que o
+  // escritório abre, e as outras são as que quem cuida do agente abre.
+  { key: "funil", label: "Funil" },
   { key: "pessoas", label: "Quem procura" },
   { key: "desfecho", label: "Desfecho" },
   { key: "prazos", label: "Prazos" },
@@ -98,6 +113,20 @@ function duracao(min: number | null): string {
 
 function dataCurta(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+/**
+ * Reais, sem centavos.
+ *
+ * Os valores deste escritório são de milhares — "R$ 2.500" se lê de relance e
+ * "R$ 2.500,00" não acrescenta nada numa faixa de quatro números lado a lado.
+ */
+function reais(v: number): string {
+  return v.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  });
 }
 
 function Numero({
@@ -217,6 +246,10 @@ export default async function MetricasPage({
     : todos;
 
   const m = calcularMetricas(leads, reclassificacoes, de, agora, agora);
+  // O funil lê `todos`, e não `leads`: o recorte por nacionalidade responde "quem procura"
+  // e distorceria "quanto o escritório tem na rua" — que é uma pergunta sobre a carteira
+  // inteira. As duas convivem na mesma tela, e é o rótulo de cada bloco que diz qual é.
+  const funil = resumirFunil(todos, de, agora, agora);
   const exporta = session ? podeExportar(session.role) : false;
 
   // O CUSTO TAMBÉM RESPEITA O FILTRO.
@@ -508,6 +541,147 @@ export default async function MetricasPage({
             <Barras rows={m.porModalidade} />
           </Bloco>
         </div>
+      ) : null}
+
+      {/* ══════════════ FUNIL ══════════════ */}
+      {aba === "funil" ? (
+        <>
+          <Card className="overflow-hidden">
+            <div className="grid grid-cols-1 divide-y divide-ib-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+              <Numero
+                label="Proposta na rua"
+                valor={reais(funil.propostas.valor)}
+                /* O CASO ZERO PRECISA DE FRASE PRÓPRIA. "0 propostas abertas, todas com
+                   valor" é o tipo de frase que denuncia que ninguém olhou a tela vazia —
+                   e a tela vazia é justamente a que o cliente vê no primeiro dia. */
+                nota={
+                  funil.propostas.abertas === 0
+                    ? "Nenhuma proposta em aberto no quadro."
+                    : funil.propostas.semValor
+                      ? `${funil.propostas.abertas} propostas abertas — ${funil.propostas.semValor} sem valor preenchido, fora desta soma.`
+                      : `${funil.propostas.abertas} ${funil.propostas.abertas === 1 ? "proposta aberta" : "propostas abertas"}, todas com valor.`
+                }
+              />
+              <Numero
+                label="Fechado no período"
+                valor={reais(funil.fechados.valor)}
+                tom="bom"
+                nota={
+                  funil.fechados.total === 0
+                    ? "Nenhum caso fechado neste período."
+                    : funil.fechados.semValor
+                      ? `${funil.fechados.total} ${funil.fechados.total === 1 ? "contrato" : "contratos"} — ${funil.fechados.semValor} sem valor preenchido.`
+                      : `${funil.fechados.total} ${funil.fechados.total === 1 ? "contrato" : "contratos"}.`
+                }
+              />
+              <Numero
+                label="Ticket médio"
+                valor={funil.fechados.ticketMedio === null ? "—" : reais(funil.fechados.ticketMedio)}
+                nota={
+                  funil.fechados.total === 0
+                    ? "Aparece quando houver contrato fechado no período."
+                    : funil.fechados.ticketMedio === null
+                      ? "Nenhum contrato do período tem valor preenchido."
+                      : "Sobre os contratos com valor preenchido."
+                }
+              />
+              <Numero
+                label="Conversão"
+                valor={funil.conversao.comDesfecho ? pct(funil.conversao.taxa) : "—"}
+                nota={
+                  funil.conversao.comDesfecho === 0
+                    ? "Nenhum caso teve desfecho neste período."
+                    : `${funil.conversao.fechados} de ${funil.conversao.comDesfecho} casos que tiveram desfecho no período.`
+                }
+              />
+            </div>
+          </Card>
+
+          {/* O ÚNICO ALERTA DESTA ABA.
+              Proposta vencida não é um número de relatório: é alguém esperando resposta
+              sobre um orçamento que já não vale. Fica em vermelho e some quando é zero —
+              alerta que aparece sempre deixa de ser alerta. */}
+          {funil.propostas.vencidas + funil.propostas.vencemEmBreve > 0 ? (
+            <div
+              role="status"
+              className="rounded-xl border border-ib-warn/30 bg-ib-warn/[0.07] px-4 py-3 text-sm text-[#9A6212]"
+            >
+              {funil.propostas.vencidas > 0 ? (
+                <>
+                  <strong>{funil.propostas.vencidas}</strong>{" "}
+                  {funil.propostas.vencidas === 1 ? "proposta venceu" : "propostas venceram"} e
+                  continuam na coluna.{" "}
+                </>
+              ) : null}
+              {funil.propostas.vencemEmBreve > 0 ? (
+                <>
+                  <strong>{funil.propostas.vencemEmBreve}</strong>{" "}
+                  {funil.propostas.vencemEmBreve === 1 ? "vence" : "vencem"} nos próximos 7 dias.
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Bloco
+              titulo="Onde os casos estão agora"
+              descricao="Foto do quadro neste momento — não do período. Um caso aberto há oito meses continua aberto hoje."
+            >
+              <Barras
+                rows={funil.porEtapa
+                  .filter((e) => e.total > 0)
+                  .map((e) => ({ label: ATENDIMENTO_LABEL[e.status], total: e.total }))}
+                vazio="Nenhum caso no quadro."
+              />
+            </Bloco>
+
+            <Bloco
+              titulo="De onde vieram, e quanto fecharam"
+              descricao="Contar só a entrada faz a porta mais barulhenta parecer a melhor. A coluna que importa é a segunda."
+            >
+              {funil.porOrigem.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-ib-slate">Nenhum caso ainda.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="border-b border-ib-line bg-ib-papel/70 text-[11px] uppercase tracking-[0.08em] text-ib-slate">
+                    <tr>
+                      <th className="px-5 py-2 text-left font-semibold">Chegou por</th>
+                      <th className="px-5 py-2 text-right font-semibold">Casos</th>
+                      <th className="px-5 py-2 text-right font-semibold">Fecharam</th>
+                      <th className="px-5 py-2 text-right font-semibold">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ib-line">
+                    {funil.porOrigem.map((o) => (
+                      <tr key={o.origem}>
+                        <td className="px-5 py-2 text-ib-ink">{ORIGEM_LABEL[o.origem]}</td>
+                        <td className="px-5 py-2 text-right font-mono tabular-nums text-ib-slate">
+                          {o.total}
+                        </td>
+                        <td className="px-5 py-2 text-right font-mono tabular-nums text-ib-ink">
+                          {o.fechados}
+                        </td>
+                        <td className="px-5 py-2 text-right font-mono tabular-nums text-ib-slate">
+                          {o.valor ? reais(o.valor) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Bloco>
+          </div>
+
+          {/* O RECADO QUE FAZ OS ZEROS SEREM LIDOS DIREITO.
+              Valor é campo de humano — o agente nunca escreve nele. Numa carteira recém
+              importada, quase tudo está vazio, e sem esta linha a tela parece dizer que o
+              escritório não vendeu nada. */}
+          <p className="text-xs leading-relaxed text-ib-slate">
+            Valor de proposta e de contrato são preenchidos por gente, na ficha do caso — o
+            agente nunca escreve neles. Caso sem valor preenchido não entra nas somas, e
+            aparece contado ao lado de cada número.
+          </p>
+        </>
       ) : null}
 
       {/* ══════════════ DESFECHO ══════════════ */}
