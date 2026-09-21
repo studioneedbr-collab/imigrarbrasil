@@ -20,42 +20,73 @@ que ninguém abre como fila.
 **`5511919854664` é o número do agente** — confirmado. Então quem completa o passo do
 WhatsApp cai no atendimento pelo caminho normal.
 
-## Instalação (10 minutos)
+## Instalação (5 minutos)
 
-**1. O segredo.** No `wp-config.php`, antes da linha `/* That's all, stop editing! */`:
+**1.** `Plugins → Adicionar novo → Enviar plugin` → escolha **`imigrar-agent/wordpress/imigrar-crm.zip`** → Instalar → **Ativar**.
+
+**2.** No menu lateral aparece **Imigrar CRM**. Cole ali o token — é o mesmo valor de
+`SITE_CAPTURE_TOKEN` no Vercel — e marque o que deve subir:
+
+- **Orçamentos** (e qualquer outro tipo de conteúdo com lead dentro);
+- **Formulários do Elementor**, para o Contato do Fale Conosco.
+
+**3.** Aperte **Testar conexão com o CRM**. Ele manda um registro de teste sem telefone —
+exercita rede, token e rota inteira, e **não cria card nenhum**, porque o CRM descarta
+registro sem telefone. Um botão de teste que deixa lixo é um botão que ninguém aperta.
+
+**4.** Para os orçamentos que já existem, **Enviar todos agora**. Mesmo caminho, mesma
+deduplicação: apertar duas vezes não duplica.
+
+### Era mu-plugin, virou plugin normal
+
+Mu-plugin (arquivo solto em `wp-content/mu-plugins/`) carrega sempre, não aparece na lista
+para alguém desativar por engano e nenhuma atualização o apaga. Mas **não instala por ZIP**
+— é FTP toda vez, inclusive para corrigir uma linha. Na prática, correção que exige FTP é
+correção que não sobe, e um plugin que ninguém atualiza é pior do que um que alguém pode
+desativar sem querer.
+
+O risco que a troca traz — ser desativado e o lead parar de chegar em silêncio — é o que o
+painel responde: ele mostra o estado de cada função e os últimos 50 envios.
+
+### O token: painel ou wp-config
+
+O caminho normal é o campo do painel. Quem preferir tirá-lo do banco pode definir no
+`wp-config.php`, e a constante **vence**:
 
 ```php
-define('IMIGRAR_CAPTURE_TOKEN', 'o-mesmo-valor-de-SITE_CAPTURE_TOKEN-no-vercel');
+define('IMIGRAR_CAPTURE_TOKEN', 'o-mesmo-valor-do-vercel');
 ```
 
-O token **não** fica no arquivo do plugin — assim ele pode ser lido, copiado e versionado
-sem carregar segredo junto.
+Nos dois casos o segredo é legível por quem administra o site; a diferença real é que o do
+banco aparece num dump e o da constante não.
 
-**2. O arquivo.** Copie `wordpress/imigrar-captura.php` (deste repositório) para
-`wp-content/mu-plugins/imigrar-captura.php`. Crie a pasta `mu-plugins` se não existir.
+> O campo do painel **nunca devolve o segredo para a tela**, e por isso deixá-lo em branco
+> significa "não mexer", não "apagar" — senão salvar qualquer outro ajuste derrubaria a
+> integração em silêncio.
 
-Em `mu-plugins/` ele é carregado sempre: não aparece na lista de plugins para alguém
-desativar por engano, não some ao trocar de tema e não é apagado por atualização.
+### Regerar o ZIP
 
-> ⚠️ **Um erro de sintaxe em `mu-plugins/` derruba o site inteiro**, porque o arquivo é
-> carregado em toda página. Suba o arquivo como está, sem editar. Se precisar mudar algo,
-> confira a sintaxe antes.
+Depois de mexer em `wordpress/imigrar-crm/`, rode `wordpress/build.sh`. Ele refaz o
+`imigrar-crm.zip` com a pasta interna certa (`imigrar-crm/`), que é o que faz o WordPress
+reconhecer um reenvio como atualização em vez de instalar um segundo plugin ao lado.
 
-**3. Conferir a medição.** Numa **janela anônima** (logado você fica de fora, de
-propósito), abra o site, clique no ícone do WhatsApp e envie o formulário. No painel do
-Studio Need devem aparecer um `pageview`, um clique `whatsapp` e um envio
-`atendimento-online`.
+## O painel do plugin
 
-**4. Conferir a captura.** Preencha o formulário do site com um nome de teste e **feche a aba na
-hora do redirecionamento** (é o caso que a integração existe para pegar). O caso deve
-aparecer na coluna **Novo** do CRM em segundos, já com o nome.
+O menu **Imigrar CRM** abre com quatro cartões de estado — token, formulários, tipos de
+conteúdo e medição — porque a pergunta que traz alguém ali quase sempre é "está
+funcionando?", e ela tem que ser respondida sem rolar a página.
 
-Não apareceu? O motivo está no `error_log` do WordPress, com o prefixo
-`[imigrar-captura]` — token errado, rota fora do ar ou campo do formulário renomeado.
+Abaixo, a tabela **o que este plugin faz**: cada função com ligada/desligada, o que ela
+pega e qual é a identidade do caso (telefone, ou tipo + ID do post).
+
+E **os últimos 50 envios**, com data, origem, desfecho e motivo. O `error_log` continua
+sendo escrito, mas em hospedagem compartilhada quase ninguém alcança aquele arquivo — e
+erro que só existe em log inalcançável é erro que ninguém vê. É nessa lista que "o lead de
+ontem chegou?" se responde.
 
 ## A medição (Studio Need)
 
-O mesmo `mu-plugin` instala o `sn-track.js` antes do `</body>`. Ele conta pageview, clique
+O plugin instala o `sn-track.js` antes do `</body>`. Ele conta pageview, clique
 e envio de formulário sozinho — mas **neste site, sem ajuda, ele mediria quase nada do que
 interessa**. Rodei o tracker real contra o HTML real das páginas, com e sem a marcação:
 
@@ -98,7 +129,7 @@ toda página. Não confunda com o `IMIGRAR_CAPTURE_TOKEN`, que é segredo e mora
 
 ## O que o WordPress manda
 
-O `mu-plugin` cuida disso sozinho. Fica registrado para quando alguém precisar mexer:
+O plugin cuida disso sozinho. Fica registrado para quando alguém precisar mexer:
 
 ```
 POST https://agente.imigrarbrasil.com.br/api/captura/site
@@ -136,7 +167,7 @@ criarem depois — que só existem dentro do wp-admin. **Nenhum aparece na REST 
 401). Está certo assim, e é por isso que não há como buscá-los de fora. Então o sentido se
 inverte: **o WordPress empurra**.
 
-Em **Ferramentas → Integração com o CRM**, marque os tipos que devem subir. A partir daí,
+Em **menu **Imigrar CRM****, marque os tipos que devem subir. A partir daí,
 cada registro vai para o CRM **no momento em que é salvo**. Não há exportação, nem
 planilha, nem passo manual.
 
@@ -173,7 +204,7 @@ O `/fale-conosco/` tem **dois** formulários: o do `ibexgo` (nome e WhatsApp) e 
 Elementor chamado **Contato**, com nome, telefone, e-mail e **mensagem**.
 
 O do Elementor não passa por nenhum dos outros ganchos — ele envia por `admin-ajax` e não
-cria post. Ligue em **Ferramentas → Integração com o CRM**, na seção *Formulários do
+cria post. Ligue em **menu **Imigrar CRM****, na seção *Formulários do
 Elementor*. Nasce desligado: mandar lead para a fila é ato deliberado.
 
 Vale a pena porque é o **único formulário do site com campo de mensagem**. O texto passa

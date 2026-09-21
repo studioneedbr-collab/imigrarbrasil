@@ -1,8 +1,11 @@
 <?php
 /**
- * Plugin Name: Imigrar Brasil — lead do site no CRM
- * Description: Manda para o CRM quem preenche o formulário do site (inclusive quem não completa o passo do WhatsApp) e instala a medição do Studio Need.
- * Version: 1.0.0
+ * Plugin Name: Imigrar Brasil — integração com o CRM
+ * Description: Leva ao CRM os leads do site (formulários e tipos de conteúdo) e instala a medição do Studio Need. Painel em "Imigrar CRM".
+ * Version: 1.1.0
+ * Author: Studio Need
+ * Requires at least: 5.6
+ * Requires PHP: 7.0
  *
  * ── O BURACO QUE ISTO FECHA ───────────────────────────────────────────────────────
  *
@@ -16,31 +19,96 @@
  * existe para substituir. O trecho entre o "Enviar" e o WhatsApp é onde o lead some, e é
  * exatamente onde este arquivo escuta.
  *
- * ── POR QUE MU-PLUGIN, E NÃO UM SNIPPET NO TEMA ───────────────────────────────────
+ * ── PLUGIN NORMAL, E NÃO MU-PLUGIN: A TROCA ───────────────────────────────────────
  *
- * Em `wp-content/mu-plugins/` o arquivo é carregado sempre: não aparece como plugin para
- * desativar por engano, não some ao trocar de tema e não é apagado por atualização. Um
- * snippet no `functions.php` do tema morre na primeira atualização do tema, e ninguém
- * relaciona "paramos de receber lead" com "o tema atualizou na terça".
+ * Isto nasceu como mu-plugin, que é um arquivo solto em `wp-content/mu-plugins/`. Aquilo
+ * tinha uma vantagem real: carrega SEMPRE, não aparece na lista para alguém desativar por
+ * engano e nenhuma atualização o apaga.
+ *
+ * Só que mu-plugin NÃO INSTALA POR ZIP. Não existe essa porta no wp-admin — é FTP ou
+ * gerenciador de arquivos da hospedagem, toda vez, inclusive para corrigir uma linha. Na
+ * prática isso significa que a correção não sobe, e um plugin que ninguém consegue
+ * atualizar é pior do que um que alguém pode desativar sem querer.
+ *
+ * Então: plugin normal. O risco que isso traz — ser desativado e o lead parar de chegar
+ * em silêncio — é respondido pelo painel: ele mostra o estado de cada função e a lista dos
+ * últimos envios, que é onde "parou de chegar" aparece antes de o cliente reclamar.
  *
  * ── POR QUE NÃO MEXEMOS NO PLUGIN DO FORMULÁRIO ───────────────────────────────────
  *
  * `rest_request_after_callbacks` roda DEPOIS que o endpoint do ibexgo já respondeu, e é
  * WordPress puro. Editar o plugin resolveria hoje e seria revertido na próxima
  * atualização dele. Aqui nada do ibexgo é tocado — se um dia ele mudar de nome de campo,
- * este arquivo para de achar o que mandar e registra no log, em vez de quebrar o site.
+ * este arquivo para de achar o que mandar e registra no painel, em vez de quebrar o site.
  *
  * ── INSTALAÇÃO ────────────────────────────────────────────────────────────────────
  *
- * 1. Copie este arquivo para `wp-content/mu-plugins/imigrar-captura.php`
- *    (crie a pasta `mu-plugins` se não existir).
- * 2. No `wp-config.php`, ANTES da linha "That's all, stop editing":
- *       define('IMIGRAR_CAPTURE_TOKEN', 'o-segredo-combinado');
- *    O token NÃO fica neste arquivo: assim ele pode ser lido, copiado e versionado sem
- *    carregar segredo junto.
+ * Plugins → Adicionar novo → Enviar plugin → `imigrar-crm.zip` → Ativar.
+ * Depois, no menu "Imigrar CRM", cole o token e ligue as origens.
  */
 
 if (!defined('ABSPATH')) { exit; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * O SEGREDO, E O REGISTRO DO QUE ACONTECEU
+ * ═══════════════════════════════════════════════════════════════════════════════════ */
+
+const IMIGRAR_OPCAO_TOKEN = 'imigrar_token_do_crm';
+const IMIGRAR_OPCAO_LOG   = 'imigrar_ultimos_envios';
+const IMIGRAR_LOG_MAX     = 50;
+
+/**
+ * O TOKEN, DE ONDE ELE ESTIVER.
+ *
+ * A constante no `wp-config.php` VENCE quando existe: é o lugar mais seguro, fora do banco
+ * e fora do alcance de qualquer tela. Mas exigir que ela exista significava FTP na
+ * instalação — e um plugin que só instala com FTP é um plugin que não é atualizado quando
+ * precisa. Então o campo do painel é o caminho normal, e a constante continua valendo para
+ * quem quiser tirá-lo do banco.
+ *
+ * Nos dois casos o segredo é legível por quem administra o site; a diferença real é que
+ * o do banco aparece num dump e o da constante não. É uma troca, não um descuido.
+ */
+function imigrar_token() {
+    if (defined('IMIGRAR_CAPTURE_TOKEN') && IMIGRAR_CAPTURE_TOKEN) {
+        return (string) IMIGRAR_CAPTURE_TOKEN;
+    }
+    return (string) get_option(IMIGRAR_OPCAO_TOKEN, '');
+}
+
+/** De onde veio o token, para o painel poder dizer. */
+function imigrar_origem_do_token() {
+    if (defined('IMIGRAR_CAPTURE_TOKEN') && IMIGRAR_CAPTURE_TOKEN) { return 'wp-config.php'; }
+    return get_option(IMIGRAR_OPCAO_TOKEN) ? 'painel' : '';
+}
+
+/**
+ * O DIÁRIO DOS ÚLTIMOS ENVIOS.
+ *
+ * `error_log()` continua sendo escrito, mas em hospedagem compartilhada quase ninguém
+ * alcança esse arquivo — e um erro que só existe num log inalcançável é um erro que
+ * ninguém vai ver. Esta lista fica no painel, onde a pergunta de verdade ("o lead de
+ * ontem chegou?") é feita.
+ *
+ * Últimos 50, e só. Não é auditoria: é o suficiente para responder "está funcionando?" e
+ * "por que aquele não entrou?", sem virar uma tabela que cresce para sempre num site que
+ * ninguém administra.
+ */
+function imigrar_anotar($origem, $desfecho, $detalhe = '') {
+    $log = get_option(IMIGRAR_OPCAO_LOG, array());
+    if (!is_array($log)) { $log = array(); }
+    array_unshift($log, array(
+        'quando'   => current_time('mysql'),
+        'origem'   => (string) $origem,
+        'desfecho' => (string) $desfecho,
+        // mbstring não é garantida em toda hospedagem, e `substr` cortaria um caractere
+        // acentuado ao meio — o detalhe viraria lixo justamente na linha de erro.
+        'detalhe'  => function_exists('mb_substr')
+            ? mb_substr((string) $detalhe, 0, 200)
+            : substr((string) $detalhe, 0, 200),
+    ));
+    update_option(IMIGRAR_OPCAO_LOG, array_slice($log, 0, IMIGRAR_LOG_MAX), false);
+}
 
 /** A rota do formulário, como o próprio HTML da página declara em `data-rest`. */
 const IMIGRAR_ROTA_DO_FORMULARIO = '/ibexgo/v1/leads/submit';
@@ -148,8 +216,8 @@ add_action('shutdown', function () {
 
     imigrar_encerrar_resposta();
 
-    if (!defined('IMIGRAR_CAPTURE_TOKEN') || !IMIGRAR_CAPTURE_TOKEN) {
-        error_log('[imigrar-captura] IMIGRAR_CAPTURE_TOKEN não está definido no wp-config.php — ' .
+    if (!imigrar_token()) {
+        error_log('[imigrar-captura] sem token configurado — ' .
             'o lead de "' . $lead['nome'] . '" ficou só no WordPress.');
         return;
     }
@@ -161,7 +229,7 @@ add_action('shutdown', function () {
         'blocking' => true, // Precisamos LER a resposta: é ela que diz se o lead entrou.
         'headers'  => array(
             'Content-Type'    => 'application/json; charset=utf-8',
-            'X-Imigrar-Token' => IMIGRAR_CAPTURE_TOKEN,
+            'X-Imigrar-Token' => imigrar_token(),
         ),
         'body' => wp_json_encode($corpo),
     ));
@@ -171,13 +239,18 @@ add_action('shutdown', function () {
     // linha no error_log do WordPress que responde "por que o lead não chegou no CRM".
     if (is_wp_error($resposta)) {
         error_log('[imigrar-captura] não alcançou o CRM: ' . $resposta->get_error_message());
+        imigrar_anotar('formulário do topo', 'falhou', $resposta->get_error_message());
         return;
     }
     $codigo = (int) wp_remote_retrieve_response_code($resposta);
     if ($codigo < 200 || $codigo >= 300) {
         error_log('[imigrar-captura] o CRM recusou (HTTP ' . $codigo . '): ' .
             substr((string) wp_remote_retrieve_body($resposta), 0, 300));
+        imigrar_anotar('formulário do topo', 'recusado', 'HTTP ' . $codigo . ' — ' .
+            substr((string) wp_remote_retrieve_body($resposta), 0, 160));
+        return;
     }
+    imigrar_anotar('formulário do topo', 'enviado', $lead['nome']);
 }, 1);
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
@@ -374,9 +447,9 @@ function imigrar_campos_do_post($post) {
  * (fonte, id) e atualiza. Editar um orçamento no WordPress dez vezes dá um card só.
  */
 function imigrar_enviar_ao_crm($fonte, $id_externo, $campos, $descricao) {
-    if (!defined('IMIGRAR_CAPTURE_TOKEN') || !IMIGRAR_CAPTURE_TOKEN) {
-        error_log('[imigrar-captura] IMIGRAR_CAPTURE_TOKEN não está definido no wp-config.php — ' .
-            $descricao . ' não foi ao CRM.');
+    if (!imigrar_token()) {
+        error_log('[imigrar-captura] sem token configurado — ' . $descricao . ' não foi ao CRM.');
+        imigrar_anotar($fonte, 'sem token', $descricao);
         return null;
     }
 
@@ -395,7 +468,7 @@ function imigrar_enviar_ao_crm($fonte, $id_externo, $campos, $descricao) {
         'blocking' => true, // É a resposta que diz se o caso entrou.
         'headers'  => array(
             'Content-Type'    => 'application/json; charset=utf-8',
-            'X-Imigrar-Token' => IMIGRAR_CAPTURE_TOKEN,
+            'X-Imigrar-Token' => imigrar_token(),
         ),
         'body' => wp_json_encode($corpo),
     ));
@@ -403,6 +476,7 @@ function imigrar_enviar_ao_crm($fonte, $id_externo, $campos, $descricao) {
     if (is_wp_error($resposta)) {
         error_log('[imigrar-captura] ' . $descricao . ' não alcançou o CRM: ' .
             $resposta->get_error_message());
+        imigrar_anotar($fonte, 'falhou', $descricao . ' — ' . $resposta->get_error_message());
         return null;
     }
     $codigo = (int) wp_remote_retrieve_response_code($resposta);
@@ -410,10 +484,13 @@ function imigrar_enviar_ao_crm($fonte, $id_externo, $campos, $descricao) {
     if ($codigo < 200 || $codigo >= 300) {
         error_log('[imigrar-captura] o CRM recusou ' . $descricao .
             ' (HTTP ' . $codigo . '): ' . substr($texto, 0, 300));
+        imigrar_anotar($fonte, 'recusado', 'HTTP ' . $codigo . ' — ' . substr($texto, 0, 160));
         return null;
     }
     $json = json_decode($texto, true);
-    return is_array($json) && isset($json['desfecho']) ? $json['desfecho'] : 'ok';
+    $desfecho = is_array($json) && isset($json['desfecho']) ? $json['desfecho'] : 'ok';
+    imigrar_anotar($fonte, $desfecho, is_array($json) ? (string) ($json['nome'] ?? $json['detalhe'] ?? '') : '');
+    return $desfecho;
 }
 
 /**
@@ -544,94 +621,280 @@ add_action('shutdown', function () {
  * botão "Enviar todos agora", que passa pelo mesmo caminho e pela mesma deduplicação.
  * Apertar duas vezes não duplica nada.
  * ═══════════════════════════════════════════════════════════════════════════════════ */
-
 add_action('admin_menu', function () {
-    add_management_page(
-        'Integração com o CRM',
-        'Integração com o CRM',
+    add_menu_page(
+        'Imigrar CRM',
+        'Imigrar CRM',
         'manage_options',
         'imigrar-crm',
-        'imigrar_tela_do_crm'
+        'imigrar_tela_do_crm',
+        'dashicons-migrate',
+        58
     );
 });
+
+/** Um cartão de estado: verde quando está de pé, vermelho quando não está. */
+function imigrar_cartao($titulo, $ok, $texto) {
+    printf(
+        '<div style="flex:1;min-width:220px;border:1px solid #c3c4c7;border-left:4px solid %s;' .
+        'background:#fff;padding:12px 16px;border-radius:4px">' .
+        '<div style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#646970">%s</div>' .
+        '<div style="font-size:15px;margin-top:4px"><strong>%s</strong> %s</div></div>',
+        $ok ? '#00a32a' : '#d63638',
+        esc_html($titulo),
+        $ok ? '✓' : '✕',
+        esc_html($texto)
+    );
+}
+
+/** Uma linha da tabela "o que este plugin faz". */
+function imigrar_linha_de_funcao($nome, $ligada, $explicacao, $estado) {
+    printf(
+        '<tr><td style="white-space:nowrap"><span style="color:%s;font-weight:600">%s</span></td>' .
+        '<td><strong>%s</strong><br><span class="description">%s</span></td>' .
+        '<td style="white-space:nowrap">%s</td></tr>',
+        $ligada ? '#00a32a' : '#8c8f94',
+        $ligada ? '● ligada' : '○ desligada',
+        esc_html($nome),
+        esc_html($explicacao),
+        esc_html($estado)
+    );
+}
 
 function imigrar_tela_do_crm() {
     if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
 
-    // Só os tipos criados por plugin/tema: post e página não são lead de ninguém.
-    $tipos = get_post_types(array('_builtin' => false), 'objects');
-    $ligados = imigrar_tipos_no_crm();
+    $tipos     = get_post_types(array('_builtin' => false), 'objects');
+    $ligados   = imigrar_tipos_no_crm();
+    $token     = imigrar_token();
+    $de_onde   = imigrar_origem_do_token();
+    $elementor = (bool) get_option(IMIGRAR_OPCAO_ELEMENTOR);
+    $log       = (array) get_option(IMIGRAR_OPCAO_LOG, array());
 
-    echo '<div class="wrap"><h1>Integração com o CRM</h1>';
+    echo '<div class="wrap"><h1>Imigrar Brasil — integração com o CRM</h1>';
+    echo '<p class="description" style="max-width:820px;font-size:14px">Este plugin leva ao CRM o que chega pelo site, ' .
+         'e instala a medição. Ele <strong>nunca responde nada pelo WhatsApp</strong> — quem decide falar com a pessoa é uma pessoa, pelo painel do CRM.</p>';
 
-    if (!defined('IMIGRAR_CAPTURE_TOKEN') || !IMIGRAR_CAPTURE_TOKEN) {
-        echo '<div class="notice notice-error"><p><strong>Falta a constante <code>IMIGRAR_CAPTURE_TOKEN</code> no <code>wp-config.php</code>.</strong> ' .
-             'Sem ela nada é enviado ao CRM.</p></div>';
+    // ── ESTADO, ANTES DE QUALQUER AJUSTE ──────────────────────────────────────────
+    //
+    // É a primeira coisa da tela de propósito. A pergunta que traz alguém aqui quase
+    // sempre é "está funcionando?", e ela tem que ser respondida sem rolar a página.
+    echo '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:18px 0">';
+    imigrar_cartao('Token do CRM', (bool) $token, $token ? 'configurado (' . $de_onde . ')' : 'não configurado');
+    imigrar_cartao('Formulários', true, 'ouvindo o formulário do topo' . ($elementor ? ' e o Elementor' : ''));
+    imigrar_cartao(
+        'Tipos de conteúdo',
+        !empty($ligados),
+        $ligados ? implode(', ', $ligados) : 'nenhum ligado'
+    );
+    imigrar_cartao('Medição', (bool) IMIGRAR_SN_KEY, IMIGRAR_SN_KEY ? 'instalada no site' : 'sem chave');
+    echo '</div>';
+
+    if (!$token) {
+        echo '<div class="notice notice-error"><p><strong>Sem o token, nada é enviado ao CRM.</strong> ' .
+             'Cole-o no campo abaixo — é o mesmo valor de <code>SITE_CAPTURE_TOKEN</code> no Vercel.</p></div>';
     }
 
-    if (empty($tipos)) {
-        echo '<p>Nenhum tipo de conteúdo personalizado neste site.</p></div>';
-        return;
-    }
+    // ── O QUE ELE FAZ ─────────────────────────────────────────────────────────────
+    echo '<h2>O que este plugin faz</h2>';
+    echo '<table class="widefat striped" style="max-width:940px"><thead><tr>' .
+         '<th style="width:110px">Estado</th><th>Função</th><th>Identidade do caso</th></tr></thead><tbody>';
+    imigrar_linha_de_funcao(
+        'Formulário do topo (Atendimento Online)',
+        true,
+        'Pega quem preenche e NÃO completa o passo do WhatsApp — quem completa já chegava pelo webhook.',
+        'telefone'
+    );
+    imigrar_linha_de_funcao(
+        'Formulário Contato (Elementor)',
+        $elementor,
+        'O único formulário do site com campo de mensagem: a triagem lê o texto e a ficha já chega preenchida.',
+        'telefone'
+    );
+    imigrar_linha_de_funcao(
+        'Tipos de conteúdo (Orçamentos e afins)',
+        !empty($ligados),
+        'Sobem no momento em que são salvos. Salvar de novo atualiza o caso; não cria outro.',
+        'tipo + ID do post'
+    );
+    imigrar_linha_de_funcao(
+        'Medição do site (Studio Need)',
+        (bool) IMIGRAR_SN_KEY,
+        'Pageview, clique no WhatsApp e envio de formulário. Quem pode editar posts não é medido.',
+        '—'
+    );
+    echo '</tbody></table>';
 
-    echo '<p>Os tipos marcados sobem para o CRM <strong>no momento em que são salvos</strong>. ' .
-         'Salvar o mesmo registro de novo <strong>atualiza</strong> o caso; não cria outro.</p>';
-
+    // ── AJUSTES ───────────────────────────────────────────────────────────────────
+    echo '<h2 style="margin-top:28px">Ajustes</h2>';
     echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
     echo '<input type="hidden" name="action" value="imigrar_salvar_tipos">';
     wp_nonce_field('imigrar_crm');
-    echo '<table class="widefat striped" style="max-width:820px"><thead><tr>' .
-         '<th>Enviar ao CRM</th><th>Tipo de conteúdo</th><th>Registros</th><th>Trazer os que já existem</th>' .
-         '</tr></thead><tbody>';
 
-    foreach ($tipos as $t) {
-        $contagem = wp_count_posts($t->name);
-        $qtd = (int) ($contagem->publish ?? 0) + (int) ($contagem->draft ?? 0) + (int) ($contagem->private ?? 0);
+    echo '<table class="form-table"><tr><th scope="row"><label for="token">Token do CRM</label></th><td>';
+    if ($de_onde === 'wp-config.php') {
+        echo '<p><code>IMIGRAR_CAPTURE_TOKEN</code> está definido no <code>wp-config.php</code> e tem prioridade. ' .
+             'Para mudá-lo, edite lá.</p>';
+    } else {
+        // Nunca devolvemos o segredo para a tela. Campo vazio = "não mexer".
         printf(
-            '<tr><td><input type="checkbox" name="tipos[]" value="%1$s" %2$s></td>' .
-            '<td><strong>%3$s</strong><br><code>%1$s</code></td><td>%4$d</td>' .
-            '<td><a class="button" href="%5$s">Enviar todos agora</a></td></tr>',
-            esc_attr($t->name),
-            checked(in_array($t->name, $ligados, true), true, false),
-            esc_html($t->labels->name),
-            $qtd,
-            esc_url(wp_nonce_url(
-                admin_url('admin-post.php?action=imigrar_enviar_tudo&tipo=' . urlencode($t->name)),
-                'imigrar_crm'
-            ))
+            '<input type="password" id="token" name="token" class="regular-text" autocomplete="off" placeholder="%s"> ' .
+            '<p class="description">O mesmo valor de <code>SITE_CAPTURE_TOKEN</code> no Vercel. ' .
+            'Deixe em branco para manter o atual.</p>',
+            $token ? '•••••••••• (guardado)' : 'cole o token aqui'
         );
     }
-    echo '</tbody></table>';
+    echo '</td></tr></table>';
 
-    // Os formulários do Elementor não são tipo de conteúdo — não aparecem na tabela acima
-    // porque não existem como post. Por isso um interruptor à parte.
-    echo '<h2 style="margin-top:28px">Formulários do Elementor</h2>';
+    if (empty($tipos)) {
+        echo '<p>Nenhum tipo de conteúdo personalizado neste site.</p>';
+    } else {
+        echo '<h3>Tipos de conteúdo que sobem ao CRM</h3>';
+        echo '<table class="widefat striped" style="max-width:940px"><thead><tr>' .
+             '<th style="width:90px">Enviar</th><th>Tipo</th><th style="width:100px">Registros</th>' .
+             '<th style="width:190px">Trazer os que já existem</th></tr></thead><tbody>';
+        foreach ($tipos as $t) {
+            $c = wp_count_posts($t->name);
+            $qtd = (int) ($c->publish ?? 0) + (int) ($c->draft ?? 0) + (int) ($c->private ?? 0);
+            printf(
+                '<tr><td><input type="checkbox" name="tipos[]" value="%1$s" %2$s></td>' .
+                '<td><strong>%3$s</strong> <code>%1$s</code></td><td>%4$d</td>' .
+                '<td><a class="button" href="%5$s">Enviar todos agora</a></td></tr>',
+                esc_attr($t->name),
+                checked(in_array($t->name, $ligados, true), true, false),
+                esc_html($t->labels->name),
+                $qtd,
+                esc_url(wp_nonce_url(
+                    admin_url('admin-post.php?action=imigrar_enviar_tudo&tipo=' . urlencode($t->name)),
+                    'imigrar_crm'
+                ))
+            );
+        }
+        echo '</tbody></table>';
+        echo '<p class="description" style="max-width:940px">O gancho automático só alcança o que for salvo daqui para a frente. ' .
+             '<strong>Enviar todos agora</strong> traz o que já existe, pelo mesmo caminho e com a mesma deduplicação — ' .
+             'apertar duas vezes não duplica nada.</p>';
+    }
+
+    echo '<h3 style="margin-top:24px">Formulários do Elementor</h3>';
     echo '<p><label><input type="checkbox" name="elementor" value="1" ' .
-         checked((bool) get_option(IMIGRAR_OPCAO_ELEMENTOR), true, false) . '> ' .
-         'Enviar ao CRM os envios dos formulários do Elementor</label></p>';
-    echo '<p class="description" style="max-width:820px">Inclui o <strong>Contato</strong> do Fale Conosco, que é o ' .
-         'único formulário do site com campo de mensagem — o texto passa pela triagem e a ficha já chega com ' .
-         'nacionalidade, prazo e onde a pessoa está.<br>' .
+         checked($elementor, true, false) . '> Enviar ao CRM os envios dos formulários do Elementor</label></p>';
+    echo '<p class="description" style="max-width:940px">Inclui o <strong>Contato</strong> do Fale Conosco. ' .
          'Formulário <strong>sem telefone</strong> (uma newsletter, por exemplo) é descartado pelo CRM sem virar caso, ' .
          'então ligar isto não enche a fila de inscrição de e-mail.</p>';
 
     submit_button('Salvar');
     echo '</form>';
 
-    echo '<hr><h2>Exportar para conferir</h2>';
-    echo '<p>Gera o mesmo conteúdo em <code>.csv</code>, para olhar os campos antes de enviar. ' .
-         'Não é necessário para a integração.</p>';
-    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
-    echo '<input type="hidden" name="action" value="imigrar_exportar_cpt">';
-    wp_nonce_field('imigrar_exportar');
-    echo '<select name="tipo">';
-    foreach ($tipos as $t) {
-        printf('<option value="%s">%s</option>', esc_attr($t->name), esc_html($t->labels->name));
+    // ── CONFERIR ──────────────────────────────────────────────────────────────────
+    echo '<h2 style="margin-top:28px">Conferir</h2><p>';
+    printf(
+        '<a class="button button-secondary" href="%s">Testar conexão com o CRM</a> ',
+        esc_url(wp_nonce_url(admin_url('admin-post.php?action=imigrar_testar'), 'imigrar_crm'))
+    );
+    echo '</p><p class="description" style="max-width:940px">Manda um registro de teste e mostra a resposta. ' .
+         'Não cria caso: vai sem telefone de propósito, e o CRM descarta registro sem telefone.</p>';
+
+    // ── ÚLTIMOS ENVIOS ────────────────────────────────────────────────────────────
+    //
+    // O `error_log` continua sendo escrito, mas em hospedagem compartilhada quase ninguém
+    // alcança aquele arquivo. Esta lista é onde "o lead de ontem chegou?" é respondido.
+    echo '<h2 style="margin-top:28px">Últimos envios</h2>';
+    if (!$log) {
+        echo '<p class="description">Nada ainda. Assim que um formulário for enviado ou um registro salvo, aparece aqui.</p>';
+    } else {
+        echo '<table class="widefat striped" style="max-width:940px"><thead><tr>' .
+             '<th style="width:150px">Quando</th><th style="width:210px">Origem</th>' .
+             '<th style="width:120px">Desfecho</th><th>Detalhe</th></tr></thead><tbody>';
+        foreach ($log as $l) {
+            $ruim = in_array($l['desfecho'] ?? '', array('falhou', 'recusado', 'sem token'), true);
+            printf(
+                '<tr><td>%s</td><td><code>%s</code></td><td style="color:%s"><strong>%s</strong></td><td>%s</td></tr>',
+                esc_html($l['quando'] ?? ''),
+                esc_html($l['origem'] ?? ''),
+                $ruim ? '#d63638' : '#00a32a',
+                esc_html($l['desfecho'] ?? ''),
+                esc_html($l['detalhe'] ?? '')
+            );
+        }
+        echo '</tbody></table>';
+        echo '<p class="description">Guarda os últimos ' . IMIGRAR_LOG_MAX . '. Não é auditoria — é o suficiente para ' .
+             'responder "está funcionando?" e "por que aquele não entrou?".</p>';
     }
-    echo '</select> ';
-    submit_button('Baixar CSV', 'secondary', 'submit', false);
-    echo '</form></div>';
+
+    // ── EXPORTAR, EM ÚLTIMO ───────────────────────────────────────────────────────
+    echo '<hr style="margin-top:28px"><h2>Exportar para conferir</h2>';
+    echo '<p class="description" style="max-width:940px">Gera o mesmo conteúdo em <code>.csv</code>, para olhar os campos ' .
+         'antes de ligar um tipo. <strong>Não é necessário para a integração.</strong></p>';
+    if (!empty($tipos)) {
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<input type="hidden" name="action" value="imigrar_exportar_cpt">';
+        wp_nonce_field('imigrar_exportar');
+        echo '<select name="tipo">';
+        foreach ($tipos as $t) {
+            printf('<option value="%s">%s</option>', esc_attr($t->name), esc_html($t->labels->name));
+        }
+        echo '</select> ';
+        submit_button('Baixar CSV', 'secondary', 'submit', false);
+        echo '</form>';
+    }
+    echo '</div>';
 }
+
+/**
+ * TESTAR A CONEXÃO SEM SUJAR A FILA.
+ *
+ * Vai DE PROPÓSITO sem telefone: o CRM descarta registro sem telefone, então o teste
+ * exercita o caminho inteiro — rede, token, middleware, handler — e não deixa um card de
+ * teste para alguém apagar depois. Um botão de teste que cria lixo é um botão que ninguém
+ * aperta.
+ */
+add_action('admin_post_imigrar_testar', function () {
+    if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
+    check_admin_referer('imigrar_crm');
+
+    if (!imigrar_token()) {
+        wp_safe_redirect(add_query_arg(
+            array('imigrar' => 'teste', 'resumo' => rawurlencode('sem token configurado')),
+            admin_url('admin.php?page=imigrar-crm')
+        ));
+        exit;
+    }
+
+    $resposta = wp_remote_post(IMIGRAR_DESTINO_REGISTRO, array(
+        'timeout' => 15,
+        'headers' => array(
+            'Content-Type'    => 'application/json; charset=utf-8',
+            'X-Imigrar-Token' => imigrar_token(),
+        ),
+        'body' => wp_json_encode(array(
+            'fonte'  => 'teste:painel',
+            'campos' => array('Título' => 'Teste de conexão do WordPress'),
+        )),
+    ));
+
+    if (is_wp_error($resposta)) {
+        $resumo = 'não alcançou o CRM: ' . $resposta->get_error_message();
+    } else {
+        $codigo = (int) wp_remote_retrieve_response_code($resposta);
+        $corpo  = substr((string) wp_remote_retrieve_body($resposta), 0, 200);
+        if ($codigo === 401) {
+            $resumo = 'o CRM respondeu 401 — o token está errado.';
+        } elseif ($codigo === 503) {
+            $resumo = 'o CRM respondeu 503 — falta configurar o SITE_CAPTURE_TOKEN no Vercel.';
+        } elseif ($codigo >= 200 && $codigo < 300) {
+            $resumo = 'conexão OK. O CRM respondeu: ' . $corpo;
+        } else {
+            $resumo = 'HTTP ' . $codigo . ' — ' . $corpo;
+        }
+    }
+
+    wp_safe_redirect(add_query_arg(
+        array('imigrar' => 'teste', 'resumo' => rawurlencode($resumo)),
+        admin_url('admin.php?page=imigrar-crm')
+    ));
+    exit;
+});
 
 add_action('admin_post_imigrar_salvar_tipos', function () {
     if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
@@ -644,7 +907,13 @@ add_action('admin_post_imigrar_salvar_tipos', function () {
     }
     update_option(IMIGRAR_OPCAO_TIPOS, $escolhidos);
     update_option(IMIGRAR_OPCAO_ELEMENTOR, !empty($_POST['elementor']) ? 1 : 0);
-    wp_safe_redirect(add_query_arg('imigrar', 'salvo', admin_url('tools.php?page=imigrar-crm')));
+
+    // CAMPO VAZIO SIGNIFICA "NÃO MEXER", e não "apagar". A tela nunca devolve o segredo
+    // para o navegador, então ela não tem como reenviá-lo ao salvar — se vazio apagasse,
+    // salvar qualquer outro ajuste derrubaria a integração inteira em silêncio.
+    $token = trim((string) ($_POST['token'] ?? ''));
+    if ($token !== '') { update_option(IMIGRAR_OPCAO_TOKEN, $token, false); }
+    wp_safe_redirect(add_query_arg('imigrar', 'salvo', admin_url('admin.php?page=imigrar-crm')));
     exit;
 });
 
@@ -680,7 +949,7 @@ add_action('admin_post_imigrar_enviar_tudo', function () {
     foreach ($contagem as $k => $v) { $resumo[] = $v . ' ' . $k; }
     wp_safe_redirect(add_query_arg(
         array('imigrar' => 'enviado', 'resumo' => rawurlencode(implode(', ', $resumo))),
-        admin_url('tools.php?page=imigrar-crm')
+        admin_url('admin.php?page=imigrar-crm')
     ));
     exit;
 });
@@ -690,6 +959,14 @@ add_action('admin_notices', function () {
     $q = $_GET['imigrar'] ?? '';
     if ($q === 'salvo') {
         echo '<div class="notice notice-success is-dismissible"><p>Tipos salvos.</p></div>';
+    } elseif ($q === 'teste') {
+        $resumo = rawurldecode((string) ($_GET['resumo'] ?? ''));
+        $ok = strpos($resumo, 'OK') !== false;
+        printf(
+            '<div class="notice notice-%s is-dismissible"><p><strong>Teste de conexão:</strong> %s</p></div>',
+            $ok ? 'success' : 'error',
+            esc_html($resumo)
+        );
     } elseif ($q === 'enviado') {
         printf(
             '<div class="notice notice-success is-dismissible"><p>Enviado ao CRM: %s.</p></div>',
