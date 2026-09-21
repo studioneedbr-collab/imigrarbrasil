@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Imigrar Brasil — integração com o CRM
  * Description: Leva ao CRM os leads do site (formulários e tipos de conteúdo) e instala a medição do Studio Need. Painel em "Imigrar CRM".
- * Version: 1.1.2
+ * Version: 1.1.3
  * Author: Studio Need
  * Requires at least: 5.6
  * Requires PHP: 7.0
@@ -846,6 +846,61 @@ function imigrar_linha_de_tipo($t, $ligados) {
     );
 }
 
+/**
+ * TUDO O QUE EU PRECISARIA PERGUNTAR, NUMA CAIXA SÓ.
+ *
+ * Esta caixa existe porque a depuração estava andando em pedaços: eu pedia uma linha, vinha
+ * outra, e uma conclusão foi tirada de um texto que era só o RESULTADO GUARDADO da
+ * conferência anterior — ninguém tinha apertado o botão de novo. Perguntar em rodadas
+ * também produz respostas de rodadas diferentes, e aí o diagnóstico descreve um estado que
+ * nunca existiu.
+ *
+ * O que está aqui é escolhido para responder de uma vez: qual versão está mesmo instalada
+ * (e não qual eu acho que está), se o gancho dispara, e QUE OUTROS PLUGINS estão ativos —
+ * porque o suspeito de comer a saída do rodapé é um deles, e de fora não há como saber
+ * quais são.
+ *
+ * Só nomes de plugin, versões e o que este plugin mesmo gravou. Nenhum segredo: o token
+ * aparece como "sim/não", nunca o valor.
+ */
+function imigrar_diagnostico() {
+    if (!function_exists('get_plugins')) { require_once ABSPATH . 'wp-admin/includes/plugin.php'; }
+
+    $dados  = get_plugin_data(__FILE__, false, false);
+    $rodape = get_option('imigrar_ultimo_rodape');
+    $conf   = get_option(IMIGRAR_OPCAO_MEDICAO);
+
+    $linhas = array();
+    $linhas[] = 'Imigrar CRM ' . $dados['Version'];
+    $linhas[] = 'WordPress ' . get_bloginfo('version') . ' | PHP ' . PHP_VERSION;
+    $linhas[] = 'home_url: ' . home_url('/');
+    $linhas[] = 'Token: ' . (imigrar_token() ? 'sim (' . imigrar_origem_do_token() . ')' : 'NÃO');
+    $tipos = imigrar_tipos_no_crm();
+    $linhas[] = 'Tipos ligados: ' . ($tipos ? implode(', ', $tipos) : 'nenhum');
+    $linhas[] = 'Elementor ligado: ' . (get_option(IMIGRAR_OPCAO_ELEMENTOR) ? 'sim' : 'não');
+    $linhas[] = 'Último carregamento no site: ' . (is_array($rodape)
+        ? $rodape['quando'] . ' — ' . $rodape['motivo']
+        : 'NUNCA DISPAROU');
+    $linhas[] = 'Última conferência: ' . (is_array($conf)
+        ? $conf['quando'] . ' — ' . $conf['texto']
+        : 'nunca');
+
+    // O suspeito de comer a saída está nesta lista, e de fora não dá para vê-la.
+    $linhas[] = '';
+    $linhas[] = 'Plugins ativos:';
+    $todos = get_plugins();
+    foreach ((array) get_option('active_plugins', array()) as $arquivo) {
+        $p = $todos[$arquivo] ?? null;
+        $linhas[] = '  - ' . ($p ? $p['Name'] . ' ' . $p['Version'] : $arquivo);
+    }
+
+    $tema = wp_get_theme();
+    $linhas[] = '';
+    $linhas[] = 'Tema: ' . $tema->get('Name') . ' ' . $tema->get('Version');
+
+    return implode("\n", $linhas);
+}
+
 /** Um cartão de estado: verde quando está de pé, vermelho quando não está. */
 function imigrar_cartao($titulo, $ok, $texto) {
     printf(
@@ -1062,6 +1117,14 @@ function imigrar_tela_do_crm() {
         echo '<p class="description"><strong>O gancho do rodapé nunca disparou.</strong> ' .
              'Se alguém já abriu o site desde a instalação, isto aponta para dentro do plugin — me avise.</p>';
     }
+
+    echo '<h3 style="margin-top:20px">Diagnóstico</h3>';
+    echo '<p class="description" style="max-width:940px">Copie esta caixa inteira quando precisar de ajuda. ' .
+         'Não contém segredo nenhum — o token aparece como “sim/não”, nunca o valor.</p>';
+    printf(
+        '<textarea readonly onclick="this.select()" style="width:100%%;max-width:940px;height:260px;font-family:monospace;font-size:12px">%s</textarea>',
+        esc_textarea(imigrar_diagnostico())
+    );
 
     // ── ÚLTIMOS ENVIOS ────────────────────────────────────────────────────────────
     //
