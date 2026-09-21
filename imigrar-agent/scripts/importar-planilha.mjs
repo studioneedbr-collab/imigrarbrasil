@@ -181,12 +181,33 @@ function telefoneComDdi(bruto) {
   const cru = String(bruto ?? "").trim().replace(/^["']+/, "");
   const digitos = normalizarTelefone(cru);
   if (!digitos) return { telefone: "", aviso: null };
-  if (cru.startsWith("+")) return { telefone: digitos, aviso: null };
-  if (digitos.length === 10 || digitos.length === 11) return { telefone: `55${digitos}`, aviso: null };
-  return {
-    telefone: digitos,
-    aviso: "sem DDI escrito e fora do formato brasileiro — confira este antes de usar",
-  };
+  const comDdi = cru.startsWith("+");
+  const telefone =
+    !comDdi && (digitos.length === 10 || digitos.length === 11) ? `55${digitos}` : digitos;
+  return { telefone, aviso: avisoDeTamanho(telefone, comDdi) };
+}
+
+/**
+ * O NÚMERO TEM CARA DE NÚMERO?
+ *
+ * O "+" na frente diz que alguém escreveu o DDI, não que escreveu o número inteiro. Na
+ * planilha há um "+55 9 8253 2197": tem o DDI, tem o nono dígito e NÃO tem o DDD — são 11
+ * dígitos onde deveriam ser 13. Passou batido na primeira leitura justamente porque
+ * começa com "+", e é um caso em "Proposta Enviada", ou seja, alguém vai tentar ligar.
+ *
+ * Aqui não se conserta nada: inventar um DDD é inventar o telefone de outra pessoa. O que
+ * se faz é não deixar passar calado.
+ */
+function avisoDeTamanho(telefone, comDdi) {
+  if (telefone.startsWith("55") && telefone.length !== 12 && telefone.length !== 13) {
+    return `brasileiro com ${telefone.length} dígitos (deveria ter 12 ou 13) — falta o DDD?`;
+  }
+  if (telefone.length < 10) return `só ${telefone.length} dígitos — número incompleto`;
+  if (telefone.length > 15) return `${telefone.length} dígitos — passa do maior telefone possível`;
+  if (!comDdi && !telefone.startsWith("55")) {
+    return "sem DDI escrito e fora do formato brasileiro — confira este antes de usar";
+  }
+  return null;
 }
 
 /** As grafias que podem ser a MESMA pessoa (o nono dígito brasileiro). */
