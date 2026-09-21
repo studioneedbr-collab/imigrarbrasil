@@ -145,3 +145,63 @@ describe("não pede autorização e se responde sozinha", () => {
     expect(r.reply.toLowerCase()).toMatch(/prazo/);
   });
 });
+
+/**
+ * RECUSAR NÃO É SUMIR.
+ *
+ * A regra do atendimento diz que quem não responde duas perguntas seguidas quer
+ * informação, não atendimento — e a conversa se encerra com cortesia. A regra está certa;
+ * a leitura dela estava errada, porque "prefiro não dizer" É uma resposta: a pessoa leu,
+ * pensou e decidiu.
+ *
+ * O efeito aparecia logo na abertura: perguntado o nome, quem recusava recebia a
+ * despedida na mensagem seguinte. Num atendimento em que metade das pessoas está em
+ * situação irregular e com medo de se identificar, despedir-se de quem não quer dar o
+ * nome é dispensar exatamente quem mais precisa.
+ */
+describe("quem se recusa a responder continua sendo atendido", () => {
+  it("recusar o nome não encerra a conversa — a próxima pergunta vem", async () => {
+    const repo = getRepository();
+    const conv = await repo.getOrCreateConversation("rec:uma");
+    await processMessage({ conversationId: conv.id, userText: "oi" });
+    await processMessage({
+      conversationId: conv.id,
+      userText: "quero ajuda para morar no Brasil",
+    });
+    const r = await processMessage({ conversationId: conv.id, userText: "prefiro não dizer" });
+    expect(r.reply.toLowerCase()).not.toMatch(/obrigada pelo contato/);
+    expect(r.reply.toLowerCase()).toMatch(/de qual pa[íi]s/);
+  });
+
+  it("e não insiste na pergunta recusada", async () => {
+    const repo = getRepository();
+    const conv = await repo.getOrCreateConversation("rec:nao-insiste");
+    await processMessage({ conversationId: conv.id, userText: "oi" });
+    await processMessage({ conversationId: conv.id, userText: "quero ajuda para morar no Brasil" });
+    const r = await processMessage({ conversationId: conv.id, userText: "prefiro não dizer" });
+    expect(r.reply.toLowerCase()).not.toMatch(/como voc[êe] se chama/);
+  });
+
+  // O outro lado: recusar tudo é dizer que não quer ser entrevistada, e insistir com essa
+  // pessoa é o que faz alguém bloquear o número.
+  it("duas recusas seguidas encerram com cortesia", async () => {
+    const repo = getRepository();
+    const conv = await repo.getOrCreateConversation("rec:duas");
+    await processMessage({ conversationId: conv.id, userText: "oi" });
+    await processMessage({ conversationId: conv.id, userText: "quero ajuda para morar no Brasil" });
+    await processMessage({ conversationId: conv.id, userText: "prefiro não dizer" });
+    const r = await processMessage({ conversationId: conv.id, userText: "não quero dizer" });
+    expect(r.reply.toLowerCase()).toMatch(/obrigada pelo contato/);
+  });
+
+  it("reconhece a recusa nos três idiomas do atendimento", async () => {
+    const { ehRecusa } = await import("@/lib/agent/triagem");
+    for (const t of ["prefiro não dizer", "prefiero no decir", "I'd rather not say", "não quero informar"]) {
+      expect(ehRecusa(t), t).toBe(true);
+    }
+    // E não confunde com quem está respondendo de verdade.
+    for (const t of ["meu nome é Maria", "sou da Bolívia", "não tenho passaporte"]) {
+      expect(ehRecusa(t), t).toBe(false);
+    }
+  });
+});

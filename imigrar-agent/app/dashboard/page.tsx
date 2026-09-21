@@ -374,7 +374,7 @@ export default async function FilaPage({
                 <LinhaDaFila key={lead.id} lead={lead} agora={agora} />
               ))}
             </ul>
-            <Paginacao pagina={pagina} base="/dashboard" rotulo="atendimentos" />
+            <Paginacao pagina={pagina} base="/dashboard" rotulo="atendimentos" manter={searchParams} />
           </>
         )}
       </Faixa>

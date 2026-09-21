@@ -117,7 +117,7 @@ export default async function FiltradasPage({
 
       {fila.filtradas.length > 0 ? (
         <Card className="overflow-hidden">
-          <Paginacao pagina={pagina} base="/dashboard/filtradas" rotulo="conversas" />
+          <Paginacao pagina={pagina} base="/dashboard/filtradas" rotulo="conversas" manter={searchParams} />
         </Card>
       ) : null}
     </div>

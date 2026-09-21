@@ -532,6 +532,30 @@ export function nomePlausivel(bruto: string): string | undefined {
   return titleCase(uteis.slice(0, 2).join(" "));
 }
 
+/**
+ * A PESSOA SE RECUSOU A RESPONDER — e isso não é a mesma coisa que silêncio.
+ *
+ * A regra do atendimento diz que quem não responde duas perguntas seguidas quer
+ * informação, não atendimento, e a conversa se encerra com cortesia. A regra está certa e
+ * a leitura dela estava errada: "prefiro não dizer" É uma resposta. A pessoa leu, pensou
+ * e decidiu — está na conversa, não sumiu dela.
+ *
+ * O efeito de confundir as duas coisas aparecia logo na abertura: perguntado o nome, quem
+ * respondia "prefiro não dizer" recebia a despedida na mensagem seguinte. Num atendimento
+ * em que metade das pessoas está em situação irregular e com medo de se identificar,
+ * despedir-se de quem não quer dar o nome é dispensar exatamente quem mais precisa.
+ *
+ * Recusar UMA pergunta é um direito e não muda nada: a próxima pergunta vem, sem
+ * insistir. Recusar duas seguidas é outra conversa — aí a leitura de que a pessoa não
+ * quer ser entrevistada volta a valer.
+ */
+export const RECUSA_A_RESPONDER =
+  /\b(prefiro n[ãa]o (?:dizer|falar|informar|responder)|n[ãa]o (?:quero|posso|vou) (?:dizer|falar|informar|responder)|n[ãa]o gostaria de (?:dizer|informar)|isso n[ãa]o importa|por que (?:voc[êe]s? )?(?:precisa|quer)|prefiero no (?:decir|responder|informar)|no (?:quiero|puedo) (?:decir|responder)|no deseo (?:decir|responder)|i'?d rather not (?:say|answer)|i (?:don'?t want|prefer not) to (?:say|answer)|why do you (?:need|want) (?:to know|that))\b/i;
+
+export function ehRecusa(texto: string): boolean {
+  return RECUSA_A_RESPONDER.test(texto ?? "");
+}
+
 /** Abertura de apresentação, nos três idiomas. O nome vem logo depois dela. */
 const ABERTURA_DE_NOME =
   /(?:meu nome (?:é|eh|e)|me chamo|sou (?:o|a)|aqui (?:é|eh|quem fala é)|my name is|mi nombre es|me llamo)\s+([A-Za-zÀ-ú]+(?:\s+[A-Za-zÀ-ú]+)?)/i;

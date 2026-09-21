@@ -13,15 +13,41 @@ export function Paginacao<T>({
   pagina,
   base,
   rotulo = "itens",
+  manter,
 }: {
   pagina: Pagina<T>;
   /** Caminho da página, sem query. O parâmetro `p` é acrescentado aqui. */
   base: string;
   rotulo?: string;
+  /**
+   * OS OUTROS PARÂMETROS DA URL, que precisam sobreviver à troca de página.
+   *
+   * O link era montado só com `?p=`, o que descarta tudo o mais que estivesse na barra
+   * de endereço. Hoje nenhuma tela paginada tem outro filtro, então isso não machuca
+   * ninguém — e é exatamente por isso que é perigoso: no dia em que a Fila ganhar um
+   * filtro (de origem, de responsável, de idioma), ir para a página 2 vai devolver a
+   * lista inteira sem nenhum aviso, e quem estiver usando vai achar que o filtro é que
+   * está quebrado.
+   *
+   * A tela passa o seu próprio `searchParams`; o `p` daqui vence o que vier nele.
+   */
+  manter?: Record<string, string | string[] | undefined>;
 }) {
   if (pagina.totalPaginas <= 1) return null;
 
-  const href = (p: number) => (p <= 1 ? base : `${base}?p=${p}`);
+  const href = (p: number) => {
+    const q = new URLSearchParams();
+    for (const [chave, valor] of Object.entries(manter ?? {})) {
+      if (chave === "p" || valor === undefined) continue;
+      // Array acontece quando o mesmo parâmetro aparece duas vezes na URL. O primeiro
+      // vale — é o que o Next entrega para a página, e a lista foi montada com ele.
+      const v = Array.isArray(valor) ? valor[0] : valor;
+      if (v) q.set(chave, v);
+    }
+    if (p > 1) q.set("p", String(p));
+    const s = q.toString();
+    return s ? `${base}?${s}` : base;
+  };
   const anterior = pagina.pagina > 1 ? pagina.pagina - 1 : null;
   const proxima = pagina.pagina < pagina.totalPaginas ? pagina.pagina + 1 : null;
 

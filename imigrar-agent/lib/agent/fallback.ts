@@ -32,6 +32,7 @@ import { ehFechamentoCordial } from "@/lib/agent/anti-loop";
 import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
 import { idiomaDaConversa } from "@/lib/agent/idioma";
 import {
+  ehRecusa,
   mensagemSemConteudo,
   lerCaso,
   nomeDaResposta,
@@ -557,6 +558,27 @@ export async function runFallback({
   // "só queria informação". Por isso os nomes entram na assinatura junto com o caso.
   const semNovidade = turnosSemNovidade(mensagensDaPessoa, nomesRespondidos);
 
+  /**
+   * QUANTAS VEZES ELA SE RECUSOU A RESPONDER.
+   *
+   * "Prefiro não dizer" não acrescenta nada ao caso, então a leitura de novidade o conta
+   * como silêncio — e o silêncio, repetido, encerra a conversa. Só que recusar é o oposto
+   * de sumir: a pessoa leu, pensou e respondeu que não quer dizer.
+   *
+   * Uma recusa não encerra nada; a próxima pergunta vem, sem insistir na anterior (o
+   * `jaPerguntou` de `proximaPergunta` já garante isso). Duas seguidas, sim: aí a leitura
+   * de que ela não quer ser entrevistada volta a valer, e insistir é o que faz alguém
+   * bloquear o número.
+   */
+  const recusasSeguidas = (() => {
+    let n = 0;
+    for (let i = mensagensDaPessoa.length - 1; i >= 0; i--) {
+      if (!ehRecusa(mensagensDaPessoa[i])) break;
+      n++;
+    }
+    return n;
+  })();
+
   // O idioma já gravado no contato é a rede para quando a mensagem de agora for curta
   // demais para identificar ("ok", "sim") — quem escreveu quatro mensagens em espanhol
   // continua sendo atendido em espanhol.
@@ -719,7 +741,7 @@ export async function runFallback({
   // Vale para quem responde frases inteiras que não dizem nada do caso ("tá, entendi",
   // "legal, e aí?"). Insistir com essa pessoa é o que faz alguém bloquear o número.
   const jaEncerrou = jaDisseAlgo.some((d) => d.includes(ENCERRAR_CURIOSO[fala].slice(0, 30)));
-  if (semNovidade >= 2 && jaDisseAlgo.length >= 2 && !jaEncerrou) {
+  if (semNovidade >= 2 && jaDisseAlgo.length >= 2 && !jaEncerrou && recusasSeguidas !== 1) {
     return { reply: ENCERRAR_CURIOSO[fala], toolCalls };
   }
 
