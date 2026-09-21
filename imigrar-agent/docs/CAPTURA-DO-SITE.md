@@ -17,9 +17,8 @@ que ninguém abre como fila.
 
 É esse trecho — entre o "Enviar" e o WhatsApp — que a integração fecha.
 
-> ⚠️ **Confirmar antes:** `5511919854664` é o número que a Ana atende? Se for o número de
-> teste do Matheus, todo lead do site está sendo mandado para um WhatsApp que ninguém
-> responde, e isso é mais urgente do que esta integração.
+**`5511919854664` é o número do agente** — confirmado. Então quem completa o passo do
+WhatsApp cai no atendimento pelo caminho normal.
 
 ## Instalação (10 minutos)
 
@@ -167,6 +166,27 @@ caminho e pela mesma deduplicação — apertar duas vezes não duplica nada.
   salvamento até ninguém mais lê-lo.
 - O mesmo telefone continua sendo a mesma pessoa: orçamento no site e conversa no WhatsApp
   viram **um card só**.
+
+### Os formulários do Elementor
+
+O `/fale-conosco/` tem **dois** formulários: o do `ibexgo` (nome e WhatsApp) e um do
+Elementor chamado **Contato**, com nome, telefone, e-mail e **mensagem**.
+
+O do Elementor não passa por nenhum dos outros ganchos — ele envia por `admin-ajax` e não
+cria post. Ligue em **Ferramentas → Integração com o CRM**, na seção *Formulários do
+Elementor*. Nasce desligado: mandar lead para a fila é ato deliberado.
+
+Vale a pena porque é o **único formulário do site com campo de mensagem**. O texto passa
+pela triagem, e a ficha chega com nacionalidade, prazo e onde a pessoa está já preenchidos
+— em vez de a Ana ter que perguntar tudo.
+
+**Ele vai sem id, de propósito.** Um envio de formulário não é um registro que alguém edita
+depois; é um acontecimento. Inventar um id (um hash, um carimbo de tempo) seria pior do que
+não ter: um id que muda a cada envio faria a mesma pessoa preenchendo duas vezes virar dois
+casos. Sem id, a identidade é o telefone — a mesma chave do WhatsApp.
+
+Formulário **sem telefone** (uma newsletter, por exemplo) é descartado sem virar caso, então
+ligar isto não enche a fila de inscrição de e-mail.
 
 ### Se algo não chegar
 

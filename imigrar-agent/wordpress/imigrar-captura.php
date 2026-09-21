@@ -373,24 +373,26 @@ function imigrar_campos_do_post($post) {
  * Reenviar É ESPERADO e não duplica: o CRM identifica o registro pelo par
  * (fonte, id) e atualiza. Editar um orçamento no WordPress dez vezes dá um card só.
  */
-function imigrar_enviar_registro($post) {
+function imigrar_enviar_ao_crm($fonte, $id_externo, $campos, $descricao) {
     if (!defined('IMIGRAR_CAPTURE_TOKEN') || !IMIGRAR_CAPTURE_TOKEN) {
         error_log('[imigrar-captura] IMIGRAR_CAPTURE_TOKEN não está definido no wp-config.php — ' .
-            'o registro #' . $post->ID . ' não foi ao CRM.');
+            $descricao . ' não foi ao CRM.');
         return null;
     }
 
     $corpo = array(
         // A FONTE PRECISA SER ESTÁVEL: junto com o id, ela É a identidade do registro.
-        // Mudar esta string depois faria todos os registros daquele tipo parecerem novos.
-        'fonte'     => 'wordpress:' . $post->post_type,
-        'idExterno' => (string) $post->ID,
-        'campos'    => imigrar_campos_do_post($post),
+        // Mudar esta string depois faria todos os registros daquela origem parecerem novos.
+        'fonte'  => $fonte,
+        'campos' => $campos,
     );
+    // Sem id, a identidade do outro lado passa a ser o telefone. É o certo para envio de
+    // formulário, que não é um registro que alguém edita depois — ver o bloco do Elementor.
+    if ($id_externo !== null && $id_externo !== '') { $corpo['idExterno'] = (string) $id_externo; }
 
     $resposta = wp_remote_post(IMIGRAR_DESTINO_REGISTRO, array(
         'timeout'  => 15,
-        'blocking' => true, // É a resposta que diz se o registro entrou.
+        'blocking' => true, // É a resposta que diz se o caso entrou.
         'headers'  => array(
             'Content-Type'    => 'application/json; charset=utf-8',
             'X-Imigrar-Token' => IMIGRAR_CAPTURE_TOKEN,
@@ -399,19 +401,35 @@ function imigrar_enviar_registro($post) {
     ));
 
     if (is_wp_error($resposta)) {
-        error_log('[imigrar-captura] registro #' . $post->ID . ' não alcançou o CRM: ' .
+        error_log('[imigrar-captura] ' . $descricao . ' não alcançou o CRM: ' .
             $resposta->get_error_message());
         return null;
     }
     $codigo = (int) wp_remote_retrieve_response_code($resposta);
     $texto  = (string) wp_remote_retrieve_body($resposta);
     if ($codigo < 200 || $codigo >= 300) {
-        error_log('[imigrar-captura] o CRM recusou o registro #' . $post->ID .
+        error_log('[imigrar-captura] o CRM recusou ' . $descricao .
             ' (HTTP ' . $codigo . '): ' . substr($texto, 0, 300));
         return null;
     }
     $json = json_decode($texto, true);
     return is_array($json) && isset($json['desfecho']) ? $json['desfecho'] : 'ok';
+}
+
+/**
+ * Manda um registro de um tipo de conteúdo. Devolve o `desfecho` do CRM, ou null se não
+ * chegou lá.
+ *
+ * Reenviar É ESPERADO e não duplica: o CRM identifica o registro pelo par (fonte, id) e
+ * atualiza. Editar um orçamento no WordPress dez vezes dá um card só.
+ */
+function imigrar_enviar_registro($post) {
+    return imigrar_enviar_ao_crm(
+        'wordpress:' . $post->post_type,
+        $post->ID,
+        imigrar_campos_do_post($post),
+        'o registro #' . $post->ID
+    );
 }
 
 /** Marca para enviar no fim do pedido. Ver o bloco de comentário acima. */
@@ -441,6 +459,82 @@ add_action('shutdown', function () {
         if ($post) { imigrar_enviar_registro($post); }
     }
 }, 2);
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * OS FORMULÁRIOS DO ELEMENTOR
+ *
+ * O `/fale-conosco/` tem DOIS formulários: o do `ibexgo` (nome e WhatsApp) e um do
+ * Elementor chamado "Contato", com nome, telefone, e-mail e mensagem. O do Elementor é o
+ * único do site com campo de MENSAGEM — é o que faz a triagem funcionar já na porta:
+ * nacionalidade, onde a pessoa está e sinal de prazo chegam preenchidos na ficha em vez de
+ * a Ana ter que perguntar tudo.
+ *
+ * Ele não passava por nenhum dos dois ganchos que já existiam aqui. O `ibexgo` tem rota
+ * REST própria; os tipos de conteúdo passam pelo `save_post`. O Elementor não faz nem um
+ * nem outro: envia por `admin-ajax` e não cria post nenhum. Sem este gancho, esse
+ * formulário ia para onde quer que as ações dele mandem — e não para a fila.
+ *
+ * ── SEM ID, DE PROPÓSITO ──────────────────────────────────────────────────────────
+ *
+ * Um envio de formulário NÃO É UM REGISTRO que alguém edita depois; é um acontecimento.
+ * Não existe id estável para ele, e inventar um (um hash do corpo, um carimbo de tempo)
+ * seria pior do que não ter: um id que muda a cada envio faz a mesma pessoa preenchendo
+ * duas vezes virar dois casos — exatamente o contrário do que ele serviria para garantir.
+ *
+ * Então vai sem `idExterno`, e a identidade fica sendo o telefone, com as variantes do
+ * nono dígito. É a mesma chave do webhook do WhatsApp: quem preenche o formulário e depois
+ * escreve no WhatsApp é um card só.
+ *
+ * ── OS RÓTULOS, NÃO OS IDs ────────────────────────────────────────────────────────
+ *
+ * `get_formatted_data()` devolve o formulário com os RÓTULOS que a pessoa viu na tela
+ * ("Seu Nome", "Whatsapp", "Mensagem"). Os ids internos do Elementor são coisas como
+ * `field_a1b2c3`, que não dizem nada a ninguém — nem a quem for ler a ficha, nem ao CRM,
+ * que reconhece os campos pelo nome. O rótulo é o que tem significado dos dois lados.
+ * ═══════════════════════════════════════════════════════════════════════════════════ */
+
+/** Ligado em Ferramentas → Integração com o CRM. Nasce desligado: mandar lead é ato deliberado. */
+const IMIGRAR_OPCAO_ELEMENTOR = 'imigrar_elementor_no_crm';
+
+add_action('elementor_pro/forms/new_record', function ($record, $handler) {
+    try {
+        if (!get_option(IMIGRAR_OPCAO_ELEMENTOR)) { return; }
+
+        $campos = array();
+        foreach ((array) $record->get_formatted_data() as $rotulo => $valor) {
+            if (is_array($valor)) { $valor = implode(' | ', array_map('strval', $valor)); }
+            if (is_scalar($valor) || $valor === null) { $campos[(string) $rotulo] = (string) $valor; }
+        }
+        if (!$campos) { return; }
+
+        $ajustes = (array) $record->get('form_settings');
+        $nome = $ajustes['form_name'] ?? 'formulário';
+
+        if (!isset($GLOBALS['imigrar_formularios_pendentes'])) {
+            $GLOBALS['imigrar_formularios_pendentes'] = array();
+        }
+        $GLOBALS['imigrar_formularios_pendentes'][] = array(
+            'fonte'  => 'elementor:' . $nome,
+            'campos' => $campos,
+        );
+    } catch (Throwable $e) {
+        // O envio ao CRM nunca pode impedir o formulário do site de funcionar.
+        error_log('[imigrar-captura] falha ao ler o formulário do Elementor: ' . $e->getMessage());
+    }
+}, 20, 2);
+
+add_action('shutdown', function () {
+    $pendentes = $GLOBALS['imigrar_formularios_pendentes'] ?? array();
+    if (!$pendentes) { return; }
+    $GLOBALS['imigrar_formularios_pendentes'] = array();
+
+    // A pessoa já viu "enviado com sucesso"; a conversa com o CRM corre depois.
+    imigrar_encerrar_resposta();
+
+    foreach ($pendentes as $envio) {
+        imigrar_enviar_ao_crm($envio['fonte'], null, $envio['campos'], 'formulário');
+    }
+}, 3);
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
  * A TELA — ESCOLHER OS TIPOS E TRAZER O QUE JÁ EXISTE
@@ -508,6 +602,19 @@ function imigrar_tela_do_crm() {
         );
     }
     echo '</tbody></table>';
+
+    // Os formulários do Elementor não são tipo de conteúdo — não aparecem na tabela acima
+    // porque não existem como post. Por isso um interruptor à parte.
+    echo '<h2 style="margin-top:28px">Formulários do Elementor</h2>';
+    echo '<p><label><input type="checkbox" name="elementor" value="1" ' .
+         checked((bool) get_option(IMIGRAR_OPCAO_ELEMENTOR), true, false) . '> ' .
+         'Enviar ao CRM os envios dos formulários do Elementor</label></p>';
+    echo '<p class="description" style="max-width:820px">Inclui o <strong>Contato</strong> do Fale Conosco, que é o ' .
+         'único formulário do site com campo de mensagem — o texto passa pela triagem e a ficha já chega com ' .
+         'nacionalidade, prazo e onde a pessoa está.<br>' .
+         'Formulário <strong>sem telefone</strong> (uma newsletter, por exemplo) é descartado pelo CRM sem virar caso, ' .
+         'então ligar isto não enche a fila de inscrição de e-mail.</p>';
+
     submit_button('Salvar');
     echo '</form>';
 
@@ -536,6 +643,7 @@ add_action('admin_post_imigrar_salvar_tipos', function () {
         if ($t && post_type_exists($t)) { $escolhidos[] = $t; }
     }
     update_option(IMIGRAR_OPCAO_TIPOS, $escolhidos);
+    update_option(IMIGRAR_OPCAO_ELEMENTOR, !empty($_POST['elementor']) ? 1 : 0);
     wp_safe_redirect(add_query_arg('imigrar', 'salvo', admin_url('tools.php?page=imigrar-crm')));
     exit;
 });

@@ -174,3 +174,53 @@ describe("registro que ainda não é um lead", () => {
     expect((await repo.listLeads()).length).toBe(antes);
   });
 });
+
+// ── ENVIO DE FORMULÁRIO: NÃO EXISTE ID ESTÁVEL ────────────────────────────────────
+//
+// Um post do WordPress tem id: é um registro que alguém edita depois. Um ENVIO de
+// formulário não é registro, é acontecimento — e inventar um id para ele seria pior do que
+// não ter, porque um id que muda a cada envio faz a mesma pessoa preenchendo duas vezes
+// virar dois casos. Sem id, a identidade é o telefone.
+describe("formulário, que chega sem id", () => {
+  const doElementor = (campos: Record<string, unknown>) => ({ fonte: "elementor:Contato", campos });
+
+  it("cria o caso normalmente", async () => {
+    const res = await POST(
+      req(doElementor({ Nome: "Sem Id", Whatsapp: "5511900000050", Email: "a@b.com" })),
+    );
+    expect(res.status).toBe(200);
+    const [lead] = await acharLead("00000050");
+    expect(lead.contactName).toBe("Sem Id");
+    expect(lead.email).toBe("a@b.com");
+  });
+
+  it("a mesma pessoa preenchendo duas vezes continua sendo um card", async () => {
+    const corpo = doElementor({ Nome: "Insistente", Whatsapp: "5511900000051" });
+    await POST(req(corpo));
+    await POST(req(corpo));
+    await POST(req(corpo));
+    expect(await acharLead("00000051")).toHaveLength(1);
+  });
+
+  // ESTE É O PERIGOSO. O formulário deste site carrega `ref`, o código de quem indicou —
+  // e "ref" é uma das pistas que `lerLinha` usa para achar o id da linha numa planilha.
+  // Se ele virasse identidade do registro, dois indicados pelo MESMO afiliado colidiriam
+  // num card só: o segundo sobrescreveria o primeiro, e o primeiro sumiria sem vestígio.
+  it("o código de quem indicou NÃO vira identidade do registro", async () => {
+    await POST(req(doElementor({ Nome: "Primeiro", Whatsapp: "5511900000052", ref: "parceiro-x" })));
+    await POST(req(doElementor({ Nome: "Segundo", Whatsapp: "5511900000053", ref: "parceiro-x" })));
+    expect(await acharLead("00000052")).toHaveLength(1);
+    expect(await acharLead("00000053")).toHaveLength(1);
+    const [primeiro] = await acharLead("00000052");
+    expect(primeiro.contactName).toBe("Primeiro");
+  });
+
+  // Um formulário de newsletter (só e-mail) não é um lead que dá para trabalhar. Ele é
+  // descartado com 200: quem enviou não errou nada, e responder erro encheria o log do
+  // site de falhas até ninguém mais lê-lo.
+  it("formulário sem telefone é descartado sem virar erro", async () => {
+    const res = await POST(req(doElementor({ Email: "newsletter@exemplo.com" })));
+    expect(res.status).toBe(200);
+    expect((await res.json()).desfecho).toBe("ignorado");
+  });
+});

@@ -53,8 +53,20 @@ const schema = z.object({
    * os registros daquele tipo parecerem novos. Quem manda precisa mantê-la fixa.
    */
   fonte: z.string().trim().min(1).max(80),
-  /** O id no sistema de origem (o ID do post no WordPress). */
-  idExterno: z.string().trim().min(1).max(80),
+  /**
+   * O id no sistema de origem (o ID do post no WordPress), QUANDO EXISTE.
+   *
+   * É opcional porque nem toda origem tem um. Um registro do WordPress tem: é um post, e
+   * o id dele é estável. O ENVIO DE UM FORMULÁRIO NÃO TEM — não é um registro que alguém
+   * edita depois, é um acontecimento. Inventar um id aqui (um hash do corpo, um carimbo de
+   * tempo) seria pior do que não ter: um id que muda a cada envio faz a mesma pessoa
+   * preenchendo duas vezes virar dois casos, que é exatamente o contrário do que ele
+   * serviria para garantir.
+   *
+   * Sem id, a identidade é o TELEFONE com as variantes do nono dígito — a mesma chave do
+   * webhook do WhatsApp. Quem preenche o formulário duas vezes continua sendo um card.
+   */
+  idExterno: z.string().trim().min(1).max(80).optional(),
   /** O dicionário cru: nome do campo lá → valor. */
   campos: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
 });
@@ -95,8 +107,14 @@ export async function POST(req: NextRequest) {
     // uma coluna chamada "id"/"código"/"ref", que numa planilha é o que existe — aqui o
     // id verdadeiro é o do post, e deixá-lo depender de o WordPress ter por acaso um campo
     // com esse nome seria apostar a deduplicação inteira num acaso.
-    linha.idExterno = idExterno;
+    //
+    // Sem id no corpo, o que `lerLinha` porventura tenha achado numa coluna é DESCARTADO:
+    // um formulário com um campo chamado "ref" (o código do afiliado, no caso deste site)
+    // viraria identidade de registro, e dois indicados pela mesma pessoa colidiriam num
+    // card só. Sem id, a identidade é o telefone.
+    linha.idExterno = idExterno ?? null;
     linha.patch.origemExternaId = idExterno;
+    if (!idExterno) delete linha.patch.origemExternaFonte;
     // Veio do site, não de uma planilha que alguém subiu à mão.
     linha.patch.origem = "site";
 
