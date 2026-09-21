@@ -82,12 +82,36 @@ const args = Object.fromEntries(
    essas linhas no meio e desloca todas as colunas seguintes — o nome de uma pessoa vira
    telefone, o telefone vira e-mail, e nada disso dá erro: só fica errado.
    ══════════════════════════════════════════════════════════════════════════ */
+/** Qual separador este arquivo usa. Fora das aspas: campo citado tem vírgula dentro. */
+function separadorDe(s) {
+  const candidatos = [",", ";", "\t"];
+  const contagem = candidatos.map(() => 0);
+  let aspas = false;
+  for (let i = 0; i < Math.min(s.length, 20000); i++) {
+    const c = s[i];
+    if (c === '"') { aspas = !aspas; continue; }
+    if (aspas) continue;
+    const k = candidatos.indexOf(c);
+    if (k >= 0) contagem[k]++;
+  }
+  let melhor = 0;
+  for (let k = 1; k < candidatos.length; k++) if (contagem[k] > contagem[melhor]) melhor = k;
+  return candidatos[melhor];
+}
+
 function lerCsv(texto) {
   const linhas = [];
   let campo = "";
   let linha = [];
   let dentroDeAspas = false;
-  const conteudo = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // O BOM e o separador: a MESMA regra de lib/importacao/arquivo.ts. "CSV" não quer dizer
+  // vírgula — o Excel em português grava ponto-e-vírgula, e basta abrir e salvar para
+  // trocar. E o BOM (que o exportador do WordPress escreve para o Excel não estragar os
+  // acentos) não é removido por `readFileSync(arquivo, "utf8")`: sem tirá-lo aqui, a
+  // primeira coluna chega como "\uFEFFID" e o identificador da linha deixa de ser
+  // reconhecido — a reimportação duplicaria tudo.
+  const conteudo = texto.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const separador = separadorDe(conteudo);
 
   for (let i = 0; i < conteudo.length; i++) {
     const c = conteudo[i];
@@ -99,7 +123,7 @@ function lerCsv(texto) {
       continue;
     }
     if (c === '"') dentroDeAspas = true;
-    else if (c === ",") { linha.push(campo); campo = ""; }
+    else if (c === separador) { linha.push(campo); campo = ""; }
     else if (c === "\n") { linha.push(campo); linhas.push(linha); linha = []; campo = ""; }
     else campo += c;
   }

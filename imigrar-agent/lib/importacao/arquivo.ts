@@ -17,13 +17,54 @@ export interface PlanilhaLida {
   linhaDoCabecalho: number;
 }
 
-/** O mesmo leitor de CSV da carga inicial: campo com vírgula dentro é a regra aqui. */
+/**
+ * QUAL É O SEPARADOR.
+ *
+ * "CSV" não quer dizer vírgula. O Excel em português — e em todo idioma cujo decimal é
+ * vírgula — grava e espera PONTO-E-VÍRGULA, e basta alguém abrir o arquivo e salvar para
+ * ele trocar. O arquivo continua chamado `.csv` e continua abrindo na tela da pessoa; só
+ * aqui é que ele viraria uma coluna só com tudo dentro.
+ *
+ * E a falha era silenciosa do pior jeito: `acharCabecalho` exige três células distintas,
+ * uma linha inteira num campo só nunca chega a três, e a importação terminaria dizendo
+ * "não achei o cabeçalho" para uma planilha que a pessoa está vendo certinha.
+ *
+ * A contagem é FORA DAS ASPAS, porque endereço e observação têm vírgula dentro e um campo
+ * citado com três vírgulas decidiria a votação sozinho.
+ */
+function separadorDe(s: string): string {
+  const candidatos = [",", ";", "\t"];
+  const contagem = candidatos.map(() => 0);
+  let aspas = false;
+  // Só o começo do arquivo: o cabeçalho e as primeiras linhas já decidem, e varrer um
+  // arquivo de milhares de linhas duas vezes é desperdício.
+  for (let i = 0; i < Math.min(s.length, 20000); i++) {
+    const c = s[i];
+    if (c === '"') { aspas = !aspas; continue; }
+    if (aspas) continue;
+    const k = candidatos.indexOf(c);
+    if (k >= 0) contagem[k]++;
+  }
+  let melhor = 0;
+  for (let k = 1; k < candidatos.length; k++) if (contagem[k] > contagem[melhor]) melhor = k;
+  // Empate em zero (uma coluna só) cai na vírgula, que é o formato canônico.
+  return candidatos[melhor];
+}
+
+/** O mesmo leitor de CSV da carga inicial: campo com o separador dentro é a regra aqui. */
 export function lerCsv(texto: string): string[][] {
   const linhas: string[][] = [];
   let campo = "";
   let linha: string[] = [];
   let aspas = false;
-  const s = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // O BOM SAI AQUI, e não só em `lerArquivo`. Quem exporta para o Excel escreve o BOM de
+  // propósito (sem ele "Cássio" abre como "CÃ¡ssio"), e o `TextDecoder` de `lerArquivo` o
+  // descarta sozinho — mas os importadores de linha de comando leem com
+  // `readFileSync(arquivo, "utf8")`, que NÃO descarta. Sem esta linha, a primeira coluna
+  // chegaria como "\uFEFFID": invisível na tela, e o bastante para o identificador da
+  // linha deixar de ser reconhecido e a reimportação duplicar tudo.
+  const s = texto.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const sep = separadorDe(s);
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (aspas) {
@@ -33,7 +74,7 @@ export function lerCsv(texto: string): string[][] {
       continue;
     }
     if (c === '"') aspas = true;
-    else if (c === ",") { linha.push(campo); campo = ""; }
+    else if (c === sep) { linha.push(campo); campo = ""; }
     else if (c === "\n") { linha.push(campo); linhas.push(linha); linha = []; campo = ""; }
     else campo += c;
   }

@@ -129,6 +129,31 @@ cookie é o único rastro que chega ao servidor. O GTranslate oferece alemão e 
 o atendimento não cobre; quem filtra é o CRM, não o WordPress — a lista de idiomas fica
 num lugar só.
 
+## Trazer os leads que já estão no WordPress
+
+O site guarda leads em tipos de conteúdo próprios — **Orçamentos** (`orcamento`) e
+possivelmente outros — que só existem dentro do wp-admin. **Nenhum deles aparece na REST
+pública** (conferi: `wp/v2/orcamento` responde 404 e todas as rotas de lead do `ibexgo`
+respondem 401). Está certo assim, e é por isso que não há como trazê-los de fora.
+
+O `mu-plugin` instala **Ferramentas → Exportar para o CRM**. Escolha o tipo, baixe o
+`.csv` e suba em **Importar planilha** no painel. O mapeamento de colunas e a
+deduplicação que já existem lá fazem o resto.
+
+As colunas **saem do próprio conteúdo**, não de uma lista escrita no plugin: os campos são
+do ACF, criados à mão por quem montou o site, e adivinhá-los significaria perder em
+silêncio o que ficasse de fora. O exportador junta todas as chaves encontradas nos
+registros; quem decide o que é o quê é a tela de importação.
+
+> **Não renomeie o arquivo.** Do lado do CRM, a "fonte" de cada linha importada é o nome
+> do arquivo, e é o par fonte + ID que faz reimportar **atualizar** em vez de duplicar. Por
+> isso o nome é fixo (`wordpress-orcamento.csv`) e **não tem data** — uma data mudaria a
+> chave a cada exportação e a segunda importação criaria tudo de novo.
+
+O menu também serve de inventário: ele lista todos os tipos personalizados do site com a
+contagem de registros. Se houver lead em algum canto que ninguém lembrava, é ali que
+aparece.
+
 ## Anti-spam
 
 O formulário atual não tem armadilha. Se um dia entrar spam, inclua um campo escondido

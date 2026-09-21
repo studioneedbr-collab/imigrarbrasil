@@ -287,3 +287,140 @@ add_action('wp_footer', function () {
         esc_attr(IMIGRAR_SN_KEY)
     );
 }, 99);
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * EXPORTAR UM TIPO DE CONTEÚDO PARA O CRM
+ *
+ * O WordPress deste site guarda leads em tipos próprios (`orcamento`, e possivelmente
+ * outros) que só existem dentro do wp-admin. Nenhum deles aparece na REST pública — o que
+ * está certo, e é justamente por isso que não há como trazê-los de fora.
+ *
+ * Esta tela fecha o caminho: gera o CSV que a tela "Importar planilha" do painel já sabe
+ * ler, com o mapeamento de colunas e a deduplicação que já existem lá. Nada de novo do
+ * lado do CRM.
+ *
+ * ── AS COLUNAS SAEM DO CONTEÚDO, NÃO DE UMA LISTA ESCRITA AQUI ────────────────────
+ *
+ * Não sabemos que campos esses registros têm: são campos do ACF, criados na mão de quem
+ * montou o site. Escrever a lista aqui seria adivinhar, e um campo esquecido é um dado
+ * que some sem aviso. Então as colunas são a UNIÃO das chaves de meta encontradas nos
+ * próprios registros, e quem decide o que é o quê é a tela de importação.
+ *
+ * Chaves começadas com `_` ficam de fora: são a contabilidade interna do WordPress e do
+ * ACF (cada campo tem uma chave gêmea `_campo` com a referência da definição), e trazê-las
+ * dobraria as colunas com lixo.
+ *
+ * ── POR QUE O NOME DO ARQUIVO NÃO TEM DATA ────────────────────────────────────────
+ *
+ * Do lado do CRM, a "fonte externa" de cada linha é o NOME DO ARQUIVO importado
+ * (`app/api/importacao/route.ts`). É o par fonte + ID que faz reimportar ATUALIZAR em vez
+ * de duplicar. Um nome com a data mudaria a cada exportação, a chave nunca casaria com a
+ * anterior e a segunda importação criaria tudo de novo — exatamente o que não pode
+ * acontecer. O nome é fixo de propósito.
+ * ═══════════════════════════════════════════════════════════════════════════════════ */
+
+add_action('admin_menu', function () {
+    add_management_page(
+        'Exportar para o CRM',
+        'Exportar para o CRM',
+        'manage_options',
+        'imigrar-exportar',
+        'imigrar_tela_de_exportacao'
+    );
+});
+
+function imigrar_tela_de_exportacao() {
+    if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
+
+    // Só os tipos criados por plugin/tema: post e página não são lead de ninguém.
+    $tipos = get_post_types(array('_builtin' => false), 'objects');
+    echo '<div class="wrap"><h1>Exportar para o CRM</h1>';
+    echo '<p>Gera o arquivo <code>.csv</code> que a tela <strong>Importar planilha</strong> do painel lê. ' .
+         'Reimportar o mesmo tipo <strong>atualiza</strong> os registros em vez de duplicar, desde que o nome do arquivo não seja alterado.</p>';
+
+    if (empty($tipos)) {
+        echo '<p>Nenhum tipo de conteúdo personalizado neste site.</p></div>';
+        return;
+    }
+
+    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+    echo '<input type="hidden" name="action" value="imigrar_exportar_cpt">';
+    wp_nonce_field('imigrar_exportar');
+    echo '<table class="form-table"><tr><th scope="row"><label for="tipo">Tipo de conteúdo</label></th><td><select name="tipo" id="tipo">';
+    foreach ($tipos as $t) {
+        $qtd = (int) wp_count_posts($t->name)->publish + (int) wp_count_posts($t->name)->draft;
+        printf(
+            '<option value="%s">%s (%s) — %d registro(s)</option>',
+            esc_attr($t->name),
+            esc_html($t->labels->name),
+            esc_html($t->name),
+            $qtd
+        );
+    }
+    echo '</select></td></tr></table>';
+    submit_button('Baixar CSV');
+    echo '</form></div>';
+}
+
+add_action('admin_post_imigrar_exportar_cpt', function () {
+    if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
+    check_admin_referer('imigrar_exportar');
+
+    $tipo = sanitize_key($_POST['tipo'] ?? '');
+    if (!$tipo || !post_type_exists($tipo)) { wp_die('Tipo de conteúdo inválido.'); }
+
+    $posts = get_posts(array(
+        'post_type'   => $tipo,
+        'post_status' => array('publish', 'draft', 'pending', 'private', 'future'),
+        'numberposts' => -1,
+        'orderby'     => 'date',
+        'order'       => 'ASC',
+    ));
+
+    // Primeira passada: descobrir quais colunas existem. Um registro antigo pode ter um
+    // campo que os novos não têm, e o contrário também — a união cobre os dois.
+    $linhas = array();
+    $chaves = array();
+    foreach ($posts as $post) {
+        $meta = array();
+        foreach (get_post_meta($post->ID) as $chave => $valores) {
+            if (strpos($chave, '_') === 0) { continue; }
+            $v = maybe_unserialize($valores[0]);
+            if (is_array($v)) { $v = implode(' | ', array_map('strval', $v)); }
+            $meta[$chave] = (string) $v;
+            $chaves[$chave] = true;
+        }
+        $linhas[] = array('post' => $post, 'meta' => $meta);
+    }
+    $chaves = array_keys($chaves);
+    sort($chaves);
+
+    // Nome FIXO — ver o bloco de comentário acima. A data aqui quebraria a deduplicação.
+    $arquivo = 'wordpress-' . $tipo . '.csv';
+
+    nocache_headers();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $arquivo . '"');
+
+    $saida = fopen('php://output', 'w');
+    // BOM: sem ele o Excel abre "Cássio" como "CÃ¡ssio". O leitor do CRM o descarta.
+    fwrite($saida, "\xEF\xBB\xBF");
+
+    // "ID" é a coluna que a importação reconhece como identificador da linha; é ela que
+    // faz reimportar atualizar. "Situação (WordPress)" é nomeada assim de propósito, para
+    // NÃO ser confundida com a etapa do funil no mapeamento automático.
+    fputcsv($saida, array_merge(array('ID', 'Título', 'Data', 'Situação (WordPress)'), $chaves));
+
+    foreach ($linhas as $l) {
+        $base = array(
+            $l['post']->ID,
+            $l['post']->post_title,
+            get_the_date('Y-m-d H:i', $l['post']),
+            $l['post']->post_status,
+        );
+        foreach ($chaves as $chave) { $base[] = $l['meta'][$chave] ?? ''; }
+        fputcsv($saida, $base);
+    }
+    fclose($saida);
+    exit;
+});

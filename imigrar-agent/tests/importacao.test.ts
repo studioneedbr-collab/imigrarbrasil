@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { sugerirMapeamento, statusDaFase, CAMPOS } from "@/lib/importacao/campos";
 import { lerLinha, valorEmReais, dataDaPlanilha } from "@/lib/importacao/planilha";
 import { aplicarImportacao } from "@/lib/importacao/aplicar";
+import { lerCsv, acharCabecalho } from "@/lib/importacao/arquivo";
 import { getRepository } from "@/lib/data";
 
 /**
@@ -256,5 +257,118 @@ describe("atualizar é preencher buraco, não reescrever", () => {
     // Com autorização explícita, move.
     await aplicarImportacao(linha, repo, { aplicar: true, moverEtapa: true });
     expect((await repo.getLeadByConversation(conv.id))?.atendimentoStatus).toBe("fechado");
+  });
+});
+
+// ── "CSV" NÃO QUER DIZER VÍRGULA ──────────────────────────────────────────────────
+//
+// O Excel em português grava e espera ponto-e-vírgula. Basta alguém abrir o arquivo e
+// salvar para o separador trocar — o arquivo continua `.csv` e continua abrindo certinho
+// na tela da pessoa. A falha do outro lado era silenciosa do pior jeito: `acharCabecalho`
+// exige três células distintas, uma linha inteira num campo só nunca chega a três, e a
+// importação diria "não achei o cabeçalho" para uma planilha visivelmente correta.
+describe("o separador do CSV é descoberto, não suposto", () => {
+  const colunas = ["Nome", "Telefone", "Nacionalidade"];
+
+  it("lê o CSV de vírgula", () => {
+    const linhas = lerCsv("Nome,Telefone,Nacionalidade\nAna,5511999990000,Haiti\n");
+    expect(linhas[0]).toEqual(colunas);
+    expect(linhas[1]).toEqual(["Ana", "5511999990000", "Haiti"]);
+  });
+
+  it("lê o CSV de ponto-e-vírgula que o Excel em português grava", () => {
+    const linhas = lerCsv("Nome;Telefone;Nacionalidade\nAna;5511999990000;Haiti\n");
+    expect(linhas[0]).toEqual(colunas);
+    expect(linhas[1]).toEqual(["Ana", "5511999990000", "Haiti"]);
+  });
+
+  it("lê o separado por tabulação, que é o que sai de copiar e colar da planilha", () => {
+    const linhas = lerCsv("Nome\tTelefone\tNacionalidade\nAna\t5511999990000\tHaiti\n");
+    expect(linhas[0]).toEqual(colunas);
+  });
+
+  // Endereço e observação têm vírgula dentro. Se a contagem olhasse dentro das aspas, um
+  // único campo citado decidiria a votação sozinho e quebraria o arquivo inteiro.
+  it("não deixa a vírgula DENTRO de um campo citado escolher o separador", () => {
+    const csv = 'Nome;Endereço;Telefone\nAna;"Rua A, 30, apto 2, Boa Vista";5511999990000\n';
+    const linhas = lerCsv(csv);
+    expect(linhas[0]).toEqual(["Nome", "Endereço", "Telefone"]);
+    expect(linhas[1][1]).toBe("Rua A, 30, apto 2, Boa Vista");
+  });
+
+  // O separador escolhido continua sendo respeitado dentro das aspas.
+  it("respeita o ponto-e-vírgula dentro de um campo citado", () => {
+    const linhas = lerCsv('Nome;Observação\nAna;"veio em 2024; sem RNM"\n');
+    expect(linhas[1]).toEqual(["Ana", "veio em 2024; sem RNM"]);
+  });
+
+  it("uma coluna só não vira erro: cai na vírgula", () => {
+    expect(lerCsv("Nome\nAna\n")).toEqual([["Nome"], ["Ana"]]);
+  });
+});
+
+// A prova de que o defeito era este: uma planilha lida com o separador errado vira uma
+// coluna só, e `acharCabecalho` — que exige três células distintas — nunca acha nada. A
+// pessoa recebia "não achei o cabeçalho" olhando para uma planilha correta.
+describe("separador errado era o que escondia o cabeçalho", () => {
+  it("com o separador certo, o cabeçalho é a primeira linha", () => {
+    const linhas = lerCsv("Nome;Telefone;Nacionalidade\nAna;5511999990000;Haiti\n");
+    expect(acharCabecalho(linhas)).toBe(0);
+  });
+
+  it("uma coluna só não tem cabeçalho para achar — era o sintoma", () => {
+    const comoSeriaAntes = [["Nome;Telefone;Nacionalidade"], ["Ana;5511999990000;Haiti"]];
+    expect(acharCabecalho(comoSeriaAntes)).toBe(0); // devolve 0 sem ter achado nada
+    expect(comoSeriaAntes[0].length).toBe(1); // e o "cabeçalho" tem uma coluna só
+  });
+});
+
+// ── O CSV QUE O WORDPRESS EXPORTA ─────────────────────────────────────────────────
+//
+// `wordpress/imigrar-captura.php` gera um CSV a partir de um tipo de conteúdo do site, e
+// esta é a única amarração entre os dois lados: lá as colunas são escolhidas, aqui elas
+// são interpretadas. Ninguém roda os dois juntos, então o contrato fica escrito aqui.
+describe("o CSV exportado do WordPress cai de pé na importação", () => {
+  // O cabeçalho fixo do exportador, mais campos ACF plausíveis de um "orçamento".
+  const cabecalho = [
+    "ID", "Título", "Data", "Situação (WordPress)",
+    "nome_completo", "whatsapp", "email", "nacionalidade", "valor_do_orcamento", "observacoes",
+  ];
+  const coluna = (nome: string) => cabecalho.indexOf(nome);
+
+  it("o ID vira o identificador da linha — é ele que faz reimportar não duplicar", () => {
+    expect(sugerirMapeamento(cabecalho).idExterno).toBe(coluna("ID"));
+  });
+
+  // Nomeada assim DE PROPÓSITO no exportador. Uma coluna chamada "Status" cairia na pista
+  // de etapa do funil, e "publish"/"draft" viraria fase de atendimento — um dado interno
+  // do WordPress se passando por decisão comercial de alguém.
+  it('"Situação (WordPress)" não é confundida com a etapa do funil', () => {
+    expect(sugerirMapeamento(cabecalho).fase).toBeNull();
+  });
+
+  // O controle: uma coluna chamada "Status" SERIA lida como etapa. É por isso que o nome
+  // no exportador não é acidental.
+  it("o controle: chamada de 'Status', ela viraria etapa", () => {
+    const comStatus = cabecalho.map((c) => (c === "Situação (WordPress)" ? "Status" : c));
+    expect(sugerirMapeamento(comStatus).fase).toBe(coluna("Situação (WordPress)"));
+  });
+
+  it("reconhece os campos que importam sem ninguém configurar nada", () => {
+    const mapa = sugerirMapeamento(cabecalho);
+    expect(mapa.nome).toBe(coluna("nome_completo"));
+    expect(mapa.telefone).toBe(coluna("whatsapp"));
+    expect(mapa.email).toBe(coluna("email"));
+    expect(mapa.nacionalidade).toBe(coluna("nacionalidade"));
+    expect(mapa.propostaValor).toBe(coluna("valor_do_orcamento"));
+  });
+
+  // O BOM existe para o Excel não escrever "CÃ¡ssio". Se ele sobrevivesse à leitura, a
+  // primeira coluna viraria "\uFEFFID" — invisível na tela, e o bastante para o
+  // identificador deixar de ser reconhecido e a reimportação duplicar tudo.
+  it("o BOM que o exportador escreve não contamina a primeira coluna", () => {
+    const linhas = lerCsv("\uFEFFID,Nome\n12,Ana\n");
+    expect(linhas[0][0]).toBe("ID");
+    expect(sugerirMapeamento(linhas[0]).idExterno).toBe(0);
   });
 });
