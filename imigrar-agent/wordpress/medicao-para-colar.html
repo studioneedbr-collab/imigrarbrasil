@@ -1,0 +1,47 @@
+<script>
+/* Imigrar Brasil — rótulos da medição. Precisa vir ANTES do sn-track.js (que é defer). */
+/* Imigrar Brasil — rótulos da medição. Roda antes do sn-track.js (que é `defer`). */
+(function () {
+  "use strict";
+  try {
+    // Seletor → rótulo. O que NÃO está aqui continua sendo medido pelas regras próprias
+    // do tracker; esta lista existe só para o que ele não teria como adivinhar.
+    var ALVOS = [
+      // Os dois formulários do site, com nomes que se distinguem no relatório.
+      ["form.ibxgo-form", "atendimento-online"],
+      ["form.elementor-form[name='Contato']", "fale-conosco"],
+      // O ícone que abre o popup do WhatsApp. É o clique que a pergunta "quantas pessoas
+      // foram para o WhatsApp?" quer contar, e o único que o tracker não pega sozinho.
+      [".elementor-social-icon-whatsapp", "whatsapp"]
+    ];
+
+    function marcar(no) {
+      if (!no || no.nodeType !== 1 || !no.matches) { return; }
+      if (no.getAttribute("data-sn-track")) { return; }
+      for (var i = 0; i < ALVOS.length; i++) {
+        try {
+          if (no.matches(ALVOS[i][0])) { no.setAttribute("data-sn-track", ALVOS[i][1]); return; }
+        } catch (e) {}
+      }
+    }
+
+    // Subir a partir do alvo: o clique acontece no <svg> dentro do <a>, nunca no <a>.
+    // O teto de 12 saltos é o mesmo do tracker, pela mesma razão.
+    document.addEventListener("click", function (evento) {
+      try {
+        var no = evento.target, saltos = 0;
+        while (no && no.nodeType === 1 && saltos++ < 12) { marcar(no); no = no.parentNode; }
+      } catch (e) {}
+    }, true);
+
+    document.addEventListener("submit", function (evento) {
+      try { marcar(evento.target); } catch (e) {}
+    }, true);
+  } catch (e) {
+    // Medição nunca pode quebrar o site.
+  }
+})();
+</script>
+
+<!-- Studio Need — medição do site -->
+<script defer src="https://app.studioneed.com.br/sn-track.js" data-sn-key="snk_otITHbs1z8VjDJ9thF5NL1Ut3gocSIKt"></script>
