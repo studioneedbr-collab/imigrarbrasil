@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "migrar": "node scripts/migrar.mjs",
+    "importar": "node scripts/importar-planilha.mjs",
     "test": "vitest run",
     "test:rag": "vitest run --config vitest.rag.config.ts",
     "test:watch": "vitest",
