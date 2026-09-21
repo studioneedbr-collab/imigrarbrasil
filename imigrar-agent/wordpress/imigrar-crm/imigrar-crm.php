@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Imigrar Brasil — integração com o CRM
  * Description: Leva ao CRM os leads do site (formulários e tipos de conteúdo) e instala a medição do Studio Need. Painel em "Imigrar CRM".
- * Version: 1.1.0
+ * Version: 1.1.2
  * Author: Studio Need
  * Requires at least: 5.6
  * Requires PHP: 7.0
@@ -876,6 +876,7 @@ function imigrar_linha_de_funcao($nome, $ligada, $explicacao, $estado) {
 
 function imigrar_tela_do_crm() {
     if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
+    if (!function_exists('get_plugin_data')) { require_once ABSPATH . 'wp-admin/includes/plugin.php'; }
 
     $tipos     = get_post_types(array('_builtin' => false), 'objects');
     $ligados   = imigrar_tipos_no_crm();
@@ -884,7 +885,15 @@ function imigrar_tela_do_crm() {
     $elementor = (bool) get_option(IMIGRAR_OPCAO_ELEMENTOR);
     $log       = (array) get_option(IMIGRAR_OPCAO_LOG, array());
 
-    echo '<div class="wrap"><h1>Imigrar Brasil — integração com o CRM</h1>';
+    $dados = function_exists('get_plugin_data')
+        ? get_plugin_data(__FILE__, false, false)
+        : array('Version' => '?');
+
+    printf(
+        '<div class="wrap"><h1>Imigrar Brasil — integração com o CRM ' .
+        '<span style="font-size:13px;font-weight:400;color:#646970;vertical-align:middle">versão %s</span></h1>',
+        esc_html($dados['Version'])
+    );
     echo '<p class="description" style="max-width:820px;font-size:14px">Este plugin leva ao CRM o que chega pelo site, ' .
          'e instala a medição. Ele <strong>nunca responde nada pelo WhatsApp</strong> — quem decide falar com a pessoa é uma pessoa, pelo painel do CRM.</p>';
 
@@ -963,6 +972,19 @@ function imigrar_tela_do_crm() {
         );
     }
     echo '</td></tr></table>';
+
+    // ONDE A PESSOA VAI PERDER O TOKEN, dito onde ela está prestes a digitá-lo.
+    //
+    // Atualizar o plugin por "Substituir a atual pela enviada" PRESERVA tudo isto.
+    // Excluir e instalar de novo não preserva: excluir roda o uninstall.php, que apaga as
+    // opções de propósito — inclusive o token. As duas ações ficam lado a lado na mesma
+    // tela do WordPress e parecem intercambiáveis; só uma delas é.
+    echo '<p class="description" style="max-width:820px;border-left:3px solid #dba617;padding:6px 12px;background:#fcf9e8">' .
+         'Para atualizar o plugin, envie o ZIP novo e escolha <strong>“Substituir a atual pela enviada”</strong> — ' .
+         'isso mantém o token e os ajustes.<br>' .
+         '<strong>Excluir</strong> o plugin apaga as configurações, inclusive o token, e aí é preciso colá-lo de novo. ' .
+         'Se quiser que ele nunca se perca, defina <code>IMIGRAR_CAPTURE_TOKEN</code> no <code>wp-config.php</code>: ' .
+         'de lá ele tem prioridade e não depende do banco.</p>';
 
     if (empty($tipos)) {
         echo '<p>Nenhum tipo de conteúdo personalizado neste site.</p>';
