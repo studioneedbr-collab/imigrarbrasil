@@ -33,6 +33,34 @@ export function normalizarTelefone(bruto: string | null | undefined): string {
 }
 
 /**
+ * O DDI QUE O FORMULÁRIO NÃO PEDE — e por que ele decide se a captação presta.
+ *
+ * Quem preenche um formulário no site brasileiro digita "(95) 99123-4567". O WhatsApp,
+ * do outro lado, SEMPRE entrega o número com o DDI: "5595991234567". Guardar o que veio
+ * do formulário como está significa que, no dia em que essa mesma pessoa escrever para o
+ * escritório, o webhook não vai encontrar o caso — vai abrir um card novo, e o lead que a
+ * captação trouxe fica órfão ao lado dele.
+ *
+ * É o defeito da Ana Rodríguez aparecendo duas vezes no quadro, com a diferença de que
+ * aqui ele aconteceria em TODO lead do site, e justamente no caminho que existe para
+ * juntar as duas pontas.
+ *
+ * A regra é a mesma que a carga da planilha usou:
+ *  · começa com "+"   → o DDI está escrito, seja qual for. Não se mexe.
+ *  · 10 ou 11 dígitos → formato brasileiro (DDD + 8 ou 9 dígitos). Ganha o 55.
+ *  · o resto          → passa como está. Adivinhar DDI de número que não se reconhece é
+ *                       inventar o telefone de outra pessoa.
+ */
+export function comDdiProvavel(bruto: string | null | undefined): string {
+  const cru = (bruto ?? "").trim();
+  const digitos = normalizarTelefone(cru);
+  if (!digitos) return "";
+  if (cru.startsWith("+")) return digitos;
+  if (digitos.length === 10 || digitos.length === 11) return `55${digitos}`;
+  return digitos;
+}
+
+/**
  * As grafias que podem ser a MESMA pessoa.
  *
  * O nono dígito é o caso real: o WhatsApp entrega o número de um celular brasileiro ora

@@ -3,7 +3,7 @@ import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { capturarDadosDoLead } from "@/lib/agent/lead-capture";
-import { normalizarTelefone } from "@/lib/whatsapp/telefone";
+import { comDdiProvavel } from "@/lib/whatsapp/telefone";
 import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -147,7 +147,10 @@ export async function POST(req: NextRequest) {
   if (dados.website?.trim()) return NextResponse.json({ ok: true }, { headers });
 
   const repo = getRepository();
-  const telefone = normalizarTelefone(dados.telefone);
+  // COM O DDI. Sem isto o lead do site e a conversa de WhatsApp da mesma pessoa viram
+  // dois cards — no caminho que existe exatamente para juntar as duas pontas. Ver
+  // `comDdiProvavel`.
+  const telefone = comDdiProvavel(dados.telefone);
   const email = dados.email?.trim() || undefined;
   const chave = telefone || `${PREFIXO_SITE}${email}`;
 

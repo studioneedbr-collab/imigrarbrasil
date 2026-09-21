@@ -136,6 +136,43 @@ describe("o lead cai na primeira etapa do funil", () => {
     expect(novo).toBe(true);
   });
 
+  /**
+   * O DEFEITO QUE ANULARIA A CAPTAÇÃO INTEIRA.
+   *
+   * Quem preenche formulário em site brasileiro digita "(95) 99123-4567". O WhatsApp
+   * sempre entrega com o DDI. Guardar sem ele faria o webhook não encontrar o caso no dia
+   * em que a pessoa escrevesse — e abrir um card novo, com o lead da captação órfão ao
+   * lado. Em TODO lead do site, no caminho que existe para juntar as duas pontas.
+   */
+  it("telefone brasileiro do formulário ganha o DDI", async () => {
+    const res = await POST(
+      req({ nome: "Sem DDI", telefone: "(95) 99123-4567" }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.whatsappNumber).toBe("5595991234567");
+  });
+
+  it("e quem escreve depois pelo WhatsApp cai no MESMO caso", async () => {
+    const res = await POST(
+      req({ nome: "Volta pelo zap", telefone: "(11) 98888-7777" }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const doSite = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    // É assim que o número chega da Z-API.
+    const conv = await repo.getOrCreateConversation("5511988887777");
+    expect(conv.id).toBe(doSite.conversationId);
+  });
+
+  it("número estrangeiro com + não é tocado", async () => {
+    const res = await POST(
+      req({ nome: "De fora", telefone: "+243 840 629 031" }, { token: segredoDeVerdade }),
+    );
+    const { lead_id } = await res.json();
+    const lead = (await repo.listLeads()).find((l) => l.id === lead_id)!;
+    expect(lead.whatsappNumber).toBe("243840629031");
+  });
+
   // Quem já é um caso em andamento não volta para "Novo" porque preencheu um formulário.
   it("não rebaixa para Novo um caso que já está em andamento", async () => {
     const conv = await repo.getOrCreateConversation("5511970000003", "Em atendimento");
