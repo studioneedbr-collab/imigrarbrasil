@@ -314,11 +314,11 @@ function imigrar_mede_este_visitante() {
     return true;
 }
 
-/** A marcação, impressa ANTES do tracker — ver o bloco acima. */
-add_action('wp_footer', function () {
-    if (!imigrar_mede_este_visitante()) { return; }
-    ?>
-<script>
+const IMIGRAR_HANDLE = 'imigrar-sn-track';
+
+/** O trecho que dá rótulo ao que o tracker não adivinharia. Ver o bloco acima. */
+function imigrar_js_da_marcacao() {
+    return <<<'JS'
 /* Imigrar Brasil — rótulos da medição. Roda antes do sn-track.js (que é `defer`). */
 (function () {
   "use strict";
@@ -360,20 +360,76 @@ add_action('wp_footer', function () {
     // Medição nunca pode quebrar o site.
   }
 })();
-</script>
-    <?php
-}, 98);
+JS;
+}
 
-/** O tracker. Prioridade maior que a da marcação: ele precisa vir depois. */
-add_action('wp_footer', function () {
-    if (!imigrar_mede_este_visitante()) { return; }
-    if (!IMIGRAR_SN_KEY || !IMIGRAR_SN_SRC) { return; }
-    printf(
-        '<!-- Studio Need — medição do site -->' . "\n" . '<script defer src="%s" data-sn-key="%s"></script>' . "\n",
-        esc_url(IMIGRAR_SN_SRC),
-        esc_attr(IMIGRAR_SN_KEY)
+/**
+ * ENFILEIRAR, E NÃO CUSPIR NO `wp_footer`.
+ *
+ * A primeira versão imprimia os dois trechos direto em `wp_footer`, nas prioridades 98 e
+ * 99. No site do cliente NADA SAIU — e não era cache nem o tema: numa 404 recém-inventada,
+ * que nenhum cache pode ter guardado, o rodapé rodava e imprimia o trecho de OUTRO plugin,
+ * enquanto o nosso não aparecia. Escrever direto no `wp_footer` deixa o resultado à mercê
+ * de quem mexe naquela saída, e há um punhado desses aqui: Jetpack Boost, Optimole, Royal
+ * Addons, Elementor.
+ *
+ * `wp_enqueue_script` é o caminho que o WordPress oferece para isso. O script passa pela
+ * FILA — que os plugins de otimização sabem tratar, porque é por ela que todo script de
+ * todo tema passa — em vez de ser texto solto no meio do HTML.
+ *
+ * E a ordem, que era o ponto delicado, fica melhor do que antes: `wp_add_inline_script`
+ * com `'before'` GARANTE que a marcação é impressa imediatamente antes da tag do tracker.
+ * Antes isso dependia de dois números de prioridade continuarem na ordem certa; agora é
+ * uma relação declarada entre os dois, que ninguém desfaz sem querer.
+ *
+ * O `defer` do tracker não atrapalha: script `defer` só executa depois que a página é
+ * lida, e o inline executa na hora — então os ouvintes da marcação continuam sendo
+ * registrados primeiro, que é o que faz o rótulo existir quando o tracker olha.
+ */
+add_action('wp_enqueue_scripts', function () {
+    // Instrumentação: o painel precisa poder dizer se este gancho sequer dispara, e por
+    // que ele desistiu. Sem isso, "não saiu" não distingue "não rodou" de "rodou e algo
+    // comeu a saída" — e são dois lugares diferentes para procurar.
+    $motivo = '';
+    if (is_admin()) {
+        $motivo = 'is_admin() verdadeiro';
+    } elseif (is_user_logged_in() && current_user_can('edit_posts')) {
+        $motivo = 'usuário logado da equipe (não é medido, de propósito)';
+    } elseif (!IMIGRAR_SN_KEY || !IMIGRAR_SN_SRC) {
+        $motivo = 'sem chave ou sem endereço do tracker';
+    }
+
+    // Uma escrita no banco por visita seria caro à toa; o transiente limita a uma a cada
+    // cinco minutos, que é de sobra para diagnosticar.
+    if (!get_transient('imigrar_rodape_anotado')) {
+        set_transient('imigrar_rodape_anotado', 1, 300);
+        update_option('imigrar_ultimo_rodape', array(
+            'quando' => current_time('mysql'),
+            'motivo' => $motivo ? $motivo : 'enfileirou o script',
+        ), false);
+    }
+
+    if ($motivo) { return; }
+
+    wp_enqueue_script(IMIGRAR_HANDLE, IMIGRAR_SN_SRC, array(), null, true);
+    wp_add_inline_script(IMIGRAR_HANDLE, imigrar_js_da_marcacao(), 'before');
+});
+
+/**
+ * O `defer` e a chave do site, que a fila não sabe escrever sozinha.
+ *
+ * `wp_enqueue_script` não tem parâmetro para atributo arbitrário, e é justamente de um
+ * atributo que o tracker tira a configuração dele (`data-sn-key`). Sem este filtro o
+ * script carregaria e desistiria em silêncio na primeira linha, por não achar a chave.
+ */
+add_filter('script_loader_tag', function ($tag, $handle) {
+    if ($handle !== IMIGRAR_HANDLE) { return $tag; }
+    return str_replace(
+        '<script ',
+        '<script defer data-sn-key="' . esc_attr(IMIGRAR_SN_KEY) . '" ',
+        $tag
     );
-}, 99);
+}, 10, 2);
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
  * OS REGISTROS DO WORDPRESS, NO CRM, NA HORA
@@ -966,6 +1022,23 @@ function imigrar_tela_do_crm() {
          '<strong>Conferir medição</strong> busca a própria home e procura o script no HTML — o mesmo que abrir o código-fonte numa janela anônima.</p>';
     if (is_array($conf)) {
         printf('<p class="description">Última conferência: %s — %s</p>', esc_html($conf['quando']), esc_html($conf['texto']));
+    }
+
+    // O QUE O PRÓPRIO GANCHO DIZ DE SI.
+    //
+    // "Não saiu na página" não distingue "o gancho nem rodou" de "rodou e alguém comeu a
+    // saída" — e são dois lugares diferentes para procurar. Esta linha é gravada pelo
+    // gancho, na visita de verdade, e responde qual dos dois é.
+    $rodape = get_option('imigrar_ultimo_rodape');
+    if (is_array($rodape)) {
+        printf(
+            '<p class="description">Último carregamento de página no site: %s — <strong>%s</strong></p>',
+            esc_html($rodape['quando']),
+            esc_html($rodape['motivo'])
+        );
+    } else {
+        echo '<p class="description"><strong>O gancho do rodapé nunca disparou.</strong> ' .
+             'Se alguém já abriu o site desde a instalação, isto aponta para dentro do plugin — me avise.</p>';
     }
 
     // ── ÚLTIMOS ENVIOS ────────────────────────────────────────────────────────────
