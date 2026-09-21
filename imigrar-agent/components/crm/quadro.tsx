@@ -14,7 +14,7 @@ import { Selecao } from "@/components/dashboard/campos";
 import { Icon, btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
-import { POR_PAGINA } from "@/lib/fila/paginacao";
+
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 import { ORIGEM_LABEL } from "@/lib/domain/rotulos";
 import type { AtendimentoStatus, EtapaCrm, FunilCrm, OrigemLead } from "@/lib/domain/types";
@@ -42,6 +42,16 @@ import type { AtendimentoStatus, EtapaCrm, FunilCrm, OrigemLead } from "@/lib/do
  * significa fechar o caso de alguém. Lá o card ganha um seletor de etapa, que faz
  * exatamente a mesma chamada.
  */
+/**
+ * QUANTOS CARDS POR PÁGINA EM CADA COLUNA.
+ *
+ * Bem menos que o `POR_PAGINA` das listas (25). Ali a página ocupa a tela inteira; aqui
+ * são cinco ou doze colunas lado a lado, e cada card tem quatro linhas. Dez já enche a
+ * altura de uma tela — passar disso é devolver a rolagem infinita que esta paginação
+ * existe para acabar.
+ */
+const POR_COLUNA = 10;
+
 /** Onde a escolha de colunas recolhidas fica guardada, no navegador de quem usa. */
 const CHAVE_RECOLHIDAS = "crm:colunas-recolhidas";
 
@@ -93,7 +103,18 @@ export default function QuadroCrm({
   const [funilId, setFunilId] = useState(() => funilPadrao(funisIniciais).id);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  const [visiveis, setVisiveis] = useState<Record<string, number>>({});
+  /**
+   * A PÁGINA DE CADA COLUNA.
+   *
+   * Era um "carregar mais" que só crescia: numa coluna com oitenta casos, chegar ao fim
+   * significava oitenta cards empilhados e uma rolagem que não acaba — e, pior, a rolagem
+   * é DE DENTRO da coluna, dentro da rolagem lateral do quadro. Duas rolagens aninhadas
+   * na mesma tela é como se perde a noção de onde se está.
+   *
+   * Página tem fim. A coluna fica sempre da mesma altura, e quem procura um caso
+   * específico usa a busca, que existe logo acima.
+   */
+  const [paginas, setPaginas] = useState<Record<string, number>>({});
   // O movimento que parou para perguntar. Três colunas pedem dados antes de gravar —
   // ver components/crm/movimento.tsx.
   const [perguntando, setPerguntando] = useState<{
@@ -533,9 +554,12 @@ export default function QuadroCrm({
            rolagem lateral mantêm essa leitura com cinco colunas ou com doze. */
         <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
           {colunas.map((coluna) => {
-            const limite = visiveis[coluna.etapa.id] ?? POR_PAGINA;
-            const mostrando = coluna.leads.slice(0, limite);
-            const restam = coluna.leads.length - mostrando.length;
+            const totalPaginas = Math.max(1, Math.ceil(coluna.leads.length / POR_COLUNA));
+            // A página guardada pode ter deixado de existir: basta a busca filtrar, ou
+            // alguém mover um card para outra coluna. Presa fora da faixa, a coluna
+            // apareceria vazia com casos dentro — que é o defeito mais caro deste quadro.
+            const pagina = Math.min(paginas[coluna.etapa.id] ?? 1, totalPaginas);
+            const mostrando = coluna.leads.slice((pagina - 1) * POR_COLUNA, pagina * POR_COLUNA);
 
             /* ─── A COLUNA RECOLHIDA ───
                Vira uma faixa estreita com o nome de pé e a contagem. Continua sendo alvo
@@ -656,16 +680,32 @@ export default function QuadroCrm({
                     </div>
                   ))}
 
-                  {restam > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVisiveis((v) => ({ ...v, [coluna.etapa.id]: limite + POR_PAGINA }))
-                      }
-                      className="rounded-md border border-ib-line bg-white px-2 py-1.5 text-[11px] font-medium text-ib-carimbo transition hover:bg-ib-papel"
+                  {totalPaginas > 1 ? (
+                    <nav
+                      aria-label={`Páginas de ${coluna.etapa.nome}`}
+                      className="mt-1 flex items-center justify-between gap-1 border-t border-ib-line pt-2"
                     >
-                      Carregar mais {restam > POR_PAGINA ? POR_PAGINA : restam} ({restam} restantes)
-                    </button>
+                      <PassoDaColuna
+                        rotulo="‹"
+                        titulo="Página anterior"
+                        ativo={pagina > 1}
+                        onClick={() =>
+                          setPaginas((p) => ({ ...p, [coluna.etapa.id]: pagina - 1 }))
+                        }
+                      />
+                      <span className="font-mono text-[11px] tabular-nums text-ib-slate">
+                        {(pagina - 1) * POR_COLUNA + 1}–{(pagina - 1) * POR_COLUNA + mostrando.length}{" "}
+                        de {coluna.leads.length}
+                      </span>
+                      <PassoDaColuna
+                        rotulo="›"
+                        titulo="Próxima página"
+                        ativo={pagina < totalPaginas}
+                        onClick={() =>
+                          setPaginas((p) => ({ ...p, [coluna.etapa.id]: pagina + 1 }))
+                        }
+                      />
+                    </nav>
                   ) : null}
                 </div>
               </section>
@@ -736,6 +776,38 @@ function ChipDeOrigem({
       <span className={`font-mono tabular-nums ${ativo ? "opacity-80" : "opacity-60"}`}>
         {quantos}
       </span>
+    </button>
+  );
+}
+
+/** Uma seta da paginação da coluna. Ponta da lista é `span`, não link morto. */
+function PassoDaColuna({
+  rotulo,
+  titulo,
+  ativo,
+  onClick,
+}: {
+  rotulo: string;
+  titulo: string;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  if (!ativo) {
+    return (
+      <span aria-hidden="true" className="px-1.5 text-[11px] font-semibold text-ib-line">
+        {rotulo}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titulo}
+      aria-label={titulo}
+      className="rounded px-1.5 text-[11px] font-semibold text-ib-carimbo transition hover:bg-white"
+    >
+      {rotulo}
     </button>
   );
 }

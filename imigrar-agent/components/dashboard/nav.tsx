@@ -201,9 +201,16 @@ export default function DashboardNav() {
   return (
     <nav className="px-3 py-3 md:py-4">
       {visibleGroups.map((group, gi) => (
-        <div key={group.section ?? "root"} className={gi > 0 ? "mt-5" : ""}>
+        <div key={group.section ?? "root"} className={gi > 0 ? "mt-4" : ""}>
+          {/* O TRAÇO ENTRE AS SEÇÕES.
+              Elas se distinguiam só pelo espaço em branco e por um título de 10px em
+              branco a 35% — que some sobre o gradiente escuro do rail. Sem a linha,
+              "Métricas" parecia mais um item do Agente, e "Trabalho de hoje" não tinha
+              fim visível. Três blocos com fronteira desenhada é o que faz o menu ser lido
+              como três assuntos em vez de uma pilha de treze links. */}
+          {gi > 0 ? <div className="mx-3 mb-4 h-px bg-white/10" /> : null}
           {group.section ? (
-            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
               {group.section}
             </p>
           ) : null}

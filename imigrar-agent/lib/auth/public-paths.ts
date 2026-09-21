@@ -8,6 +8,15 @@
 //  /api/webhook/whatsapp — autenticado no próprio handler (token na URL ?token= ou Client-Token)
 //  /api/health       — diagnóstico sem segredos (modo do repositório + flags de integração)
 //  /api/cron/*        — autenticados por CRON_SECRET (Bearer/query) no próprio handler
+//  /api/captura/site — autenticada no próprio handler por SITE_CAPTURE_TOKEN (header
+//                      X-Imigrar-Token ou ?token=), fail-closed: sem o segredo
+//                      configurado ela recusa tudo com 503 em vez de ficar aberta.
+//
+// A ROTA DE CAPTURA NASCEU FORA DESTA LISTA, e por isso nunca funcionou: o middleware
+// devolvia 401 "Não autenticado" antes de o handler existir para o requisitante. Do lado
+// de fora, indistinguível de token errado — o site do cliente teria sido integrado,
+// testado, e o desenvolvedor teria concluído que o segredo estava errado. Rota pública
+// que não está aqui é rota que não responde, e o lugar de descobrir isso é este arquivo.
 //
 // SAIU DAQUI: `/api/proposal/<uuid>`, que servia o PDF da proposta comercial por link
 // compartilhável. Além de a tela de propostas não existir mais, "UUID não adivinhável"
@@ -19,6 +28,7 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/logout",
   "/api/auth/setup",
   "/api/webhook/whatsapp",
+  "/api/captura/site",
   "/api/health",
   "/api/cron/followups",
   "/api/cron/followup",

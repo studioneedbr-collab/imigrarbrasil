@@ -12,6 +12,14 @@ describe("allowlist de rotas públicas", () => {
         "/api/auth/logout",
         "/api/auth/setup",
         "/api/webhook/whatsapp",
+        // A captura do site. Entra aqui porque se autentica no próprio handler, por
+        // SITE_CAPTURE_TOKEN, e é fail-closed: sem o segredo configurado ela recusa tudo
+        // com 503 em vez de ficar aberta — a mesma postura do webhook.
+        //
+        // Este teste é o motivo de a lista não crescer sozinha: acrescentar rota pública
+        // tem que doer um pouco, e quebrar um teste chamado "mantém aberta apenas a lista
+        // conhecida" é a dor certa.
+        "/api/captura/site",
         "/api/health",
         "/api/cron/followups",
         "/api/cron/followup",

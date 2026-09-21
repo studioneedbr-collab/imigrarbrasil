@@ -37,11 +37,21 @@ export const CLASSIFICACAO_AJUDA: Record<Classificacao, string> = {
   FORA_ESCOPO: "Outro país de destino, ou outra área do direito.",
 };
 
-/** Por onde o caso chegou, na tela. Ver `OrigemLead`. */
+/**
+ * Por onde o caso chegou, na tela. Ver `OrigemLead`.
+ *
+ * "Planilha", e não "Importado": o rótulo precisa dizer DE ONDE veio, não o que
+ * aconteceu com ele. Quem abre o quadro e lê "Importado" fica com a pergunta de pé —
+ * importado de quê? —, e a resposta é a única que importa na hora de ligar para a
+ * pessoa: este caso é da planilha do comercial, o histórico está lá, e ele não veio de
+ * uma conversa que dá para reler aqui dentro.
+ *
+ * O valor gravado continua sendo `importacao`. Rótulo é da tela; o dado, do domínio.
+ */
 export const ORIGEM_LABEL: Record<OrigemLead, string> = {
   whatsapp: "WhatsApp",
   site: "Site",
-  importacao: "Importado",
+  importacao: "Planilha",
   manual: "Cadastrado à mão",
 };
 

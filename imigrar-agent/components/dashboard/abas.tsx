@@ -20,7 +20,7 @@ function Faixa({ abas, rotulo }: { abas: Aba[]; rotulo: string }) {
   const pathname = usePathname() ?? "";
   return (
     <nav aria-label={rotulo} className="-mx-1 overflow-x-auto">
-      <ul className="flex min-w-max items-stretch gap-1 border-b border-ib-line px-1">
+      <ul className="flex min-w-max items-stretch gap-0.5 border-b border-ib-line px-1">
         {abas.map((aba) => {
           const ativa = rotaAtiva(pathname, aba.href);
           return (
@@ -28,16 +28,34 @@ function Faixa({ abas, rotulo }: { abas: Aba[]; rotulo: string }) {
               <Link
                 href={aba.href}
                 aria-current={ativa ? "page" : undefined}
-                className={`relative block rounded-t-lg px-3 py-2 transition ${
-                  ativa ? "bg-ib-bruma text-ib-ink" : "text-ib-slate hover:bg-ib-papel hover:text-ib-ink"
+                /* A ABA ATIVA PRECISA GANHAR DE LONGE.
+                   Era `bg-ib-bruma` com o texto na mesma cor das irmãs: de relance, as
+                   quatro pareciam iguais e a faixa deixava de responder "onde eu estou?",
+                   que é a única pergunta dela. Agora a ativa tem fundo branco, o título em
+                   tinta cheia e a barra do selo embaixo; as outras ficam em cinza e só
+                   ganham cor no hover. */
+                className={`relative block rounded-t-lg px-3.5 py-2 transition ${
+                  ativa
+                    ? "bg-white text-ib-ink shadow-[0_-1px_0_rgba(16,24,40,0.06)_inset]"
+                    : "text-ib-slate hover:bg-ib-papel hover:text-ib-ink"
                 }`}
               >
-                <span className="block text-sm font-semibold leading-tight">{aba.label}</span>
-                <span className="hidden text-[11px] leading-tight text-ib-slate sm:block">
+                <span
+                  className={`block text-sm leading-tight ${
+                    ativa ? "font-semibold text-ib-ink" : "font-medium"
+                  }`}
+                >
+                  {aba.label}
+                </span>
+                <span
+                  className={`hidden text-[11px] leading-tight sm:block ${
+                    ativa ? "text-ib-carimbo" : "text-ib-slate/70"
+                  }`}
+                >
                   {aba.nota}
                 </span>
                 {ativa ? (
-                  <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-ib-selo" />
+                  <span className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-ib-selo" />
                 ) : null}
               </Link>
             </li>
