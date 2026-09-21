@@ -11,6 +11,7 @@
     "typecheck": "npm --prefix imigrar-agent exec tsc -- --noEmit",
     "migrar": "npm --prefix imigrar-agent run migrar --",
     "importar": "npm --prefix imigrar-agent run importar --",
+    "importar-propostas": "npm --prefix imigrar-agent run importar-propostas --",
     "senha": "npm --prefix imigrar-agent run senha --",
     "setup": "npm --prefix imigrar-agent install"
   }
