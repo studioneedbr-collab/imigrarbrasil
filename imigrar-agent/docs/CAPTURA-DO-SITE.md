@@ -129,30 +129,52 @@ cookie é o único rastro que chega ao servidor. O GTranslate oferece alemão e 
 o atendimento não cobre; quem filtra é o CRM, não o WordPress — a lista de idiomas fica
 num lugar só.
 
-## Trazer os leads que já estão no WordPress
+## Os registros do WordPress no CRM, na hora
 
-O site guarda leads em tipos de conteúdo próprios — **Orçamentos** (`orcamento`) e
-possivelmente outros — que só existem dentro do wp-admin. **Nenhum deles aparece na REST
-pública** (conferi: `wp/v2/orcamento` responde 404 e todas as rotas de lead do `ibexgo`
-respondem 401). Está certo assim, e é por isso que não há como trazê-los de fora.
+O site guarda leads em tipos de conteúdo próprios — **Orçamentos** (`orcamento`) e o que
+criarem depois — que só existem dentro do wp-admin. **Nenhum aparece na REST pública**
+(conferi: `wp/v2/orcamento` responde 404 e todas as rotas de lead do `ibexgo` respondem
+401). Está certo assim, e é por isso que não há como buscá-los de fora. Então o sentido se
+inverte: **o WordPress empurra**.
 
-O `mu-plugin` instala **Ferramentas → Exportar para o CRM**. Escolha o tipo, baixe o
-`.csv` e suba em **Importar planilha** no painel. O mapeamento de colunas e a
-deduplicação que já existem lá fazem o resto.
+Em **Ferramentas → Integração com o CRM**, marque os tipos que devem subir. A partir daí,
+cada registro vai para o CRM **no momento em que é salvo**. Não há exportação, nem
+planilha, nem passo manual.
 
-As colunas **saem do próprio conteúdo**, não de uma lista escrita no plugin: os campos são
-do ACF, criados à mão por quem montou o site, e adivinhá-los significaria perder em
-silêncio o que ficasse de fora. O exportador junta todas as chaves encontradas nos
-registros; quem decide o que é o quê é a tela de importação.
+**O plugin não escolhe nada.** Ele manda o dicionário cru — todos os campos do registro,
+com os nomes que o ACF usa no site. Quem interpreta é o CRM, com as mesmas regras da
+importação de planilha. Um campo novo criado no ACF passa a ser entendido **sem tocar no
+plugin**, e não existem duas listas de campos em dois servidores para divergir em silêncio.
 
-> **Não renomeie o arquivo.** Do lado do CRM, a "fonte" de cada linha importada é o nome
-> do arquivo, e é o par fonte + ID que faz reimportar **atualizar** em vez de duplicar. Por
-> isso o nome é fixo (`wordpress-orcamento.csv`) e **não tem data** — uma data mudaria a
-> chave a cada exportação e a segunda importação criaria tudo de novo.
+**Salvar de novo atualiza, não duplica.** O CRM identifica o registro pelo par
+(`wordpress:orcamento`, ID do post). Editar o mesmo orçamento dez vezes dá um card só — e
+continua sendo o mesmo caso mesmo que o telefone mude lá, porque o id não muda.
 
-O menu também serve de inventário: ele lista todos os tipos personalizados do site com a
-contagem de registros. Se houver lead em algum canto que ninguém lembrava, é ali que
-aparece.
+**O que já existe:** o gancho só alcança o que for salvo daqui para a frente. Para os
+orçamentos que já estão no site, use **Enviar todos agora** na mesma tela. Passa pelo mesmo
+caminho e pela mesma deduplicação — apertar duas vezes não duplica nada.
+
+### O que o CRM faz com o que chega
+
+- Caso novo entra na etapa **Novo**, marcado como vindo do site.
+- **Atualizar preenche buraco, não reescreve.** O que uma pessoa escreveu na ficha vale
+  mais do que um campo do site: nome corrigido, resumo escrito e telefone ajustado ficam
+  como estão.
+- **A etapa nunca é movida por quem chega de fora.** Editar o registro no WordPress não
+  puxa de volta para "Novo" um caso que o time já avançou.
+- Registro **sem telefone** (um rascunho vazio, por exemplo) é ignorado com `200` e uma
+  explicação no log — não é erro, e responder erro encheria o log do site de falhas a cada
+  salvamento até ninguém mais lê-lo.
+- O mesmo telefone continua sendo a mesma pessoa: orçamento no site e conversa no WhatsApp
+  viram **um card só**.
+
+### Se algo não chegar
+
+O motivo está no `error_log` do WordPress, com o prefixo `[imigrar-captura]`: token
+ausente, CRM fora do ar ou registro recusado, com o código HTTP.
+
+A mesma tela tem um **Baixar CSV** no rodapé. Não é necessário para a integração — serve
+para olhar os campos de um tipo antes de ligá-lo, ou para mandar a alguém conferir.
 
 ## Anti-spam
 

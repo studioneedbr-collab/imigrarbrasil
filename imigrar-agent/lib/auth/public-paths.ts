@@ -11,6 +11,9 @@
 //  /api/captura/site — autenticada no próprio handler por SITE_CAPTURE_TOKEN (header
 //                      X-Imigrar-Token ou ?token=), fail-closed: sem o segredo
 //                      configurado ela recusa tudo com 503 em vez de ficar aberta.
+//  /api/captura/registro — o mesmo segredo e a mesma postura. É por onde o WordPress do
+//                      site empurra cada registro dos tipos de conteúdo dele (Orçamentos e
+//                      afins) no momento em que são salvos lá.
 //
 // A ROTA DE CAPTURA NASCEU FORA DESTA LISTA, e por isso nunca funcionou: o middleware
 // devolvia 401 "Não autenticado" antes de o handler existir para o requisitante. Do lado
@@ -29,6 +32,7 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/setup",
   "/api/webhook/whatsapp",
   "/api/captura/site",
+  "/api/captura/registro",
   "/api/health",
   "/api/cron/followups",
   "/api/cron/followup",

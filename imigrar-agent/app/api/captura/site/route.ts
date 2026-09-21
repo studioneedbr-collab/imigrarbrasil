@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { capturarDadosDoLead } from "@/lib/agent/lead-capture";
 import { comDdiProvavel } from "@/lib/whatsapp/telefone";
 import { IDIOMAS_DO_ESCOPO } from "@/lib/domain/idiomas";
-import { env } from "@/lib/env";
+import { conferirTokenDeCaptura } from "@/lib/auth/token-de-captura";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +46,6 @@ export const dynamic = "force-dynamic";
 
 /** O prefixo de quem chegou pelo site sem deixar telefone. Não é telefone e não disca. */
 const PREFIXO_SITE = "site:";
-
-function safeEqual(a: string, b: string): boolean {
-  const ba = Buffer.from(a), bb = Buffer.from(b);
-  return ba.length === bb.length && timingSafeEqual(ba, bb);
-}
 
 /**
  * Os endereços do site que podem POSTar do navegador.
@@ -143,25 +137,9 @@ const schema = z
 export async function POST(req: NextRequest) {
   const headers = cors(req.headers.get("origin"));
 
-  // AUTENTICAÇÃO, FAIL-CLOSED — a mesma postura do webhook do WhatsApp. Sem segredo
-  // configurado a rota RECUSA em vez de ficar aberta: uma porta que cria lead sem prova
-  // nenhuma é a fila do escritório à mercê de quem souber a URL.
-  const segredo = env.siteCaptureToken;
-  if (!segredo) {
-    console.error(
-      "[captura/site] RECUSADO: SITE_CAPTURE_TOKEN não está configurado. Enquanto isso " +
-        "não for resolvido, nenhum lead do site é aceito.",
-    );
-    return NextResponse.json(
-      { ok: false, error: "captura_sem_autenticacao_configurada" },
-      { status: 503, headers },
-    );
-  }
-  const enviado =
-    req.headers.get("x-imigrar-token") ?? req.nextUrl.searchParams.get("token") ?? "";
-  if (!enviado || !safeEqual(enviado, segredo)) {
-    return NextResponse.json({ ok: false, error: "nao_autorizado" }, { status: 401, headers });
-  }
+  // Autenticação fail-closed, compartilhada com /api/captura/registro.
+  const recusa = conferirTokenDeCaptura(req, headers);
+  if (recusa) return recusa;
 
   let body: unknown;
   try {

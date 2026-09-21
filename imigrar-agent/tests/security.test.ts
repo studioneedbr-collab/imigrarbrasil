@@ -20,6 +20,9 @@ describe("allowlist de rotas públicas", () => {
         // tem que doer um pouco, e quebrar um teste chamado "mantém aberta apenas a lista
         // conhecida" é a dor certa.
         "/api/captura/site",
+        // O que o WordPress do site empurra quando um registro é salvo lá (Orçamentos e
+        // os outros tipos de conteúdo dele). Mesmo segredo, mesma postura fail-closed.
+        "/api/captura/registro",
         "/api/health",
         "/api/cron/followups",
         "/api/cron/followup",
@@ -172,5 +175,44 @@ describe("sessão JWT", () => {
       sub: "u1", email: "a@b.com", role: "user" as unknown as "admin",
     });
     expect((await verifySession(token))?.role).toBe("atendente");
+  });
+});
+
+// ── AS ROTAS DE CAPTURA PRECISAM ESTAR NA ALLOWLIST ───────────────────────────────
+//
+// Este teste existe por causa de um defeito real: `/api/captura/site` NASCEU FORA da
+// allowlist e por isso nunca funcionou. O middleware devolvia 401 antes de o handler
+// existir para quem chamava — e, visto de fora, 401 de middleware é indistinguível de
+// token errado. O site do cliente teria sido integrado, testado, e alguém teria passado
+// dias procurando o segredo errado.
+//
+// A lista é varrida do DISCO, e não escrita aqui, porque uma lista escrita à mão teria o
+// mesmo defeito que ela deveria pegar: a terceira rota de captura seria esquecida nas
+// duas.
+describe("toda rota de captura responde sem sessão", () => {
+  const { readdirSync, existsSync } = require("fs") as typeof import("fs");
+  const dir = "app/api/captura";
+  const tipos = existsSync(dir)
+    ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
+    : [];
+
+  it("existe pelo menos uma, senão o teste não está olhando nada", () => {
+    expect(tipos.length).toBeGreaterThan(0);
+  });
+
+  for (const tipo of tipos) {
+    it(`/api/captura/${tipo} está na allowlist`, () => {
+      expect(isPublicPath(`/api/captura/${tipo}`)).toBe(true);
+    });
+  }
+
+  // O contrário também: uma rota que saiu do disco e ficou na lista é uma porta aberta
+  // apontando para lugar nenhum — e a próxima pessoa a criar esse caminho o encontra
+  // público sem ter pedido.
+  it("não sobra na lista nenhuma captura que não existe mais", () => {
+    const naLista = PUBLIC_PATHS_LIST.filter((p) => p.startsWith("/api/captura/"));
+    for (const p of naLista) {
+      expect(tipos).toContain(p.replace("/api/captura/", ""));
+    }
   });
 });
