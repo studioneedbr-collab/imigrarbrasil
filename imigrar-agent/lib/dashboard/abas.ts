@@ -28,6 +28,10 @@ export const ABAS_ATENDIMENTO: Aba[] = [
   { href: "/dashboard", label: "Fila", nota: "o que vence primeiro" },
   { href: "/dashboard/meus", label: "Meus", nota: "os casos que são seus" },
   { href: "/dashboard/crm", label: "Funil", nota: "onde cada caso está" },
+  // A importação fica como aba do atendimento, e não como item de menu: ela é uma coisa
+  // que se faz ao funil, não uma tela que se visita. Quem procura por ela está olhando o
+  // quadro e pensando "preciso trazer aquela planilha para cá".
+  { href: "/dashboard/importar", label: "Importar", nota: "trazer uma planilha" },
 ];
 
 /** O que entrou pelo WhatsApp — inclusive o que não virou caso. */

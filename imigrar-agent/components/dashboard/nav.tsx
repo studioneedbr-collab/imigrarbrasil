@@ -67,7 +67,12 @@ const navGroups: NavGroup[] = [
         href: "/dashboard",
         label: "Atendimento",
         icon: "bolt",
-        ativoEm: ["/dashboard/meus", "/dashboard/crm", "/dashboard/atendimentos"],
+        ativoEm: [
+          "/dashboard/meus",
+          "/dashboard/crm",
+          "/dashboard/atendimentos",
+          "/dashboard/importar",
+        ],
       },
       {
         href: "/dashboard/conversations",

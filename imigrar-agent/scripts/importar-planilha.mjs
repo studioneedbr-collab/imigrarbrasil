@@ -1,5 +1,15 @@
 // A CARGA INICIAL DO CRM — a planilha do comercial vira caso no funil.
 //
+// ⚠ O CAMINHO NORMAL AGORA É A TELA: /dashboard/importar.
+//
+// Ela aceita .csv e .xlsx, adivinha o mapeamento das colunas, mostra o ensaio linha por
+// linha antes de gravar e — o que este script não faz — não duplica quando a mesma
+// planilha é importada de novo (ver lib/importacao/aplicar.ts).
+//
+// Este script continua aqui porque roda sem navegador e sem sessão, o que serve para
+// carga grande e para automação. Se os dois divergirem, a tela é a que vale: ela é a que
+// o escritório usa.
+//
 // Roda UMA VEZ, na virada. Não é um importador genérico: é o caminho do histórico que o
 // escritório manteve à mão (ImigrarBrasil_CRM_Comercial, bloco "IDENTIFICAÇÃO E CONTATO
 // DO LEAD") para dentro do painel, e ele conhece as colunas daquela planilha pelo nome.

@@ -380,6 +380,8 @@ export class SupabaseRepository implements Repository {
       // Kanban respondia 200 e o stage voltava para 'novo' no próximo reload.
       stage: patch.stage, status: patch.status, score: patch.score, cliente_id: patch.clienteId,
       setor: patch.setor, origem: patch.origem,
+      origem_externa_fonte: patch.origemExternaFonte,
+      origem_externa_id: patch.origemExternaId,
       // Imigração — o que a IA lê da conversa. As datas de prazo NÃO estão aqui.
       idioma: patch.idioma, nacionalidade: patch.nacionalidade, localizacao: patch.localizacao,
       pais_exterior: patch.paisExterior,
@@ -808,6 +810,8 @@ export class SupabaseRepository implements Repository {
       // O default da coluna é 'whatsapp' (migration 031). O `??` aqui é para o banco que
       // ainda não rodou a migration: sem ele o filtro do quadro esconderia todo mundo.
       origem: r.origem ?? "whatsapp",
+      origemExternaFonte: r.origem_externa_fonte ?? null,
+      origemExternaId: r.origem_externa_id ?? null,
       idioma: r.idioma ?? null, nacionalidade: r.nacionalidade ?? null,
       localizacao: r.localizacao ?? null, paisExterior: r.pais_exterior ?? null,
       entradaControleMigratorio: r.entrada_controle_migratorio ?? null,

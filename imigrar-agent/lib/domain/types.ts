@@ -149,6 +149,15 @@ export interface Lead extends LeadImigracao, PropostaComercial {
   setor?: LeadSetor | null;
   /** Por onde o caso chegou. Ver `OrigemLead`. O detalhe (qual formulário, qual planilha) fica em `notes`. */
   origem?: OrigemLead | null;
+  /**
+   * DE QUAL PLANILHA, E QUAL LINHA — o que faz reimportar atualizar em vez de duplicar.
+   *
+   * O telefone é a chave natural e resolve quase tudo, mas ele muda: a pessoa troca de
+   * número, alguém corrige um DDD errado na ficha. Aí a linha da planilha deixa de bater
+   * com o caso que ela mesma criou. Ver a migration 033.
+   */
+  origemExternaFonte?: string | null;
+  origemExternaId?: string | null;
 }
 
 export interface Followup {
