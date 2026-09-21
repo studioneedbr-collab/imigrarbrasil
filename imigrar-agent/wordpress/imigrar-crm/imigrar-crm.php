@@ -677,6 +677,119 @@ add_action('admin_notices', function () {
     );
 });
 
+/**
+ * A MEDIÇÃO ESTÁ MESMO SAINDO NA PÁGINA?
+ *
+ * O cartão do painel dizia "instalada no site" olhando apenas se a CHAVE existe — quer
+ * dizer, olhando para uma constante escrita neste arquivo. Isso não é conferir nada: ele
+ * diria "instalada" mesmo com o gancho do rodapé sem imprimir uma linha, que é
+ * exatamente o estado em que este site ficou.
+ *
+ * Um estado inventado é pior do que estado nenhum: ele faz parar de procurar. Agora o
+ * plugin BUSCA A PRÓPRIA HOME e procura o script no HTML — a mesma coisa que alguém faria
+ * abrindo o código-fonte numa janela anônima, e pelo mesmo caminho que o visitante usa.
+ *
+ * A busca sai sem cookie de sessão, então ela cai no mesmo ramo do visitante anônimo: se o
+ * script não aparecer aqui, não aparece para ninguém.
+ */
+const IMIGRAR_OPCAO_MEDICAO = 'imigrar_ultima_conferencia';
+
+function imigrar_conferir_medicao() {
+    $url = home_url('/?imigrar-conferencia=' . time());
+    $r = wp_remote_get($url, array(
+        'timeout'     => 20,
+        'redirection' => 3,
+        'headers'     => array('Cache-Control' => 'no-cache', 'Pragma' => 'no-cache'),
+    ));
+
+    if (is_wp_error($r)) {
+        return array('ok' => false, 'texto' => 'não consegui buscar a própria home: ' . $r->get_error_message());
+    }
+    $codigo = (int) wp_remote_retrieve_response_code($r);
+    $html   = (string) wp_remote_retrieve_body($r);
+    if ($codigo < 200 || $codigo >= 300) {
+        return array('ok' => false, 'texto' => 'a home respondeu HTTP ' . $codigo);
+    }
+
+    $tem_script   = strpos($html, 'sn-track.js') !== false;
+    $tem_rotulos  = strpos($html, 'rótulos da medição') !== false;
+    $tem_rodape   = strpos($html, 'wp-emoji') !== false || strpos($html, '</body>') !== false;
+
+    if ($tem_script && $tem_rotulos) {
+        return array('ok' => true, 'texto' => 'o script e os rótulos estão na página (' . size_format(strlen($html)) . ')');
+    }
+    if ($tem_script) {
+        return array('ok' => false, 'texto' => 'o script está lá, mas os rótulos não — o clique no WhatsApp não será contado');
+    }
+    // Separar "o rodapé nem roda" de "o rodapé roda e o nosso trecho não sai" é a
+    // diferença entre procurar no tema e procurar aqui dentro.
+    return array(
+        'ok' => false,
+        'texto' => $tem_rodape
+            ? 'o rodapé da página roda, mas o nosso trecho não sai nele — algo está removendo ou impedindo o gancho wp_footer'
+            : 'a página voltou sem rodapé — pode ser cache ou uma resposta parcial',
+    );
+}
+
+add_action('admin_post_imigrar_conferir', function () {
+    if (!current_user_can('manage_options')) { wp_die('Sem permissão.'); }
+    check_admin_referer('imigrar_crm');
+    $r = imigrar_conferir_medicao();
+    update_option(IMIGRAR_OPCAO_MEDICAO, array(
+        'quando' => current_time('mysql'),
+        'ok'     => (bool) $r['ok'],
+        'texto'  => $r['texto'],
+    ), false);
+    wp_safe_redirect(admin_url('admin.php?page=imigrar-crm'));
+    exit;
+});
+
+/**
+ * ESTE TIPO É CONTEÚDO DO SITE, OU ENCANAÇÃO DE PLUGIN?
+ *
+ * `_builtin => false` tira post e página, e ainda sobram dezoito: modelos do Elementor,
+ * definições de campo do ACF, ícones, fontes, widgets, tarefas agendadas. Nenhum é lead de
+ * ninguém, e listar os dezoito lado a lado com "Leads" é esconder o que importa no meio do
+ * que não importa — quem instalou o plugin tem que garimpar para achar a única linha que
+ * vai marcar.
+ *
+ * A separação é por PREFIXO do nome interno, não por uma lista dos tipos deste site: os
+ * plugins que criam encanação nomeiam tudo com o próprio prefixo (`elementor_`, `acf-`,
+ * `wpr_`), e é isso que os denuncia. Um plugin novo amanhã cai na mesma regra sem ninguém
+ * atualizar nada.
+ *
+ * Eles continuam na tela, embaixo e recolhidos — decidir por alguém que um tipo "não
+ * serve" e sumir com ele é como se perde um caso que estava num lugar inesperado.
+ */
+function imigrar_tipo_de_sistema($nome) {
+    foreach (array('elementor', 'e-floating', 'acf-', 'wpr_', 'wp_', 'scheduled-action', 'wpcf7') as $prefixo) {
+        if (strpos($nome, $prefixo) === 0) { return true; }
+    }
+    return false;
+}
+
+/** Uma linha da tabela de tipos. */
+function imigrar_linha_de_tipo($t, $ligados) {
+    $c = wp_count_posts($t->name);
+    $qtd = (int) ($c->publish ?? 0) + (int) ($c->draft ?? 0) + (int) ($c->private ?? 0);
+    printf(
+        '<tr><td><input type="checkbox" name="tipos[]" value="%1$s" %2$s></td>' .
+        '<td><strong>%3$s</strong> <code>%1$s</code></td><td>%4$d</td>' .
+        '<td>%5$s</td></tr>',
+        esc_attr($t->name),
+        checked(in_array($t->name, $ligados, true), true, false),
+        esc_html($t->labels->name),
+        $qtd,
+        $qtd > 0 ? sprintf(
+            '<a class="button" href="%s">Enviar todos agora</a>',
+            esc_url(wp_nonce_url(
+                admin_url('admin-post.php?action=imigrar_enviar_tudo&tipo=' . urlencode($t->name)),
+                'imigrar_crm'
+            ))
+        ) : '<span class="description">vazio</span>'
+    );
+}
+
 /** Um cartão de estado: verde quando está de pé, vermelho quando não está. */
 function imigrar_cartao($titulo, $ok, $texto) {
     printf(
@@ -731,7 +844,12 @@ function imigrar_tela_do_crm() {
         !empty($ligados),
         $ligados ? implode(', ', $ligados) : 'nenhum ligado'
     );
-    imigrar_cartao('Medição', (bool) IMIGRAR_SN_KEY, IMIGRAR_SN_KEY ? 'instalada no site' : 'sem chave');
+    $conf = get_option(IMIGRAR_OPCAO_MEDICAO);
+    imigrar_cartao(
+        'Medição',
+        is_array($conf) ? (bool) $conf['ok'] : false,
+        is_array($conf) ? $conf['texto'] : 'ainda não conferida — aperte "Conferir medição"'
+    );
     echo '</div>';
 
     if (!$token) {
@@ -793,28 +911,31 @@ function imigrar_tela_do_crm() {
     if (empty($tipos)) {
         echo '<p>Nenhum tipo de conteúdo personalizado neste site.</p>';
     } else {
-        echo '<h3>Tipos de conteúdo que sobem ao CRM</h3>';
-        echo '<table class="widefat striped" style="max-width:940px"><thead><tr>' .
+        $conteudo = array();
+        $sistema  = array();
+        foreach ($tipos as $t) {
+            if (imigrar_tipo_de_sistema($t->name)) { $sistema[] = $t; } else { $conteudo[] = $t; }
+        }
+
+        $cabecalho = '<table class="widefat striped" style="max-width:940px"><thead><tr>' .
              '<th style="width:90px">Enviar</th><th>Tipo</th><th style="width:100px">Registros</th>' .
              '<th style="width:190px">Trazer os que já existem</th></tr></thead><tbody>';
-        foreach ($tipos as $t) {
-            $c = wp_count_posts($t->name);
-            $qtd = (int) ($c->publish ?? 0) + (int) ($c->draft ?? 0) + (int) ($c->private ?? 0);
-            printf(
-                '<tr><td><input type="checkbox" name="tipos[]" value="%1$s" %2$s></td>' .
-                '<td><strong>%3$s</strong> <code>%1$s</code></td><td>%4$d</td>' .
-                '<td><a class="button" href="%5$s">Enviar todos agora</a></td></tr>',
-                esc_attr($t->name),
-                checked(in_array($t->name, $ligados, true), true, false),
-                esc_html($t->labels->name),
-                $qtd,
-                esc_url(wp_nonce_url(
-                    admin_url('admin-post.php?action=imigrar_enviar_tudo&tipo=' . urlencode($t->name)),
-                    'imigrar_crm'
-                ))
-            );
-        }
+
+        echo '<h3>Tipos de conteúdo que sobem ao CRM</h3>';
+        echo $cabecalho;
+        foreach ($conteudo as $t) { imigrar_linha_de_tipo($t, $ligados); }
         echo '</tbody></table>';
+
+        // Recolhidos, não escondidos: decidir por alguém que um tipo não serve é como se
+        // perde um caso que estava num lugar inesperado.
+        if ($sistema) {
+            echo '<details style="margin-top:12px;max-width:940px"><summary style="cursor:pointer;padding:6px 0">' .
+                 'Mostrar os ' . count($sistema) . ' tipos internos de plugins (modelos do Elementor, campos do ACF e afins) — ' .
+                 'nenhum deles é lead</summary>';
+            echo $cabecalho;
+            foreach ($sistema as $t) { imigrar_linha_de_tipo($t, $ligados); }
+            echo '</tbody></table></details>';
+        }
         echo '<p class="description" style="max-width:940px">O gancho automático só alcança o que for salvo daqui para a frente. ' .
              '<strong>Enviar todos agora</strong> traz o que já existe, pelo mesmo caminho e com a mesma deduplicação — ' .
              'apertar duas vezes não duplica nada.</p>';
@@ -836,8 +957,16 @@ function imigrar_tela_do_crm() {
         '<a class="button button-secondary" href="%s">Testar conexão com o CRM</a> ',
         esc_url(wp_nonce_url(admin_url('admin-post.php?action=imigrar_testar'), 'imigrar_crm'))
     );
-    echo '</p><p class="description" style="max-width:940px">Manda um registro de teste e mostra a resposta. ' .
-         'Não cria caso: vai sem telefone de propósito, e o CRM descarta registro sem telefone.</p>';
+    printf(
+        '<a class="button button-secondary" href="%s">Conferir medição no site</a>',
+        esc_url(wp_nonce_url(admin_url('admin-post.php?action=imigrar_conferir'), 'imigrar_crm'))
+    );
+    echo '</p><p class="description" style="max-width:940px"><strong>Testar conexão</strong> manda um registro de teste ao CRM e mostra a resposta. ' .
+         'Não cria caso: vai sem telefone de propósito, e o CRM descarta registro sem telefone.<br>' .
+         '<strong>Conferir medição</strong> busca a própria home e procura o script no HTML — o mesmo que abrir o código-fonte numa janela anônima.</p>';
+    if (is_array($conf)) {
+        printf('<p class="description">Última conferência: %s — %s</p>', esc_html($conf['quando']), esc_html($conf['texto']));
+    }
 
     // ── ÚLTIMOS ENVIOS ────────────────────────────────────────────────────────────
     //
