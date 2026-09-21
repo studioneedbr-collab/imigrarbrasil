@@ -30,9 +30,23 @@ Conteúdo: <as informações lidas, em texto corrido curto>
 
 Se a imagem estiver ilegível ou não for um documento, diga isso claramente. Não invente nada que não esteja no arquivo. Responda em português do Brasil, no máximo 10 linhas.`;
 
+/**
+ * O tipo deduzido pela extensão, quando o provedor não manda o mime (ou manda
+ * `application/octet-stream`, que é o mesmo que não mandar).
+ *
+ * OS ÁUDIOS ESTÃO AQUI POR UM MOTIVO ESPECÍFICO. A Z-API entrega o áudio gravado na hora
+ * pelos campos `audio`/`ptt`, com mime, e esse caminho sempre funcionou. Mas o mesmo
+ * arquivo pode chegar pelo campo `document` — é o que acontece quando alguém ENCAMINHA um
+ * áudio ou anexa um arquivo de som —, e aí o mime às vezes não vem. Sem a extensão
+ * mapeada, ele era classificado como documento e NUNCA passava por transcrição: o que a
+ * pessoa disse virava "arquivo recebido" e ninguém lia.
+ */
 const MIME_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
   gif: "image/gif", webp: "image/webp", pdf: "application/pdf",
+  ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg",
+  mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac",
+  wav: "audio/wav", amr: "audio/amr", webm: "audio/webm",
 };
 
 const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);

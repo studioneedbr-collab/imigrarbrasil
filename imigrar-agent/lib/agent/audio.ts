@@ -29,6 +29,87 @@ export interface Transcricao {
   duracao?: number;
 }
 
+/**
+ * Sem acento, sem pontuação, sem caixa — para comparar com a lista.
+ *
+ * A pontuação SAI de propósito: o resíduo aparece ora como "Obrigado", ora como
+ * "Obrigado.", ora como "obrigado!", e manter o ponto obrigaria a lista a ter uma entrada
+ * por variação de pontuação. É o tipo de lista que fica desatualizada na primeira semana.
+ */
+function semEnfeite(t: string): string {
+  return t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * O QUE O MODELO ESCREVE QUANDO NÃO ENTENDEU NADA.
+ *
+ * O Whisper não devolve "não consegui". Diante de silêncio, chiado, um trecho curto ou um
+ * arquivo que não é fala, ele escreve com a mesma confiança de sempre — e o que sai é
+ * resíduo do material em que foi treinado: legenda de vídeo, agradecimento de youtuber,
+ * frase solta de conversa em inglês.
+ *
+ * Isso é PIOR do que falhar. Uma falha vai para a tela de Falhas de transcrição e alguém
+ * do time ouve o áudio. Uma frase inventada entra na conversa como o que a pessoa DISSE,
+ * a Ana responde a ela, e o dossiê do caso passa a conter uma afirmação que ninguém fez.
+ *
+ * Aconteceu: um áudio em que a pessoa dizia "ah, desculpa, liguei errado" virou
+ * "That's cool, but yeah" no painel.
+ */
+const RESIDUOS_DE_TREINO = [
+  // inglês — os mais reportados, quase todos resíduo de legenda de vídeo
+  "thank you", "thanks for watching", "thank you for watching", "please subscribe",
+  "subscribe to my channel", "bye", "you", "the end", "music", "applause",
+  // português e espanhol
+  "obrigado", "obrigada", "tchau", "legendas pela comunidade amaraorg",
+  "inscreva se no canal", "gracias", "gracias por ver el video",
+  "subtitulos realizados por la comunidad de amaraorg",
+].map(semEnfeite);
+
+/** Texto curto o bastante para não ter substância — o tamanho do resíduo típico. */
+const CURTO = 80;
+
+
+/**
+ * A TRANSCRIÇÃO MERECE CONFIANÇA? Devolve o motivo da desconfiança, ou `null`.
+ *
+ * Duas regras, e a segunda é a que pega o caso real:
+ *
+ * 1. O texto é um resíduo conhecido, inteiro. Comparação exata depois de normalizar —
+ *    "Obrigado." sozinho é resíduo; "obrigado, eu preciso renovar meu visto" é fala.
+ *
+ * 2. O IDIOMA NÃO BATE COM O DA CONVERSA, e o texto é curto. Esta operação é multilíngue
+ *    de propósito, então trocar de idioma no meio é legítimo — mas quem troca de idioma
+ *    de verdade costuma dizer alguma coisa. Um trecho curto que sai numa língua que a
+ *    conversa nunca usou é a assinatura exata da alucinação, e foi o que aconteceu: uma
+ *    conversa inteira em português, um áudio de poucos segundos, e uma frase em inglês.
+ *
+ * NÃO se recusa por ser curto, só por curto E inesperado. "sim", "não sei", "pode ser"
+ * são áudios reais e curtíssimos, e recusá-los seria jogar fora a resposta da pessoa.
+ */
+export function motivoDeDesconfianca(t: {
+  texto: string;
+  idiomaDetectado?: string;
+  idiomaDaConversa?: string | null;
+}): string | null {
+  const limpo = semEnfeite(t.texto);
+  if (!limpo) return "a transcrição veio vazia";
+  if (RESIDUOS_DE_TREINO.includes(limpo)) {
+    return `a transcrição saiu como "${t.texto.trim()}", que é resíduo de treino do modelo, não fala`;
+  }
+  const daConversa = (t.idiomaDaConversa ?? "").trim().toLowerCase();
+  const detectado = (t.idiomaDetectado ?? "").trim().toLowerCase();
+  if (daConversa && detectado && daConversa !== detectado && t.texto.trim().length <= CURTO) {
+    return `a transcrição saiu em "${detectado}" numa conversa em "${daConversa}", e é curta demais para ser uma troca de idioma de verdade`;
+  }
+  return null;
+}
+
 export function transcricaoConfigurada(): boolean {
   return Boolean(env.openaiKey);
 }
@@ -56,6 +137,17 @@ export async function transcreverAudio(input: {
   mime?: string;
   /** De qual atendimento veio. Sem isto o custo da transcrição não entra no da conversa. */
   conversationId?: string | null;
+  /**
+   * O idioma que a conversa já vinha usando (ISO-639-1), quando se sabe.
+   *
+   * NÃO é passado ao modelo como imposição, de propósito: metade das conversas desta
+   * operação troca de idioma no meio, e forçar "pt" num áudio em espanhol produziria uma
+   * transcrição errada com cara de certa. Serve para DESCONFIAR do resultado depois —
+   * ver `motivoDeDesconfianca`.
+   */
+  idiomaDaConversa?: string | null;
+  /** Preenchido com o motivo quando a transcrição é recusada por desconfiança. */
+  aoDesconfiar?: (motivo: string) => void;
 }): Promise<Transcricao | null> {
   if (!env.openaiKey) return null;
   // Só https: uma URL forjada (file:, host interno) não deve ser buscada pelo servidor.
@@ -110,7 +202,22 @@ export async function transcreverAudio(input: {
       erro: texto ? null : "transcrição vazia",
     });
     if (!texto) return null;
-    return { texto, idioma: normalizarIdioma(json.language), duracao: json.duration };
+
+    const idioma = normalizarIdioma(json.language);
+    const desconfianca = motivoDeDesconfianca({
+      texto,
+      idiomaDetectado: idioma,
+      idiomaDaConversa: input.idiomaDaConversa,
+    });
+    if (desconfianca) {
+      // Trata-se como falha, e é a decisão certa: o áudio vai para a tela de Falhas de
+      // transcrição, alguém do time OUVE, e a Ana pede à pessoa que escreva. O caro é o
+      // outro caminho — a frase inventada entrando na conversa como fala de alguém.
+      console.error("[audio] transcrição recusada:", desconfianca);
+      input.aoDesconfiar?.(desconfianca);
+      return null;
+    }
+    return { texto, idioma, duracao: json.duration };
   } catch (err) {
     console.error("[audio] indisponível:", err instanceof Error ? err.message : err);
     return null;

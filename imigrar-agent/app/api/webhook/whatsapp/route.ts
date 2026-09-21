@@ -292,7 +292,18 @@ export async function POST(req: NextRequest) {
       let transcrito = false;
       let idiomaDoAudio: string | undefined;
       if (kind === "audio") {
-        const t = await transcreverAudio({ url: media.url, mime: media.mime, conversationId: conv.id });
+        let recusada: string | null = null;
+        const t = await transcreverAudio({
+          url: media.url,
+          mime: media.mime,
+          conversationId: conv.id,
+          // O idioma que esta conversa já vinha usando. Serve para DESCONFIAR de uma
+          // transcrição que sai em outra língua e curta — a assinatura da alucinação.
+          idiomaDaConversa: conv.idioma,
+          aoDesconfiar: (motivo) => {
+            recusada = motivo;
+          },
+        });
         if (t) {
           lido = t.texto;
           transcrito = true;
@@ -309,9 +320,15 @@ export async function POST(req: NextRequest) {
             tipo: "transcricao_falhou",
             conversationId: conv.id,
             mediaUrl: media.url,
-            detalhe: transcricaoConfigurada()
-              ? "A transcrição está configurada mas falhou nesta mensagem."
-              : "Sem OPENAI_API_KEY: a transcrição está desligada.",
+            // O MOTIVO É O QUE FAZ ALGUÉM OUVIR O ÁUDIO. "Falhou" manda a pessoa
+            // adivinhar se é problema de chave, de rede ou do arquivo; "a transcrição
+            // saiu em inglês numa conversa em português" diz, em uma linha, que o áudio
+            // provavelmente tem conteúdo e vale a pena ouvir.
+            detalhe: recusada
+              ? `Transcrição recusada: ${recusada}`
+              : transcricaoConfigurada()
+                ? "A transcrição está configurada mas falhou nesta mensagem."
+                : "Sem OPENAI_API_KEY: a transcrição está desligada.",
           });
         }
       } else {
