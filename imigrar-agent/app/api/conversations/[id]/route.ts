@@ -4,6 +4,7 @@ import { getRepository } from "@/lib/data";
 import { requireAdmin, requireSession } from "@/lib/auth/guard";
 import { registrarAcesso } from "@/lib/auth/auditoria";
 import { ACAO_CONVERSA, detalheDaMudanca } from "@/lib/agent/estado";
+import { nomesPorEmail, quemFez } from "@/lib/auth/nomes";
 
 // Conversa + mensagens + lead — usado pela visão em tempo real (polling) do dashboard.
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -23,7 +24,23 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     // não têm mais o que decidir, e ficam na fila de sombra para quem quiser o histórico.
     repo.listRascunhos({ conversationId: params.id, status: "pendente" }).catch(() => []),
   ]);
-  return NextResponse.json({ conversation, messages, lead, transferTickets, rascunhos });
+  // QUEM ASSUMIU, COM NOME DE GENTE.
+  //
+  // `assumedBy` é o e-mail, que é a identidade certa para gravar e a errada para mostrar:
+  // a faixa da conversa dizia "sergio.reis@imigrarbrasil.com.br assumiu esta conversa". A
+  // tradução acontece aqui, e não na tela, para a lista de usuários — que é PII de
+  // funcionário — não ter de trafegar só para desenhar uma faixa.
+  const assumidaPor = conversation.assumedBy
+    ? quemFez(conversation.assumedBy, await nomesPorEmail(repo))
+    : null;
+
+  return NextResponse.json({
+    conversation: { ...conversation, assumedByNome: assumidaPor },
+    messages,
+    lead,
+    transferTickets,
+    rascunhos,
+  });
 }
 
 // Pausar/retomar a IA nesta conversa. Pausar = ASSUMIR o atendimento (grava quem

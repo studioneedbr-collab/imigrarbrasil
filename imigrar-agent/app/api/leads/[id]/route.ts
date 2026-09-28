@@ -4,6 +4,7 @@ import { getRepository } from "@/lib/data";
 import { requireSession } from "@/lib/auth/guard";
 import { registrarAcesso } from "@/lib/auth/auditoria";
 import { montarLinhaDoTempo } from "@/lib/operacao/linha-do-tempo";
+import { nomesPorEmail, quemFez } from "@/lib/auth/nomes";
 import type { Lead } from "@/lib/domain/types";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     lembretes,
     toques,
   });
+
+  // A AUTORIA COM NOME DE GENTE. A linha do tempo é construída a partir de registros que
+  // gravam e-mail — a identidade certa para guardar, a errada para ler. "Sérgio assumiu o
+  // atendimento" é o que responde "quem pegou isto?"; o endereço inteiro obriga quem lê a
+  // traduzir de cabeça, quinze vezes por ficha.
+  const nomes = await nomesPorEmail(repo);
+  for (const evento of linhaDoTempo) {
+    if (evento.autor) evento.autor = quemFez(evento.autor, nomes);
+  }
 
   await registrarAcesso(auth.session, "abriu_lead", { tipo: "lead", id: lead.id }, req);
 

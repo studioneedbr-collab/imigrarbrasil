@@ -48,6 +48,12 @@ export interface Conversation {
   // só aí a Ana fica em silêncio para não falar por cima do atendente.
   assumedBy?: string | null;
   assumedAt?: string | null;
+  /**
+   * O NOME de quem assumiu, para a tela. Só de leitura: quem grava continua gravando
+   * `assumedBy` (o e-mail), que é a identidade e não muda quando alguém corrige a grafia
+   * do próprio nome. Este campo é preenchido pela rota da conversa.
+   */
+  assumedByNome?: string | null;
   // Ciclo de status/follow-up automático.
   lastMessageAt?: string | null;
   followupSentAt?: string | null;

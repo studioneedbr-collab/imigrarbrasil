@@ -614,9 +614,16 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                 {assumida ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#9A6212]">
                     <span className="h-1.5 w-1.5 rounded-full bg-ib-warn" />
+                    {/* O NOME, E NÃO O E-MAIL. Aqui dizia
+                        "sergio.reis@imigrarbrasil.com.br assumiu esta conversa" — e quem
+                        lê são as três ou quatro pessoas do escritório, que se chamam pelo
+                        primeiro nome. O endereço inteiro só empurrava o resto da frase
+                        para fora da linha. `assumedByNome` vem resolvido da rota; o
+                        e-mail fica como último recurso, porque sumir com a informação de
+                        quem assumiu seria pior do que mostrá-la feia. */}
                     {euAssumi
                       ? "Você assumiu esta conversa. O agente está pausada."
-                      : `${conversation.assumedBy} assumiu esta conversa. O agente está pausada.`}
+                      : `${conversation.assumedByNome ?? conversation.assumedBy} assumiu esta conversa. O agente está pausada.`}
                   </span>
                 ) : conversation.status === "transferred" ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-ib-slate">
