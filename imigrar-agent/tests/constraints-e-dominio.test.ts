@@ -93,11 +93,44 @@ describe("o check do banco acompanha o domínio", () => {
     }
   });
 
-  it("motivo_perda_categoria aceita todos os motivos de perda", () => {
-    const doBanco = valoresDoCheck("motivo_perda_categoria");
-    expect(doBanco).not.toBeNull();
+  /**
+   * O CHECK DE MOTIVO FOI EMBORA DE PROPÓSITO (migration 034).
+   *
+   * A lista virou dado: o escritório cria e edita categorias pela tela. Um check com as
+   * seis chaves antigas faria a tela criar uma categoria que o banco recusaria na hora de
+   * usá-la — o mesmo defeito de `proposta_enviada`, que custou meses aqui.
+   *
+   * Este teste inverte o de antes: em vez de exigir que a lista do banco acompanhe a do
+   * código, ele exige que NÃO HAJA lista no banco. Se alguém reintroduzir o check "para
+   * garantir", quebra aqui, com o motivo escrito.
+   */
+  it("motivo_perda_categoria NÃO tem check: a lista virou dado", () => {
+    const sql = sqlDeTodasAsMigrations();
+    const criacoes = Array.from(
+      sql.matchAll(/add constraint\s+leads_motivo_perda_categoria_check/gi),
+    ).length;
+    const remocoes = Array.from(
+      sql.matchAll(/drop constraint\s+if exists\s+leads_motivo_perda_categoria_check/gi),
+    ).length;
+    expect(
+      remocoes,
+      "o check precisa ser removido depois da última vez que foi criado",
+    ).toBeGreaterThanOrEqual(criacoes);
+
+    // E a última palavra sobre essa constraint tem de ser a remoção.
+    const ultimaCriacao = sql.lastIndexOf("add constraint leads_motivo_perda_categoria_check");
+    const ultimaRemocao = sql.lastIndexOf("drop constraint if exists leads_motivo_perda_categoria_check");
+    expect(ultimaRemocao, "a última migration a falar do check precisa ser a que o remove").toBeGreaterThan(
+      ultimaCriacao,
+    );
+  });
+
+  // A semente precisa existir: quem já tem caso fechado com essas chaves continua tendo
+  // nome legível depois que a lista virou tabela.
+  it("as seis categorias antigas entram como semente da tabela", () => {
+    const sql = sqlDeTodasAsMigrations();
     for (const motivo of MOTIVOS_DE_PERDA) {
-      expect(doBanco, `o banco recusaria a perda por "${motivo}"`).toContain(motivo);
+      expect(sql, `"${motivo}" sumiria do histórico`).toContain(`'${motivo}'`);
     }
   });
 
@@ -116,5 +149,39 @@ describe("o check do banco acompanha o domínio", () => {
     for (const status of doBanco) {
       expect(COLUNAS as readonly string[], `o banco aceita "${status}", que o código não conhece`).toContain(status);
     }
+  });
+});
+
+/**
+ * O TEXTO DE 1 PIXEL QUE ESTICAVA A PÁGINA EM 469.
+ *
+ * `sr-only` do Tailwind é `position: absolute`. Dentro da faixa do quadro — que rola na
+ * horizontal — um absoluto SEM ancestral posicionado não é contido por ela: ele vai para a
+ * posição estática dele, centenas de pixels à direita, e o `scrollWidth` da PÁGINA cresce
+ * junto. O efeito era o quadro rolar o navegador inteiro, cortar as colunas da direita e
+ * levar a barra lateral embora.
+ *
+ * Foi relatado como "o scroll está no navegador todo e não só nas etapas", e eu conclui
+ * duas vezes que não reproduzia — medindo antes de o quadro terminar de carregar. Só
+ * apareceu ao medir `document.documentElement.scrollWidth` com os cards já na tela: 1749px
+ * numa janela de 1280, por causa de um texto que ninguém vê.
+ *
+ * O teste é de texto porque a regra é de CSS e a suíte não tem navegador. Ele não prova
+ * que a página não rola; prova que as duas contenções que a impedem continuam escritas.
+ */
+describe("o que rola na horizontal contém os absolutos de dentro", () => {
+  it("a faixa do quadro é bloco de contenção", () => {
+    const fonte = readFileSync(join(process.cwd(), "components", "crm", "quadro.tsx"), "utf8");
+    const faixa = fonte.match(/className="[^"]*overflow-x-auto[^"]*"/)?.[0] ?? "";
+    expect(faixa, "a faixa que rola precisa de `relative`").toContain("relative");
+  });
+
+  it("o selo de idioma contém o próprio texto de leitor de tela", () => {
+    const fonte = readFileSync(join(process.cwd(), "components", "fila", "linha.tsx"), "utf8");
+    expect(fonte).toContain("sr-only");
+    expect(
+      fonte.match(/className=\{`relative inline-flex h-6/),
+      "o selo que abriga um `sr-only` precisa de `relative`",
+    ).toBeTruthy();
   });
 });

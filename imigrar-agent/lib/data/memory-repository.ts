@@ -5,6 +5,7 @@ import type {
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
   ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
   ToqueDeFollowup,
+  MotivoDesfecho, TipoDeMotivo,
 } from "@/lib/domain/types";
 import type { ModeloFollowup } from "@/lib/followup/modelos";
 import { eFiltrada } from "@/lib/domain/types";
@@ -451,6 +452,69 @@ export class MemoryRepository implements Repository {
   async excluirEtapa(etapaId: string) {
     this.etapas = this.etapas.filter((x) => x.id !== etapaId);
     for (const l of Array.from(this.leads.values())) if (l.etapaId === etapaId) l.etapaId = null;
+  }
+
+  /**
+   * OS MOTIVOS EM MEMÓRIA nascem com a mesma semente da migration 034.
+   *
+   * Sem isso, todo teste que fecha um caso como perdido teria de criar a categoria antes —
+   * e o repositório em memória existe para que o teste fale do que está testando, não da
+   * infraestrutura dele.
+   */
+  private motivos: MotivoDesfecho[] = [
+    { id: "motivo:preco", tipo: "perda", chave: "preco", rotulo: "Preço", ordem: 0, protegido: false, arquivado: false },
+    { id: "motivo:outro_escritorio", tipo: "perda", chave: "outro_escritorio", rotulo: "Foi para outro escritório", ordem: 1, protegido: false, arquivado: false },
+    { id: "motivo:resolveu_sozinho", tipo: "perda", chave: "resolveu_sozinho", rotulo: "Resolveu sozinho", ordem: 2, protegido: false, arquivado: false },
+    { id: "motivo:sumiu", tipo: "perda", chave: "sumiu", rotulo: "Sumiu", ordem: 3, protegido: true, arquivado: false },
+    { id: "motivo:perfil_dpu", tipo: "perda", chave: "perfil_dpu", rotulo: "Perfil DPU", ordem: 4, protegido: false, arquivado: false },
+    { id: "motivo:fora_de_escopo", tipo: "perda", chave: "fora_de_escopo", rotulo: "Fora de escopo", ordem: 5, protegido: false, arquivado: false },
+    { id: "motivo:nao_era_caso", tipo: "desqualificacao", chave: "nao_era_caso", rotulo: "Não era caso", ordem: 0, protegido: false, arquivado: false },
+    { id: "motivo:fora_do_perfil", tipo: "desqualificacao", chave: "fora_do_perfil", rotulo: "Fora do perfil", ordem: 1, protegido: false, arquivado: false },
+    { id: "motivo:sem_contato", tipo: "desqualificacao", chave: "sem_contato", rotulo: "Não conseguimos contato", ordem: 2, protegido: false, arquivado: false },
+  ];
+
+  async listMotivos(tipo?: TipoDeMotivo) {
+    return this.motivos
+      .filter((m) => !tipo || m.tipo === tipo)
+      .sort((a, b) => a.ordem - b.ordem);
+  }
+  async criarMotivo(m: { tipo: TipoDeMotivo; chave: string; rotulo: string; ajuda?: string | null; ordem?: number }) {
+    if (this.motivos.some((x) => x.tipo === m.tipo && x.chave === m.chave)) {
+      throw new Error("Já existe um motivo com essa chave neste tipo.");
+    }
+    const novo: MotivoDesfecho = {
+      id: id("motivo"),
+      tipo: m.tipo,
+      chave: m.chave,
+      rotulo: m.rotulo,
+      ajuda: m.ajuda ?? null,
+      ordem: m.ordem ?? this.motivos.filter((x) => x.tipo === m.tipo).length,
+      protegido: false,
+      arquivado: false,
+    };
+    this.motivos.push(novo);
+    return novo;
+  }
+  async atualizarMotivo(motivoId: string, patch: Partial<MotivoDesfecho>) {
+    const m = this.motivos.find((x) => x.id === motivoId);
+    if (!m) throw new Error("Motivo não encontrado.");
+    // A CHAVE, O TIPO E O "PROTEGIDO" NÃO ENTRAM, nem que venham no patch — ver o gatilho
+    // da migration 034. Copiar campo a campo, em vez de descartar por desestruturação,
+    // deixa explícito o que esta função aceita: um campo novo no tipo não passa a ser
+    // gravado sozinho só por existir.
+    if (patch.rotulo !== undefined) m.rotulo = patch.rotulo;
+    if (patch.ajuda !== undefined) m.ajuda = patch.ajuda;
+    if (patch.ordem !== undefined) m.ordem = patch.ordem;
+    if (patch.arquivado !== undefined) m.arquivado = patch.arquivado;
+    return m;
+  }
+  async excluirMotivo(motivoId: string) {
+    const m = this.motivos.find((x) => x.id === motivoId);
+    if (!m) return;
+    if (m.protegido) {
+      throw new Error("Este motivo é escrito pelo próprio sistema e não pode ser apagado. Arquive-o.");
+    }
+    this.motivos = this.motivos.filter((x) => x.id !== motivoId);
   }
 
   async registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">) {

@@ -568,7 +568,11 @@ export default function QuadroCrm({
            embaixo de NOVO, como se fosse continuação dela. Um quadro de etapas se lê da
            esquerda para a direita: a ordem das colunas É a informação. Largura fixa e
            rolagem lateral mantêm essa leitura com cinco colunas ou com doze. */
-        <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+        /* `relative` aqui é a rede: qualquer descendente `position: absolute` sem
+           ancestral posicionado — e `sr-only` do Tailwind é um deles — escaparia desta
+           faixa e esticaria a página inteira. Uma vez é defeito de um componente; posto
+           aqui, para de ser possível. */
+        <div className="relative -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
           {colunas.map((coluna) => {
             const totalPaginas = Math.max(1, Math.ceil(coluna.leads.length / POR_COLUNA));
             // A página guardada pode ter deixado de existir: basta a busca filtrar, ou

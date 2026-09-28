@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { requireSession } from "@/lib/auth/guard";
 import { registrarAcesso } from "@/lib/auth/auditoria";
-import { MOTIVOS_DE_PERDA, type MotivoPerda } from "@/lib/domain/types";
+import type { MotivoPerda } from "@/lib/domain/types";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +49,15 @@ const schema = z.object({
     "mover",
   ]),
   motivo: z.string().max(500).optional(),
-  /** A categoria da perda. Texto livre não se soma; ver MotivoPerda em lib/domain/types.ts. */
-  motivoPerdaCategoria: z.enum(MOTIVOS_DE_PERDA as [string, ...string[]]).optional(),
+  /**
+   * A categoria da perda. Texto livre não se soma.
+   *
+   * Deixou de ser `z.enum` porque a lista virou dado (migration 034): um enum aqui
+   * recusaria a categoria que o escritório acabou de criar pela tela, e a tela ofereceria
+   * uma opção que salvar rejeita — exatamente o defeito que já apareceu com
+   * `proposta_enviada`. A conferência acontece abaixo, contra a tabela.
+   */
+  motivoPerdaCategoria: z.string().trim().min(1).max(40).optional(),
   responsavelId: z.string().nullish(),
   /** Só para `responsaveis`: quem MAIS está no caso, além do dono. */
   apoioIds: z.array(z.string()).max(10).optional(),
@@ -82,6 +89,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!input.motivoPerdaCategoria) {
       return NextResponse.json(
         { error: "Escolha o motivo da perda — sem categoria, nenhum relatório soma este caso." },
+        { status: 400 },
+      );
+    }
+    // A LISTA VEM DO BANCO, e só o que está em uso (não arquivado) vale: arquivar existe
+    // para tirar do seletor sem perder o nome do histórico, e aceitar um arquivado aqui
+    // desfaria isso pela porta dos fundos.
+    const disponiveis = await getRepository().listMotivos("perda");
+    const valido = disponiveis.some(
+      (m) => m.chave === input.motivoPerdaCategoria && !m.arquivado,
+    );
+    if (!valido) {
+      return NextResponse.json(
+        { error: "Esse motivo não está mais disponível. Atualize a página e escolha de novo." },
         { status: 400 },
       );
     }

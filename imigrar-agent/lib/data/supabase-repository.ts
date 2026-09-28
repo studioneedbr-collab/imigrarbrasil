@@ -2,6 +2,7 @@
 import type { Repository } from "@/lib/data/repository";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
 import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm, FunilCrm, EtapaCrm, ToqueDeFollowup,
+  MotivoDesfecho, TipoDeMotivo,
 } from "@/lib/domain/types";
 import type { ModeloFollowup } from "@/lib/followup/modelos";
 import { eFiltrada } from "@/lib/domain/types";
@@ -749,6 +750,64 @@ export class SupabaseRepository implements Repository {
       .select("*").single();
     if (error) throw error;
     return this.mapEtapa(data);
+  }
+
+  /* ─── OS MOTIVOS DE DESFECHO (migration 034) ─── */
+
+  private mapMotivo(r: Record<string, any>): MotivoDesfecho {
+    return {
+      id: r.id,
+      tipo: r.tipo,
+      chave: r.chave,
+      rotulo: r.rotulo,
+      ajuda: r.ajuda ?? null,
+      ordem: r.ordem ?? 0,
+      protegido: !!r.protegido,
+      arquivado: !!r.arquivado,
+    };
+  }
+
+  async listMotivos(tipo?: TipoDeMotivo): Promise<MotivoDesfecho[]> {
+    let q = this.db.from("crm_motivos").select("*").order("ordem", { ascending: true });
+    if (tipo) q = q.eq("tipo", tipo);
+    const { data, error } = await q;
+    if (error) {
+      // LISTA VAZIA E NÃO EXCEÇÃO: esta chamada alimenta o seletor de "perder caso". Se a
+      // tabela ainda não existe no banco (migration não rodada), derrubar a tela inteira
+      // por causa do seletor seria trocar um defeito por um pior.
+      console.error("[crm] não consegui listar motivos:", error.message);
+      return [];
+    }
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapMotivo(r));
+  }
+
+  async criarMotivo(m: { tipo: TipoDeMotivo; chave: string; rotulo: string; ajuda?: string | null; ordem?: number }): Promise<MotivoDesfecho> {
+    const { count } = await this.db.from("crm_motivos")
+      .select("id", { count: "exact", head: true }).eq("tipo", m.tipo);
+    const { data, error } = await this.db.from("crm_motivos")
+      .insert({ tipo: m.tipo, chave: m.chave, rotulo: m.rotulo, ajuda: m.ajuda ?? null, ordem: m.ordem ?? count ?? 0 })
+      .select("*").single();
+    if (error) throw error;
+    return this.mapMotivo(data);
+  }
+
+  async atualizarMotivo(id: string, patch: Partial<MotivoDesfecho>): Promise<MotivoDesfecho> {
+    // `chave`, `tipo` e `protegido` NÃO entram no update, nem que venham no patch: o
+    // gatilho do banco recusaria a chave, e os outros dois não são da tela. Ver 034.
+    const row: Record<string, any> = {
+      rotulo: patch.rotulo, ajuda: patch.ajuda, ordem: patch.ordem, arquivado: patch.arquivado,
+    };
+    Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
+    const { data, error } = await this.db.from("crm_motivos").update(row).eq("id", id).select("*").single();
+    if (error) throw error;
+    return this.mapMotivo(data);
+  }
+
+  async excluirMotivo(id: string): Promise<void> {
+    const { error } = await this.db.from("crm_motivos").delete().eq("id", id);
+    // O gatilho do banco é quem recusa apagar um motivo protegido, e a mensagem dele é
+    // escrita para ser lida por gente. Repassá-la é melhor do que traduzi-la aqui.
+    if (error) throw new Error(error.message);
   }
 
   async atualizarEtapa(id: string, patch: Partial<EtapaCrm>): Promise<EtapaCrm> {

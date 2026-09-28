@@ -9,7 +9,6 @@ import type {
   AtendimentoStatus,
   Classificacao,
   Intencao,
-  MotivoPerda,
   OrigemLead,
   PrazoTipo,
 } from "@/lib/domain/types";
@@ -72,7 +71,7 @@ export const ATENDIMENTO_LABEL: Record<AtendimentoStatus, string> = {
  * isso junto com "perdemos no preço" faria a conversão do escritório mentir para baixo
  * todo mês.
  */
-export const MOTIVO_PERDA_LABEL: Record<MotivoPerda, string> = {
+export const MOTIVO_PERDA_LABEL: Record<string, string> = {
   preco: "Preço",
   outro_escritorio: "Foi para outro escritório",
   resolveu_sozinho: "Resolveu sozinho",
@@ -80,6 +79,28 @@ export const MOTIVO_PERDA_LABEL: Record<MotivoPerda, string> = {
   perfil_dpu: "Perfil DPU",
   fora_de_escopo: "Fora de escopo",
 };
+
+/**
+ * O rótulo de um motivo, venha ele da tabela ou de antes dela existir.
+ *
+ * Desde que a lista virou dado (`crm_motivos`), o que está gravado num lead pode ser uma
+ * chave que este arquivo nunca viu. Devolver `undefined` faria a ficha mostrar um espaço
+ * em branco onde deveria estar "por que perdemos" — pior do que mostrar a chave crua.
+ *
+ * A ordem é: o que a tabela diz agora; senão o rótulo histórico; senão a própria chave
+ * lida de volta para gente ("outro_escritorio" → "Outro escritorio").
+ */
+export function rotuloDoMotivo(
+  chave: string | null | undefined,
+  daTabela?: Array<{ chave: string; rotulo: string }>,
+): string | null {
+  if (!chave) return null;
+  const achado = daTabela?.find((m) => m.chave === chave);
+  if (achado) return achado.rotulo;
+  if (MOTIVO_PERDA_LABEL[chave]) return MOTIVO_PERDA_LABEL[chave];
+  const legivel = chave.replace(/_/g, " ").trim();
+  return legivel ? legivel[0].toUpperCase() + legivel.slice(1) : chave;
+}
 
 export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = {
   multa: "Multa migratória",

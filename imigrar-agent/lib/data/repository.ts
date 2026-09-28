@@ -3,6 +3,7 @@ import type {
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
   Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete,
   ZapiInstancia, RascunhoAgente, RascunhoStatus, ChamadaLlm, FunilCrm, EtapaCrm,
+  MotivoDesfecho, TipoDeMotivo,
   ToqueDeFollowup,
 } from "@/lib/domain/types";
 import type { ModeloFollowup } from "@/lib/followup/modelos";
@@ -227,6 +228,18 @@ export interface Repository {
   criarEtapa(e: { funilId: string; nome: string; ajuda?: string | null; status: EtapaCrm["status"]; ordem?: number }): Promise<EtapaCrm>;
   atualizarEtapa(id: string, patch: Partial<Pick<EtapaCrm, "nome" | "ajuda" | "status" | "ordem" | "arquivada">>): Promise<EtapaCrm>;
   excluirEtapa(id: string): Promise<void>;
+
+  /**
+   * AS CATEGORIAS DE DESFECHO, que deixaram de ser código (ver migration 034).
+   *
+   * `excluirMotivo` recusa o que está marcado como protegido — hoje `sumiu`, escrito pela
+   * varredura de follow-up. E a `chave` nunca muda: os casos já gravados com ela ficariam
+   * órfãos em silêncio. O que se edita é o rótulo.
+   */
+  listMotivos(tipo?: TipoDeMotivo): Promise<MotivoDesfecho[]>;
+  criarMotivo(m: { tipo: TipoDeMotivo; chave: string; rotulo: string; ajuda?: string | null; ordem?: number }): Promise<MotivoDesfecho>;
+  atualizarMotivo(id: string, patch: Partial<Pick<MotivoDesfecho, "rotulo" | "ajuda" | "ordem" | "arquivado">>): Promise<MotivoDesfecho>;
+  excluirMotivo(id: string): Promise<void>;
 
   /** Log de acesso e de exportação (LGPD): quem, o quê, quando. */
   registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">): Promise<void>;

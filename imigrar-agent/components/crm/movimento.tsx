@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CampoData, Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
-import { MOTIVO_PERDA_LABEL } from "@/lib/domain/rotulos";
-import { MOTIVOS_DE_PERDA, type MotivoPerda } from "@/lib/domain/types";
+import type { MotivoDesfecho, MotivoPerda } from "@/lib/domain/types";
 
 /**
  * O QUE O QUADRO PERGUNTA ANTES DE MOVER.
@@ -69,6 +68,31 @@ export function DialogoDeMovimento({
   const [semValor, setSemValor] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [categoria, setCategoria] = useState<MotivoPerda | null>(null);
+
+  /**
+   * OS MOTIVOS VÊM DO BANCO, e não de uma lista compilada junto com a tela.
+   *
+   * O escritório edita essas categorias em "Editar etapas" (migration 034). Uma cópia
+   * aqui faria o seletor oferecer o vocabulário de dois meses atrás — e, pior, oferecer
+   * uma opção que a rota recusaria, que é o defeito que já apareceu com `proposta_enviada`.
+   *
+   * A busca só acontece quando a caixa é de PERDER: as outras não usam a lista, e pedir ao
+   * servidor uma coisa que não vai ser mostrada é gasto em toda abertura de diálogo.
+   */
+  const [motivos, setMotivos] = useState<MotivoDesfecho[]>([]);
+  useEffect(() => {
+    if (tipo !== "perder") return;
+    let vivo = true;
+    fetch("/api/crm/motivos?tipo=perda")
+      .then((r) => (r.ok ? r.json() : { motivos: [] }))
+      .then((d) => {
+        if (vivo) setMotivos((d.motivos ?? []).filter((m: MotivoDesfecho) => !m.arquivado));
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [tipo]);
 
   const numero = valorEmReais(valor);
 
@@ -175,7 +199,7 @@ export function DialogoDeMovimento({
               label="Motivo"
               valor={categoria}
               onChange={(v) => setCategoria(v as MotivoPerda)}
-              opcoes={MOTIVOS_DE_PERDA.map((m) => ({ valor: m, rotulo: MOTIVO_PERDA_LABEL[m] }))}
+              opcoes={motivos.map((m) => ({ valor: m.chave, rotulo: m.rotulo, ajuda: m.ajuda ?? undefined }))}
               ajuda="É a categoria que os relatórios somam. A frase abaixo é o que se lê."
             />
             <label className="block">

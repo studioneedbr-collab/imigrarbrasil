@@ -322,15 +322,55 @@ export interface PropostaComercial {
  * neste escritório — e contá-los como "perda" sem separá-los faria a taxa de conversão
  * mentir para baixo todo mês.
  */
-export type MotivoPerda =
-  | "preco"
-  | "outro_escritorio"
-  | "resolveu_sozinho"
-  | "sumiu"
-  | "perfil_dpu"
-  | "fora_de_escopo";
+/**
+ * A CATEGORIA DO DESFECHO — AGORA É DADO, NÃO CÓDIGO.
+ *
+ * Era uma união fechada de seis valores, com check no banco e enum no zod. O escritório
+ * pediu para editar os rótulos e criar categorias novas pela tela, e com razão: "por que
+ * perdemos" é vocabulário de quem vende, muda com a operação, e não tem por que exigir
+ * deploy. Um motivo que não existe na lista vira "Outro" — e "Outro" não responde nada
+ * seis meses depois, que é justamente quando alguém pergunta.
+ *
+ * O tipo passa a ser `string` porque a lista vive em `crm_motivos`. As seis chaves abaixo
+ * continuam existindo como SEMENTE e como fallback de rótulo: quem já está no banco
+ * precisa continuar tendo nome legível mesmo antes de a tabela ser lida.
+ */
+export type MotivoPerda = string;
 
-export const MOTIVOS_DE_PERDA: MotivoPerda[] = [
+/**
+ * O QUE ESTÁ SENDO CATEGORIZADO.
+ *
+ * O escritório trabalha dois funis e eles perguntam coisas diferentes: em pré-venda, por
+ * que o lead foi DESQUALIFICADO (não era caso, não era o perfil); em venda, por que a
+ * proposta foi PERDIDA (preço, outro escritório). Misturar os dois numa lista só faz o
+ * seletor oferecer motivo que não cabe naquele momento — e é assim que todo mundo escolhe
+ * o primeiro da lista e a métrica para de significar alguma coisa.
+ */
+export type TipoDeMotivo = "perda" | "desqualificacao";
+
+export const TIPOS_DE_MOTIVO: TipoDeMotivo[] = ["perda", "desqualificacao"];
+
+export interface MotivoDesfecho {
+  id: string;
+  tipo: TipoDeMotivo;
+  /** O que fica gravado no lead. Nunca muda depois de criado — ver a migration 034. */
+  chave: string;
+  /** O que aparece na tela. Este sim pode ser editado à vontade. */
+  rotulo: string;
+  ajuda?: string | null;
+  ordem: number;
+  /**
+   * Motivo que o CÓDIGO escreve sozinho e não pode sumir. Hoje é `sumiu`, gravado pela
+   * varredura de follow-up (lib/followup/varredura.ts) e contado pelas métricas. Apagar
+   * essa linha faria o sistema continuar escrevendo uma categoria que a tela não sabe
+   * mais nomear — um valor órfão no banco, aparecendo como código cru no relatório.
+   */
+  protegido: boolean;
+  arquivado: boolean;
+}
+
+/** As seis que já existiam. Semente da tabela e fallback de rótulo do que já está gravado. */
+export const MOTIVOS_DE_PERDA: string[] = [
   "preco",
   "outro_escritorio",
   "resolveu_sozinho",

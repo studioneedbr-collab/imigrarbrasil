@@ -53,7 +53,15 @@ export function ChipIdioma({ idioma }: { idioma?: string | null }) {
   return (
     <span
       title={nome ? `Conversa em ${nome}` : AINDA_NAO_AJUDA}
-      className={`inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded px-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider ${
+      /* `relative` NÃO É ENFEITE.
+         O `sr-only` do Tailwind é `position: absolute`. Sem um ancestral posicionado, ele
+         é colocado em relação ao bloco inicial — e, quando o card está dentro de uma faixa
+         que rola na horizontal, ele ESCAPA do contêiner e vai parar na posição estática
+         dele, centenas de pixels à direita. O resultado é a PÁGINA INTEIRA ganhar rolagem
+         horizontal: as colunas do funil somem para fora da tela e a barra lateral é
+         cortada. Custou uma medição em navegador de verdade para achar; a página tinha
+         `scrollWidth` de 1749px por causa de um texto de 1px que ninguém vê. */
+      className={`relative inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded px-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider ${
         idioma && idioma !== "pt"
           ? "bg-ib-bruma text-ib-carimbo ring-1 ring-inset ring-ib-mar/20"
           : "bg-slate-100 text-ib-slate"

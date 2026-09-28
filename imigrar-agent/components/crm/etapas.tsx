@@ -5,6 +5,7 @@ import { Selecao } from "@/components/dashboard/campos";
 import { btnGhost, btnPrimary } from "@/components/dashboard/ui";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import { COLUNAS } from "@/lib/fila/kanban";
+import MotivosDoFunil from "@/components/crm/motivos";
 import { AJUDA_MAX, NOME_MAX } from "@/lib/crm/funil";
 import type { AtendimentoStatus, EtapaCrm, FunilCrm } from "@/lib/domain/types";
 
@@ -489,6 +490,12 @@ export function GerenciarEtapas({
         ))}
       </ul>
 
+      {/* ─── AS CATEGORIAS DE DESFECHO ───
+          Ficam aqui, e não numa tela de configurações à parte, porque é a mesma decisão:
+          quem desenha as colunas do funil é quem define o vocabulário com que um caso sai
+          dele. Separar as duas coisas em telas distintas faria a segunda ser esquecida —
+          e categoria esquecida é todo mundo escolhendo "Outro". */}
+      <MotivosDoFunil podeEditar />
     </div>
   );
 }
