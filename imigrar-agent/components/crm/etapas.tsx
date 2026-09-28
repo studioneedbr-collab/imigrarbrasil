@@ -289,6 +289,58 @@ export function GerenciarEtapas({
         ) : null}
       </div>
 
+      {/* ─── A ETAPA NOVA, NO TOPO ───
+          Ela morava no fim da lista, e com quinze etapas isso a punha a quatro mil pixels
+          de distância: o formulário existia e ninguém chegava nele — foi relatado como
+          "não dá para adicionar mais etapas". A ação que se procura ao ABRIR o editor não
+          pode estar atrás de tudo o que já existe. */}
+      <div className="flex flex-wrap items-end gap-2 border-t border-ib-line pt-4">
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
+            Nova etapa
+          </span>
+          <input
+            value={nome}
+            maxLength={NOME_MAX}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="ex.: aguardando certidão consular"
+            className="mt-1 block w-56 rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          />
+        </label>
+        <label className="block flex-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
+            O que significa estar aqui
+          </span>
+          <input
+            value={ajuda}
+            maxLength={AJUDA_MAX}
+            onChange={(e) => setAjuda(e.target.value)}
+            placeholder="a linha que aparece embaixo do título da coluna"
+            className="mt-1 block w-full min-w-[12rem] rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+          />
+        </label>
+        <Selecao
+          className="w-52"
+          label="Conta como"
+          valor={status}
+          onChange={setStatus}
+          opcoes={OPCOES_STATUS}
+        />
+        <button
+          type="button"
+          disabled={ocupado || nome.trim().length < 2}
+          onClick={() => void criar()}
+          className={btnPrimary}
+        >
+          Criar etapa
+        </button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-ib-slate">
+        O nome é do escritório; o “conta como” é do sistema — {IMPLICA[status]}. É essa
+        amarração que faz a fila continuar ordenando por prazo e o desfecho continuar sendo
+        contado, por mais colunas que o funil ganhe.
+      </p>
+
       {/* ─── As etapas ─── */}
       {/* ARRASTAR PARA REORDENAR. O quadro ao lado já se organiza arrastando, e chegar
           aqui e ter só duas setinhas é a inconsistência que faz alguém achar que a tela
@@ -300,7 +352,9 @@ export function GerenciarEtapas({
           <span className="ml-2 font-semibold text-ib-success">✓ ordem salva</span>
         ) : null}
       </p>
-      <ul className="space-y-2">
+      {/* A LISTA ROLA POR DENTRO. Com quinze etapas ela empurrava o quadro para quatro
+          mil pixels abaixo — abrir o editor fazia sumir a coisa que o editor edita. */}
+      <ul className="max-h-[26rem] space-y-2 overflow-y-auto pr-1">
         {etapas.map((e, i) => (
           <li
             key={e.id}
@@ -336,18 +390,19 @@ export function GerenciarEtapas({
                   const v = ev.target.value.trim();
                   if (v.length >= 2 && v !== e.nome) void salvar(e.id, { nome: v });
                 }}
-                className="w-44 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-sm font-semibold text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
+                className="min-w-[10rem] flex-1 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-sm font-semibold text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
               />
               <Selecao
                 compacto
-                className="w-44"
+                rotuloOculto
+                className="w-44 shrink-0"
                 label={`Status de ${e.nome}`}
                 valor={e.status}
                 onChange={(v) => void salvar(e.id, { status: v })}
                 opcoes={OPCOES_STATUS}
               />
 
-              <span className="ml-auto flex items-center gap-1">
+              <span className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
                   disabled={ocupado || i === 0}
@@ -434,53 +489,6 @@ export function GerenciarEtapas({
         ))}
       </ul>
 
-      {/* ─── A etapa nova ─── */}
-      <div className="flex flex-wrap items-end gap-2 border-t border-ib-line pt-4">
-        <label className="block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Nova etapa
-          </span>
-          <input
-            value={nome}
-            maxLength={NOME_MAX}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="ex.: aguardando certidão consular"
-            className="mt-1 w-56 rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          />
-        </label>
-        <label className="block flex-1">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            O que significa estar aqui
-          </span>
-          <input
-            value={ajuda}
-            maxLength={AJUDA_MAX}
-            onChange={(e) => setAjuda(e.target.value)}
-            placeholder="a linha que aparece embaixo do título da coluna"
-            className="mt-1 w-full min-w-[12rem] rounded-lg border border-ib-line px-3 py-2 text-sm text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
-          />
-        </label>
-        <Selecao
-          className="w-52"
-          label="Conta como"
-          valor={status}
-          onChange={setStatus}
-          opcoes={OPCOES_STATUS}
-        />
-        <button
-          type="button"
-          disabled={ocupado || nome.trim().length < 2}
-          onClick={() => void criar()}
-          className={btnPrimary}
-        >
-          Criar etapa
-        </button>
-      </div>
-      <p className="text-[11px] leading-relaxed text-ib-slate">
-        O nome é do escritório; o “conta como” é do sistema — {IMPLICA[status]}. É essa
-        amarração que faz a fila continuar ordenando por prazo e o desfecho continuar sendo
-        contado, por mais colunas que o funil ganhe.
-      </p>
     </div>
   );
 }

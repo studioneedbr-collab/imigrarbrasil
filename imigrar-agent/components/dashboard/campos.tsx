@@ -139,6 +139,7 @@ export function Selecao<T extends string>({
   disabled,
   className = "",
   compacto,
+  rotuloOculto,
 }: {
   valor: T | null | undefined;
   opcoes: OpcaoSelecao<T>[];
@@ -152,6 +153,16 @@ export function Selecao<T extends string>({
   className?: string;
   /** Versão miúda, para dentro de card e de linha de tabela. */
   compacto?: boolean;
+  /**
+   * O rótulo vale só para leitor de tela.
+   *
+   * Existe para a linha de tabela, onde o rótulo visível seria repetição: no editor de
+   * etapas cada linha mostrava "STATUS DE «nome da etapa»" em caixa alta ao lado do campo
+   * que já traz esse nome — duas linhas de ruído por etapa, quinze vezes. Quem usa leitor
+   * de tela continua ouvindo de qual etapa é aquele seletor, que é onde o rótulo faz falta
+   * de verdade.
+   */
+  rotuloOculto?: boolean;
 }) {
   const id = useId();
   const [aberto, setAberto] = useState(false);
@@ -206,12 +217,12 @@ export function Selecao<T extends string>({
 
   return (
     <div className={className}>
-      {label ? (
+      {label && !rotuloOculto ? (
         <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
           {label}
         </span>
       ) : null}
-      <div ref={caixa} className={`relative ${label ? "mt-1" : ""}`}>
+      <div ref={caixa} className={`relative ${label && !rotuloOculto ? "mt-1" : ""}`}>
         <button
           ref={gatilho}
           type="button"

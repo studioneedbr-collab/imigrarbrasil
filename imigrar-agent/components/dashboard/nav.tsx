@@ -65,7 +65,10 @@ const navGroups: NavGroup[] = [
     links: [
       {
         href: "/dashboard",
-        label: "Atendimento",
+        // "CRM" e não "Atendimento": é o nome que o escritório usa para esta parte do
+        // trabalho, e era o único item do rail cujo rótulo não batia com o que o time diz
+        // em voz alta. Item de menu que precisa de tradução mental é atrito todo dia.
+        label: "CRM",
         icon: "bolt",
         ativoEm: [
           "/dashboard/meus",
