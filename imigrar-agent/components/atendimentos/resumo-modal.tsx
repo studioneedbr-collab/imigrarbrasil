@@ -41,7 +41,7 @@ import type { EtapaCrm, FunilCrm } from "@/lib/domain/types";
  * Então o que este modal mostra é exatamente o que se olha para DECIDIR, e nada além:
  * quem é, em que língua fala, de onde é, onde está, o que quer, o que pressiona o caso,
  * quem está com ele, há quanto tempo parou e o que ainda falta perguntar. Não tem
- * formulário: quem vai editar ficha vai para a página do caso, e tem o botão para isso.
+ * formulário: quem vai editar ficha vai para a página do caso pelo botão "Abrir ficha".
  *
  * "VER CONVERSA" É A ÚNICA SAÍDA QUE NAVEGA, e ela existe porque em algum momento a
  * pessoa realmente quer ler o que foi dito. Uma navegação, no fim de dez espiadas, em vez
@@ -317,13 +317,21 @@ export function ResumoDoLead({
           ) : null}
         </div>
 
-        {/* ── O RODAPÉ. "Ver conversa" é a única saída que navega. ── */}
+        {/* ── O RODAPÉ ──
+            "ABRIR FICHA" ESTAVA FALTANDO, e o comentário do topo deste arquivo já dizia
+            que quem vai editar a ficha "tem o botão para isso" — não tinha. Do quadro, o
+            clique no card abria este resumo e ali acabava: para chegar ao caso era preciso
+            sair, ir à Fila e procurar de novo. Um resumo do qual não se chega ao assunto é
+            um beco. */}
         <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-ib-line px-5 py-3">
           <button type="button" className={btnGhost} onClick={onFechar}>
             Fechar
           </button>
           <Link href={`/dashboard/conversations/${lead.conversationId}`} className={btnGhost}>
             Ver conversa
+          </Link>
+          <Link href={`/dashboard/leads/${lead.id}`} className={btnGhost}>
+            Abrir ficha
           </Link>
           <button
             type="button"

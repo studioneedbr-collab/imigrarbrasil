@@ -9,6 +9,7 @@ import { avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-g
 import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
+import { promocaoDoAtendimento } from "@/lib/crm/promocao";
 import { PERGUNTOU_O_NOME } from "@/lib/agent/triagem";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
@@ -574,15 +575,24 @@ export async function respondToConversation(
       // (desqualificado/perdido/ganho/transferido) — a automação não os sobrescreve.
       const terminal = ["desqualificado", "perdido", "ganho", "transferido"];
       let stage = lead.stage;
+      // Sobe pelo VEREDITO, não por um número redondo: `score >= 45` promovia quem apenas
+      // conversou bastante, e o motor agora só diz "qualificado"/"prioritário" quando há
+      // caso descrito com intenção declarada ou prazo correndo.
+      const promove = verdict === "qualificado" || verdict === "prioritario";
       if (!terminal.includes(lead.stage ?? "novo")) {
-        // Sobe pelo VEREDITO, não por um número redondo: `score >= 45` promovia quem
-        // apenas conversou bastante, e o motor agora só diz "qualificado"/"prioritário"
-        // quando há caso descrito com intenção declarada ou prazo correndo.
-        const promove = verdict === "qualificado" || verdict === "prioritario";
         if (promove && (!lead.stage || lead.stage === "novo")) stage = "qualificado";
       }
-      if (stage !== lead.stage || lead.score !== score) {
-        await repo.upsertLead(conversationId, { score, stage });
+
+      // O quadro precisa saber disso. A regra mora em lib/crm/promocao.ts, com o porquê
+      // de ela ser tão estreita — e é testada lá, longe do resto do agente.
+      const atendimentoStatus = promocaoDoAtendimento({ lead, veredito: verdict }) ?? undefined;
+
+      if (stage !== lead.stage || lead.score !== score || atendimentoStatus) {
+        await repo.upsertLead(conversationId, {
+          score,
+          stage,
+          ...(atendimentoStatus ? { atendimentoStatus } : {}),
+        });
       }
     }
   } catch (err) {

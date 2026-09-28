@@ -202,7 +202,7 @@ export function GerenciarEtapas({
       <div className="flex flex-wrap items-end gap-2 border-b border-ib-line pb-4">
         <label className="block">
           <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ib-slate">
-            Nome do funil
+            Nome da pipeline
           </span>
           <input
             value={nomeFunil}
@@ -240,13 +240,13 @@ export function GerenciarEtapas({
               }).then((c) => c && aoMudarFunil(c.funil))
             }
             className={btnGhost}
-            title="Casos novos passam a cair neste funil."
+            title="Casos novos passam a cair nesta pipeline."
           >
             Tornar padrão
           </button>
         ) : (
           <span className="pb-2 text-xs text-ib-slate">
-            É o funil padrão: os casos novos caem aqui.
+            É a pipeline padrão: os casos novos caem aqui.
           </span>
         )}
 
@@ -267,7 +267,7 @@ export function GerenciarEtapas({
                   }
                   className={btnPrimary}
                 >
-                  Apagar funil
+                  Apagar pipeline
                 </button>
                 <button
                   type="button"
@@ -283,7 +283,7 @@ export function GerenciarEtapas({
                 onClick={() => setConfirmandoFunil(true)}
                 className="text-xs font-semibold text-ib-slate underline hover:text-ib-danger"
               >
-                Apagar funil
+                Apagar pipeline
               </button>
             )}
           </span>

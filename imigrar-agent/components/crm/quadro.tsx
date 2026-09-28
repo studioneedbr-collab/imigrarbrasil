@@ -17,7 +17,7 @@ import { transicao } from "@/lib/fila/kanban";
 
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
 import { ORIGEM_LABEL } from "@/lib/domain/rotulos";
-import type { AtendimentoStatus, EtapaCrm, FunilCrm, OrigemLead } from "@/lib/domain/types";
+import type { EtapaCrm, FunilCrm, OrigemLead } from "@/lib/domain/types";
 
 /**
  * O CRM.
@@ -308,30 +308,14 @@ export default function QuadroCrm({
     }).catch(() => null);
     const corpo = await r?.json().catch(() => null);
     if (!r?.ok) {
-      setErro(corpo?.error ?? "Não foi possível criar o funil.");
+      setErro(corpo?.error ?? "Não foi possível criar a pipeline.");
       return;
     }
-    // Um funil sem etapa é um quadro vazio. O primeiro desenho vem pronto com as três
-    // colunas de trabalho e as duas de desfecho — dá para renomear tudo em seguida.
-    const base: { nome: string; status: AtendimentoStatus; ajuda: string }[] = [
-      { nome: "Novo", status: "novo", ajuda: "Chegou e ninguém pegou." },
-      { nome: "Em atendimento", status: "em_atendimento", ajuda: "Alguém do time está com a bola." },
-      { nome: "Proposta enviada", status: "proposta_enviada", ajuda: "O orçamento está com a pessoa, esperando resposta." },
-      { nome: "Reunião agendada", status: "agendado", ajuda: "Reunião marcada com a pessoa." },
-      { nome: "Fechado", status: "fechado", ajuda: "Virou cliente ou o assunto se resolveu." },
-      { nome: "Perdido", status: "perdido", ajuda: "Não virou atendimento — com o motivo registrado." },
-    ];
-    const novas: EtapaCrm[] = [];
-    for (let i = 0; i < base.length; i++) {
-      const e = base[i];
-      const resp = await fetch("/api/crm/etapas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...e, funilId: corpo.funil.id, ordem: i }),
-      }).catch(() => null);
-      const c = await resp?.json().catch(() => null);
-      if (c?.etapa) novas.push(c.etapa);
-    }
+    // AS ETAPAS VÊM NA RESPOSTA. Antes eram seis requisições disparadas daqui, uma por
+    // etapa, com a falha engolida em silêncio — fechar a aba no meio deixava a pipeline
+    // pela metade, e pipeline sem etapa é um quadro que não mostra caso nenhum. Agora a
+    // rota cria tudo junto ou devolve erro.
+    const novas: EtapaCrm[] = corpo.etapas ?? [];
     setFunis((f) => [...f, corpo.funil]);
     setEtapas((e) => [...e, ...novas]);
     setFunilId(corpo.funil.id);
@@ -391,7 +375,7 @@ export default function QuadroCrm({
               title="Renomear, reordenar e criar colunas"
             >
               <Icon name="gear" className={`h-4 w-4 ${editando ? "text-white" : "text-ib-slate"}`} />
-              {editando ? "Fechar etapas" : "Editar etapas"}
+              {editando ? "Fechar edição" : "Editar pipeline"}
             </button>
           ) : null}
         </div>
@@ -405,7 +389,7 @@ export default function QuadroCrm({
                   value={nomeNovoFunil}
                   onChange={(e) => setNomeNovoFunil(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void criarFunil()}
-                  placeholder="nome do funil"
+                  placeholder="nome da pipeline"
                   className="w-40 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-xs text-ib-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ib-mar"
                 />
                 <button type="button" onClick={() => void criarFunil()} className={btnPrimary}>
@@ -424,10 +408,10 @@ export default function QuadroCrm({
                 type="button"
                 onClick={() => setCriandoFunil(true)}
                 className={btnBarra}
-                title="Um funil é um conjunto de colunas para outro tipo de trabalho"
+                title="Uma pipeline é um conjunto de colunas para outro tipo de trabalho — B2B e B2C, por exemplo"
               >
                 <Icon name="plus" className="h-4 w-4 text-ib-slate" />
-                Novo funil
+                Nova pipeline
               </button>
             )}
           </div>
@@ -560,7 +544,7 @@ export default function QuadroCrm({
 
       {colunas.length === 0 ? (
         <p className="rounded-xl border border-ib-line bg-ib-papel/50 px-4 py-8 text-center text-sm text-ib-slate">
-          Este funil ainda não tem etapas. {podeDesenhar ? "Crie a primeira em “Editar etapas”." : "Peça a um advogado para desenhá-lo."}
+          Esta pipeline ainda não tem etapas. {podeDesenhar ? "Crie a primeira em “Editar pipeline”." : "Peça a um advogado para desenhá-la."}
         </p>
       ) : (
         /* QUADRO KANBAN ROLA NA HORIZONTAL — NÃO QUEBRA LINHA.
