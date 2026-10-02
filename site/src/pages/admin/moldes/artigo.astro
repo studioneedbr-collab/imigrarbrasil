@@ -1,0 +1,18 @@
+---
+// MOLDE DO ARTIGO para o /admin (public/admin/lib/gerar.php).
+//
+// É o layout do site com marcas @@…@@ no lugar do conteúdo. O PHP troca as marcas e o
+// corpo e grava /<slug>/index.html — a mesma página que src/pages/[slug].astro gera.
+// As <template data-peca> trazem os pedaços que só o Astro sabe montar (formulário,
+// chamada final); o PHP recorta e remove.
+import Base from "../../../layouts/Base.astro";
+import LeadForm from "../../../components/LeadForm.astro";
+import Chamada from "../../../components/Chamada.astro";
+---
+<Base titulo="@@TITULO@@" descricao="@@DESCRICAO@@" imagem="@@IMAGEM@@" tipo="article" publicado="@@PUBLICADO@@" modificado="@@MODIFICADO@@" schema={[{ "@type": "@@SCHEMA@@" }]} keywords={["@@KEYWORDS@@"]}>
+  <Fragment slot="head"><meta name="@@HEAD@@" /></Fragment>
+  <i hidden data-molde="corpo"></i>
+  <template data-peca="lead"><LeadForm origem="blog" compacto botao="Conversar agora" /></template>
+  <template data-peca="chamada"><Chamada /></template>
+  <script>import "../../../scripts/indice-artigo";</script>
+</Base>

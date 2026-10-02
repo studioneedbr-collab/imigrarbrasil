@@ -21,8 +21,18 @@ rodar("node scripts/comprimir-originais.mjs");
 rodar("node scripts/otimizar-imagens.mjs");
 rodar("npx astro build");
 
+// O /admin gera as páginas do blog em PHP no servidor. Se o PHP daqui estiver instalado,
+// confere que ele gera exatamente o que o Astro gerou (ver scripts/conferir-admin.php).
+try { execSync("php -v", { stdio: "ignore" }); rodar(`php scripts/conferir-admin.php "${DIST}"`); }
+catch (e) { if (e.status === 1) process.exit(1); console.warn("PHP não instalado aqui: pulei a conferência do /admin."); }
+
+// Primeiro acesso do /admin (usuário e hash da senha), fora do Git.
+const acesso = path.join(RAIZ, ".acesso-admin.json");
+if (fs.existsSync(acesso)) fs.copyFileSync(acesso, path.join(DIST, "admin/base/acesso.json"));
+else console.warn("Sem .acesso-admin.json: o /admin vai sem usuário. Ver site/README.md.");
+
 // O que nunca pode estar no ar.
-const proibido = /(^|\/)(\.env|\.DS_Store|diag\.json|__teste|.*\.map$|imigrar-lead-config\.php|node_modules)/;
+const proibido = /(^|\/)(\.env|\.DS_Store|\.dados|\.acesso-admin\.json|diag\.json|__teste|.*\.map$|imigrar-lead-config\.php|node_modules)/;
 const arquivos = [];
 const andar = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); e.isDirectory() ? andar(p) : arquivos.push(path.relative(DIST, p)); } };
 andar(DIST);
@@ -30,7 +40,7 @@ const ruins = arquivos.filter((f) => proibido.test(f));
 for (const f of ruins.filter((f) => f.endsWith(".DS_Store"))) fs.rmSync(path.join(DIST, f));
 const graves = ruins.filter((f) => !f.endsWith(".DS_Store"));
 if (graves.length) { console.error("Não empacotei: arquivos que não podem ir ao ar em dist/:\n  " + graves.join("\n  ")); process.exit(1); }
-for (const f of ["index.html", "404.html", "robots.txt", "sitemap-index.xml", "api/lead.php"]) {
+for (const f of ["index.html", "404.html", "robots.txt", "sitemap-index.xml", "api/lead.php", "admin/index.php", "admin/moldes/artigo/index.html", "admin/base/regras.json"]) {
   if (!arquivos.includes(f)) { console.error(`Não empacotei: falta ${f} em dist/.`); process.exit(1); }
 }
 

@@ -188,17 +188,5 @@ const palavras = [...new Set(p.keywords.map((k) => k.trim()).filter((k) => k && 
   </section>
   <section class="secao"><div class="container"><Chamada /></div></section>
 
-  <script>
-    // Marca no índice a seção que está na tela.
-    const links = new Map<string, HTMLAnchorElement>();
-    document.querySelectorAll<HTMLAnchorElement>(".indice a").forEach((a) => links.set(a.hash.slice(1), a));
-    if (links.size) {
-      const obs = new IntersectionObserver((es) => es.forEach((e) => {
-        if (!e.isIntersecting) return;
-        links.forEach((a) => a.classList.remove("ativo"));
-        links.get(e.target.id)?.classList.add("ativo");
-      }), { rootMargin: "-20% 0px -70% 0px" });
-      document.querySelectorAll(".prosa h2[id]").forEach((h) => obs.observe(h));
-    }
-  </script>
+  <script>import "../scripts/indice-artigo";</script>
 </Base>

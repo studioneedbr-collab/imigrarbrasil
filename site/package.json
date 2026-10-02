@@ -9,6 +9,7 @@
     "preview": "astro preview",
     "imagens": "node scripts/otimizar-imagens.mjs",
     "puxar-conteudo": "node scripts/puxar-conteudo.mjs",
+    "conferir-admin": "astro build && php scripts/conferir-admin.php dist",
     "pacote": "node scripts/pacote.mjs"
   },
   "dependencies": {

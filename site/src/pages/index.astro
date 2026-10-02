@@ -149,7 +149,8 @@ const schemaSite = { "@type": "WebSite", "@id": `${SITE.url}/#site`, url: SITE.u
         <a class="btn btn-contorno" href="/blog-imigracao-brasil/">Ver todos os artigos <Fragment set:html={ICONE.seta} /></a>
       </div>
       <div class="grade grade-3">
-        {recentes.map((p) => <PostCard post={p} />)}
+        {/* As marcas deixam o /admin trocar os cards quando entra artigo novo (public/admin/lib/gerar.php). */}
+        <i hidden data-molde="recentes-ini"></i>{recentes.map((p) => <PostCard post={p} />)}<i hidden data-molde="recentes-fim"></i>
       </div>
     </div>
   </section>

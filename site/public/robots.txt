@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /admin/
 Disallow: /email-enviado-com-sucesso/
 
 Sitemap: https://imigrarbrasil.com/sitemap-index.xml

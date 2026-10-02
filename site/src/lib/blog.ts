@@ -101,7 +101,7 @@ export const urlDoTema = (t: Tema) => `/blog-imigracao-brasil/tema/${t.slug}/`;
 // Tabela escrita à mão: com 30 serviços, uma regra explícita acerta mais do que contar
 // palavras em comum — "residência" e "familiar" aparecem em metade das descrições, e por
 // isso "passaporte vencido" caía em Reunião Familiar. Ordem = prioridade no empate.
-const REGRAS: [RegExp, string][] = [
+export const REGRAS: [RegExp, string][] = [
   [/naturaliza|cidadania brasileira/, "naturalizacao-brasileira-ordinaria-extraordinaria-especial-e-provisoria-conversao-em-definitiva"],
   [/passaporte brasileiro|brasileiro nato|registro consular|nascido no exterior|dupla nacionalidade|e-consular|nascido no brasil/, "reconhecimento-de-nacionalidade-brasileira-originaria-brasileiro-nato-nascido-no-exterior-registro-consular-transcricao-e-opcao"],
   [/\bcpf\b|conta bancaria|abrir conta/, "obtencao-de-cpf-e-abertura-de-contas-bancarias"],

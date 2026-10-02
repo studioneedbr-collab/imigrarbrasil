@@ -7,3 +7,6 @@ dist/
 *.jpeg.webp
 *.png.webp
 pacote/
+
+# Primeiro acesso do /admin (hash da senha). O `npm run pacote` põe no zip; não vai para o Git.
+.acesso-admin.json

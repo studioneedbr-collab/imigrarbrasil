@@ -21,7 +21,7 @@ export default defineConfig({
   compressHTML: true,
   integrations: [
     sitemap({
-      filter: (url) => !/\/(email-enviado-com-sucesso|404)\/?$/.test(url),
+      filter: (url) => !/\/(email-enviado-com-sucesso|404)\/?$/.test(url) && !new URL(url).pathname.startsWith("/admin/"),
       serialize(item) {
         const caminho = new URL(item.url).pathname;
         const data = datas.get(caminho);

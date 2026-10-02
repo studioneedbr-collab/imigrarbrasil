@@ -56,46 +56,50 @@ atende — vêm por tradução automática no navegador, carregada **só** quand
 outra língua. Quem chega de fora vê um aviso na língua dele, sugerindo a tradução; o site
 nunca troca sozinho. Para conferir o aviso: `/?simular-pais=ES` (ou `FR`, `US`, `CO`…).
 
-## Editar pelo painel
+## O blog: imigrarbrasil.com/admin
 
-O conteúdo (posts, serviços, contato, redes sociais, números e textos dos botões) é
-editado no painel do imigrar-agent, em **Site imigrarbrasil.com**. O botão **Publicar**
-dispara `.github/workflows/publicar-site.yml`, que:
+Os artigos são escritos em **https://imigrarbrasil.com/admin/**, que roda no próprio
+CloudPanel (PHP, em `public/admin/`). Sem banco, sem GitHub, sem build: salvar um artigo
+grava em `.dados/` e gera de novo, na hora, as páginas do blog — o artigo, a lista e a
+paginação, os temas, os 3 cards da home, o sitemap e o RSS.
 
-1. busca o conteúdo em `/api/site/exportar` (`npm run puxar-conteudo`), baixando as
-   imagens enviadas pelo painel para `public/uploads/painel/`;
-2. gera o site (`npm run build`), já com o endereço do painel para mandar os cliques;
-3. envia `dist/` ao CloudPanel por rsync.
+- **O PHP gera as mesmas páginas que o Astro.** Ele parte dos moldes que o build deixa em
+  `admin/moldes/` (o layout do site com marcas) e das regras de `admin/base/` (temas e
+  serviço relacionado, exportados de `src/lib/blog.ts`). `npm run conferir-admin` gera as
+  65 páginas do blog pelos dois caminhos e compara; o `npm run pacote` roda isso sozinho.
+  Mudou o HTML de `[slug].astro`, `PostCard`, `CabecaPagina` ou da lista do blog? Mude
+  `public/admin/lib/render.php` também, ou o pacote não sai.
+- **O que é feito no admin fica em `htdocs/imigrarbrasil.com/.dados/`** (o vhost nega o
+  acesso pelo navegador). Subir um zip novo não apaga essa pasta; no primeiro acesso ao
+  admin depois do zip, as páginas são geradas de novo com o que foi feito lá.
+- **Trocar o endereço de um artigo** deixa no endereço antigo uma página que redireciona
+  para o novo. **Apagar** tira a página do site.
+- **Imagens** vão para `/uploads/blog/AAAA/MM/`, reduzidas a 1600 px, com a versão WebP ao lado.
+- **Acesso:** o primeiro usuário vem no zip, a partir de `site/.acesso-admin.json` (fora
+  do Git). Para criar ou trocar: `php -r 'echo password_hash("SENHA", PASSWORD_DEFAULT);'`
+  e grave `[{"usuario":"admin","nome":"…","hash":"…"}]` nesse arquivo. Depois, senha e
+  outros usuários se mudam pela tela **Conta**.
 
-Os JSON de `src/data/` no repositório continuam valendo como base: se o painel estiver
-vazio (nada importado), o build usa o que está aqui.
-
-### Ligar uma vez
-
-| onde | o quê |
-|---|---|
-| Supabase | aplicar a migration 035 (`npm run migrar` na raiz) |
-| Vercel (painel) | `SITE_EXPORT_TOKEN` (um segredo novo), `GITHUB_TOKEN` (fine-grained, só este repositório: Contents read, Actions read/write), `SITE_CAPTURE_ORIGINS=https://imigrarbrasil.com,https://www.imigrarbrasil.com` |
-| GitHub → Settings → Secrets → Actions | `PAINEL_URL`, `SITE_EXPORT_TOKEN` (o mesmo), `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PATH` (e `SSH_PORT` se não for 22) |
-| CloudPanel | a chave pública correspondente a `SSH_KEY` em Sites → imigrarbrasil.com → SSH/FTP |
-| Painel | Site → Visão geral → **Importar do site** (uma vez) |
-
-A Visão geral do painel lista o que ainda falta, item por item.
+Os JSON de `src/data/` continuam sendo a base: um artigo corrigido no código aparece no
+próximo zip, a não ser que tenha sido editado pelo admin — aí vale a edição.
 
 ## Subir no CloudPanel
 
-1. Crie o site como **PHP Site** (PHP 8.x). O HTML é servido igual; o PHP é só para
-   `api/lead.php`.
-2. `npm run build` e envie **o conteúdo** de `dist/` para `htdocs/imigrarbrasil.com/`
-   (rsync, SFTP ou o gerenciador de arquivos).
+1. Site **PHP Site** (PHP 8.1 ou mais novo, com GD para as imagens do admin).
+2. `npm run pacote` gera `pacote/imigrarbrasil-site-AAAA-MM-DD.zip`. No File Manager:
+   `htdocs/imigrarbrasil.com` → Upload → Extract, substituindo. **Não apague a pasta antes**:
+   ela guarda `.dados/` (o que foi feito no admin) e o `imigrar-lead-config.php`.
 3. Cole `deploy/vhost-cloudpanel.conf` no Vhost do site (o próprio arquivo explica onde).
-4. Crie `htdocs/imigrar-lead-config.php` — **fora** da pasta pública — com a URL da captura
-   do CRM e o mesmo valor de `SITE_CAPTURE_TOKEN` do imigrar-agent (modelo no topo de
-   `public/api/lead.php`). Sem ele o formulário ainda abre o WhatsApp, mas o lead não entra
-   no funil.
+4. Crie `htdocs/imigrarbrasil.com/imigrar-lead-config.php` com a URL da captura do CRM e o
+   mesmo valor de `SITE_CAPTURE_TOKEN` do imigrar-agent (modelo no topo de
+   `public/api/lead.php`). O vhost devolve 404 para qualquer `.php` que não seja o
+   formulário ou o admin, então ele não é lido pelo navegador. Sem ele o formulário ainda
+   abre o WhatsApp, mas o lead não entra no funil.
 5. Emita o SSL (Let's Encrypt) no CloudPanel e aponte o DNS.
 6. No Search Console, troque o sitemap cadastrado por `https://imigrarbrasil.com/sitemap-index.xml`.
 
+Por rsync, nunca apague o que o servidor gerou:
+
 ```bash
-rsync -avz --delete dist/ usuario@servidor:/home/usuario/htdocs/imigrarbrasil.com/
+rsync -avz dist/ usuario@servidor:/home/usuario/htdocs/imigrarbrasil.com/
 ```

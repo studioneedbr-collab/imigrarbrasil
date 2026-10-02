@@ -1,0 +1,12 @@
+---
+// MOLDE DAS PÁGINAS DO BLOG (/blog-imigracao-brasil/ e /page/N/) e DOS TEMAS, para o /admin.
+// Ver src/pages/admin/moldes/artigo.astro.
+import Base from "../../../layouts/Base.astro";
+import Chamada from "../../../components/Chamada.astro";
+---
+<Base titulo="@@TITULO@@" descricao="@@DESCRICAO@@" imagem="@@IMAGEM@@" schema={[{ "@type": "@@SCHEMA@@" }]}>
+  <Fragment slot="head"><meta name="@@HEAD@@" /></Fragment>
+  <i hidden data-molde="corpo"></i>
+  <template data-peca="chamada"><Chamada /></template>
+  <script>import "../../../scripts/busca-blog";</script>
+</Base>
