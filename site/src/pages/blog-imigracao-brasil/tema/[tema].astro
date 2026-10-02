@@ -1,0 +1,73 @@
+---
+// Página de tema: o "hub" de um assunto. Junta os artigos, explica o tema e aponta para os
+// serviços que resolvem o problema — o tipo de página que o Google trata como autoridade.
+import Base from "../../../layouts/Base.astro";
+import CabecaPagina from "../../../components/CabecaPagina.astro";
+import PostCard from "../../../components/PostCard.astro";
+import ServicoItem from "../../../components/ServicoItem.astro";
+import Chamada from "../../../components/Chamada.astro";
+import { SITE } from "../../../config";
+import { TEMAS_ATIVOS, postsDoTema, urlDoTema, servicosRelacionados } from "../../../lib/blog";
+
+export function getStaticPaths() {
+  return TEMAS_ATIVOS.map((t) => ({ params: { tema: t.slug }, props: { t } }));
+}
+const { t } = Astro.props;
+const lista = postsDoTema(t);
+// Os serviços mais citados pelos artigos do tema.
+const contagem = new Map<string, { s: ReturnType<typeof servicosRelacionados>[number]; n: number }>();
+for (const p of lista) for (const s of servicosRelacionados(p, 2)) contagem.set(s.slug, { s, n: (contagem.get(s.slug)?.n ?? 0) + 1 });
+const servicos = [...contagem.values()].sort((a, b) => b.n - a.n).slice(0, 4).map((x) => x.s);
+const outros = TEMAS_ATIVOS.filter((x) => x.slug !== t.slug);
+
+const schema = {
+  "@type": "CollectionPage",
+  name: `${t.nome} — Blog Imigrar Brasil`,
+  description: t.intro,
+  url: `${SITE.url}${urlDoTema(t)}`,
+  inLanguage: "pt-BR",
+  isPartOf: { "@type": "Blog", name: "Blog Imigrar Brasil", url: `${SITE.url}/blog-imigracao-brasil/` },
+  mainEntity: {
+    "@type": "ItemList",
+    itemListElement: lista.map((p, i) => ({ "@type": "ListItem", position: i + 1, url: `${SITE.url}/${p.slug}/`, name: p.title })),
+  },
+};
+---
+<Base titulo={`${t.nome}: guia e artigos`} descricao={`${t.intro} ${lista.length} artigos escritos por advogados especialistas em direito migratório.`.slice(0, 300)} imagem={lista[0]?.image} schema={[schema]}>
+  <CabecaPagina titulo={t.nome} sobretitulo={`${lista.length} artigos`} texto={t.intro} migalhas={[{ href: "/blog-imigracao-brasil/", rotulo: "Blog" }, { rotulo: t.nome }]} />
+
+  <section class="secao" style="padding-top:48px">
+    <div class="container">
+      <nav aria-label="Temas do blog" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:40px">
+        <a class="chip chip-link" href="/blog-imigracao-brasil/">Todos</a>
+        {TEMAS_ATIVOS.map((x) => <a class="chip chip-link" href={urlDoTema(x)} aria-current={x.slug === t.slug ? "page" : undefined}>{x.nome}</a>)}
+      </nav>
+      <div class="grade grade-3">
+        {lista.map((p, i) => <PostCard post={p} carregar={i < 3 ? "eager" : "lazy"} />)}
+      </div>
+    </div>
+  </section>
+
+  {servicos.length > 0 && (
+    <section class="secao secao-papel">
+      <div class="container">
+        <div class="cabeca-secao" data-revelar>
+          <span class="sobretitulo">Serviços</span>
+          <h2>Precisa resolver isso na prática?</h2>
+          <p>Os serviços da Imigrar Brasil ligados a {t.nome.toLowerCase()}.</p>
+        </div>
+        <div class="grade grade-2" style="gap:14px">{servicos.map((s) => <ServicoItem s={s} />)}</div>
+      </div>
+    </section>
+  )}
+
+  <section class="secao">
+    <div class="container">
+      <h2 style="font-size:1.4rem">Outros temas</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:64px">
+        {outros.map((x) => <a class="chip chip-link" href={urlDoTema(x)}>{x.nome} · {postsDoTema(x).length}</a>)}
+      </div>
+      <Chamada />
+    </div>
+  </section>
+</Base>

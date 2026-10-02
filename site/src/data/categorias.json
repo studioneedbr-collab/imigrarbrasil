@@ -1,0 +1,74 @@
+[
+  {
+    "slug": "autorizacoes-de-residencia-registro",
+    "nome": "Autorizações de Residência e Registro",
+    "image": "/wp-content/uploads/2025/07/2.png",
+    "servicos": [
+      "residencia-no-brasil-para-nacionais-de-paises-de-lingua-portuguesa",
+      "regularizacao-migratoria-para-atletas-profissionais-e-clubes-no-brasil-visto-e-residencia",
+      "residencia-para-aposentados-e-pensionistas-no-brasil-visto-temporario-e-regularizacao-migratoria",
+      "visto-maritimo-tripulante-embarcado-regularizacao-brasil",
+      "visto-temporario-atividade-religiosa-vitem-vii-servico-voluntario-vitem-viii",
+      "mobilidade-global-para-o-brasil-empresas-e-organizacoes",
+      "residencia-investidor-imobiliario-rn-36-2018-golden-visa",
+      "residencia-casamento-uniao-estavel-brasileiro-reuniao-familiar",
+      "reuniao-familiar-brasil-vitem-xi-autorizacao-residencia",
+      "autorizacao-de-residencia-pelo-mercosul-cplp-e-acordos-bilaterais-visto-e-regularizacao",
+      "transformacao-de-visto-em-autorizacao-de-residencia-regularizacao-no-brasil"
+    ]
+  },
+  {
+    "slug": "consultoria-empresarial-investimentos",
+    "nome": "Consultoria Empresarial e Investimentos",
+    "image": "/wp-content/uploads/2025/07/4-1.png",
+    "servicos": [
+      "visto-residencia-para-empreendedor-plano-de-negocios",
+      "assessoria-imobiliaria-para-estrangeiros-no-brasil-compra-e-locacao-com-seguranca-juridica",
+      "due-diligence-imobiliaria-para-estrangeiros-e-investidores-documentos-riscos-e-contratos",
+      "registro-de-investimento-estrangeiro-direto-no-banco-central-sce-ied-rde-ied-e-remessa-de-lucros",
+      "visto-residencia-empreendedor-startup-inovacao-brasil"
+    ]
+  },
+  {
+    "slug": "defesa-regularizacao-migratoria",
+    "nome": "Defesa e Regularização Migratória",
+    "image": "/wp-content/uploads/2025/07/6.png",
+    "servicos": [
+      "regularizacao-por-excesso-de-prazo-overstay-e-multa-migratoria",
+      "recurso-administrativo-em-imigracao-indeferimentos-exigencias-e-cancelamentos"
+    ]
+  },
+  {
+    "slug": "nacionalidade-naturalizacao",
+    "nome": "Nacionalidade e Naturalização",
+    "image": "/wp-content/uploads/2025/07/3-1.png",
+    "servicos": [
+      "reconhecimento-de-nacionalidade-brasileira-originaria-brasileiro-nato-nascido-no-exterior-registro-consular-transcricao-e-opcao",
+      "naturalizacao-brasileira-ordinaria-extraordinaria-especial-e-provisoria-conversao-em-definitiva"
+    ]
+  },
+  {
+    "slug": "servicos-documentais-relocation",
+    "nome": "Serviços Documentais e Relocation",
+    "image": "/wp-content/uploads/2025/07/5.png",
+    "servicos": [
+      "relocation-familiar-assessoria-completa-para-mudanca-e-regularizacao-migratoria-de-toda-a-familia",
+      "obtencao-de-cpf-e-abertura-de-contas-bancarias",
+      "apostilamento-de-haia-e-legalizacao-consular-de-documentos-estrangeiros-validade-no-brasil",
+      "emissao-substituicao-e-renovacao-da-crnm-rnm-documento-do-imigrante"
+    ]
+  },
+  {
+    "slug": "vistos-autorizacoes-de-entrada",
+    "nome": "Vistos e Autorizações de Entrada",
+    "image": "/wp-content/uploads/2025/07/img-01-1.png",
+    "servicos": [
+      "visto-nomade-digital-brasil-vitem-xiv",
+      "vitem-iv-visto-de-estudante-no-brasil",
+      "vitem-ii-tratamento-de-saude-brasil",
+      "visto-diplomatico-vidip-visto-oficial-visof-brasil",
+      "vitem-i-pesquisa-ensino-extensao-academica-brasil",
+      "visto-de-visita-vivis-brasil"
+    ]
+  }
+]

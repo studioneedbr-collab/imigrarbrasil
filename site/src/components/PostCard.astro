@@ -1,0 +1,15 @@
+---
+import Img from "./Img.astro";
+import { dataHora } from "../lib/blog";
+interface Props { post: { slug: string; title: string; image: string | null; imageAlt?: string | null; published: string | null; readingMinutes: number; description?: string | null; author?: string }; carregar?: "lazy" | "eager"; resumo?: boolean }
+const { post, carregar = "lazy", resumo = false } = Astro.props;
+---
+<article class="card" data-revelar>
+  <div class="card-img"><Img src={post.image} alt={post.imageAlt || post.title} width={960} height={540} loading={carregar} /></div>
+  <div class="card-corpo">
+    <div class="card-meta"><span class="notranslate" translate="no">{post.author ?? "Walter Gama"}</span><span aria-hidden="true">·</span><time datetime={post.published}>{dataHora(post.published)}</time></div>
+    <h3><a class="card-link" href={`/${post.slug}/`}>{post.title}</a></h3>
+    {resumo && post.description && <p>{post.description}</p>}
+    <span class="card-meta" style="margin-top:auto;justify-content:space-between;align-items:center;padding-top:6px"><span class="link-seta" style="color:var(--mar)" aria-hidden="true">Ler artigo</span><span>{post.readingMinutes} min</span></span>
+  </div>
+</article>

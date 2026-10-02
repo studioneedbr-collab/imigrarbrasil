@@ -1,0 +1,106 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import PostCard from "../../components/PostCard.astro";
+import Img from "../../components/Img.astro";
+import Chamada from "../../components/Chamada.astro";
+import { ICONE } from "../../lib/icones";
+import { TEMAS_ATIVOS, postsDoTema, urlDoTema, dataHora } from "../../lib/blog";
+import posts from "../../data/posts.json";
+
+// Mesmo formato de paginação do WordPress: /blog-imigracao-brasil/ e /blog-imigracao-brasil/page/2/
+export function getStaticPaths() {
+  const POR_PAGINA = 12; // aqui dentro: o Astro executa getStaticPaths isolado do resto do arquivo
+  const total = Math.ceil(posts.length / POR_PAGINA);
+  return Array.from({ length: total }, (_, i) => ({
+    params: { pagina: i === 0 ? undefined : `page/${i + 1}` },
+    props: { n: i + 1, total, POR_PAGINA },
+  }));
+}
+const { n, total, POR_PAGINA } = Astro.props;
+const lista = posts.slice((n - 1) * POR_PAGINA, n * POR_PAGINA);
+const [destaque, ...resto] = n === 1 ? lista : [null, ...lista];
+const link = (p: number) => (p === 1 ? "/blog-imigracao-brasil/" : `/blog-imigracao-brasil/page/${p}/`);
+// Índice para a busca: todos os posts, não só os desta página.
+const indice = posts.map((p) => ({ s: p.slug, t: p.title, d: p.description ?? "", k: p.keywords.join(" ") }));
+const schema = {
+  "@type": "Blog",
+  name: "Blog Imigrar Brasil",
+  url: "https://imigrarbrasil.com/blog-imigracao-brasil/",
+  inLanguage: "pt-BR",
+  blogPost: lista.map((p) => ({ "@type": "BlogPosting", headline: p.title, url: `https://imigrarbrasil.com/${p.slug}/`, datePublished: p.published })),
+};
+---
+<Base titulo={n === 1 ? "Blog de Imigração no Brasil" : `Blog de Imigração no Brasil — página ${n}`} descricao={"Blog da Imigrar Brasil: conteúdos claros e atualizados sobre vistos, residência, naturalização e direitos de estrangeiros. Entenda as regras oficiais, evite erros e planeje sua imigração ao Brasil com segurança jurídica."} schema={[schema]}>
+  <Fragment slot="head">
+    {n > 1 && <link rel="prev" href={link(n - 1)} />}
+    {n < total && <link rel="next" href={link(n + 1)} />}
+  </Fragment>
+  <CabecaPagina titulo="Blog de imigração no Brasil" sobretitulo={`${posts.length} artigos`} texto="Leis, prazos e documentos explicados sem juridiquês, com base nas fontes oficiais — para quem quer viver, estudar, trabalhar ou investir no Brasil." migalhas={n === 1 ? [{ rotulo: "Blog" }] : [{ href: "/blog-imigracao-brasil/", rotulo: "Blog" }, { rotulo: `Página ${n}` }]}>
+    <div style="margin-top:28px;max-width:560px;position:relative">
+      <label class="sr-only" for="busca-blog">Buscar no blog</label>
+      <input id="busca-blog" type="search" placeholder="Buscar: naturalização, CRNM, Mercosul…" autocomplete="off"
+        style="width:100%;min-height:56px;padding:14px 18px 14px 50px;border-radius:999px;border:0;font:1.02rem var(--f-texto);box-shadow:var(--sombra-g)" />
+      <span style="position:absolute;left:18px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--slate)" set:html={ICONE.busca} />
+    </div>
+  </CabecaPagina>
+
+  <section class="secao" style="padding-top:56px">
+    <div class="container">
+      <div id="resultados" hidden>
+        <p id="resultados-n" style="color:var(--slate);margin-bottom:20px"></p>
+        <ul id="resultados-lista" class="grade grade-2" style="list-style:none;padding:0;gap:14px"></ul>
+      </div>
+
+      <nav aria-label="Temas do blog" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:36px">
+        <a class="chip chip-link" href="/blog-imigracao-brasil/" aria-current={n === 1 ? "page" : undefined}>Todos · {posts.length}</a>
+        {TEMAS_ATIVOS.map((t) => <a class="chip chip-link" href={urlDoTema(t)}>{t.nome} · {postsDoTema(t).length}</a>)}
+      </nav>
+      <div id="listagem">
+        {destaque && (
+          <article class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));margin-bottom:32px">
+            <div class="card-img" style="aspect-ratio:auto;min-height:280px"><Img src={destaque.image} alt={destaque.imageAlt || destaque.title} width={960} height={540} loading="eager" fetchpriority="high" /></div>
+            <div class="card-corpo" style="padding:clamp(24px,4vw,44px);justify-content:center;gap:14px">
+              <span class="chip" style="align-self:flex-start">Mais recente · {dataHora(destaque.published)}</span>
+              <h2 style="font-size:clamp(1.4rem,2.6vw,2rem);margin:0"><a class="card-link" href={`/${destaque.slug}/`}>{destaque.title}</a></h2>
+              <p style="font-size:1.05rem">{destaque.description}</p>
+              <span class="link-seta" aria-hidden="true">Ler artigo</span>
+            </div>
+          </article>
+        )}
+        <div class="grade grade-3">
+          {resto.filter(Boolean).map((p, i) => <PostCard post={p!} carregar={i < 3 ? "eager" : "lazy"} />)}
+        </div>
+
+        {total > 1 && (
+          <nav aria-label="Páginas do blog" style="display:flex;justify-content:center;gap:8px;margin-top:56px;flex-wrap:wrap">
+            {n > 1 && <a class="btn btn-contorno" href={link(n - 1)} rel="prev">← Anteriores</a>}
+            {Array.from({ length: total }, (_, i) => i + 1).map((p) => (
+              <a class={`btn ${p === n ? "btn-primario" : "btn-contorno"}`} style="min-width:48px;padding:12px 16px" href={link(p)} aria-current={p === n ? "page" : undefined}>{p}</a>
+            ))}
+            {n < total && <a class="btn btn-contorno" href={link(n + 1)} rel="next">Próximos →</a>}
+          </nav>
+        )}
+      </div>
+      <div style="margin-top:80px"><Chamada /></div>
+    </div>
+  </section>
+
+  <script type="application/json" id="indice-blog" set:html={JSON.stringify(indice)} />
+  <script>
+    const campo = document.getElementById("busca-blog") as HTMLInputElement;
+    const indice: { s: string; t: string; d: string; k: string }[] = JSON.parse(document.getElementById("indice-blog")!.textContent!);
+    const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+    const res = document.getElementById("resultados")!, lista = document.getElementById("resultados-lista")!, n = document.getElementById("resultados-n")!, listagem = document.getElementById("listagem")!;
+    campo.addEventListener("input", () => {
+      const termos = norm(campo.value.trim()).split(/\s+/).filter(Boolean);
+      res.hidden = termos.length === 0;
+      listagem.hidden = termos.length > 0;
+      if (!termos.length) return;
+      const achados = indice.filter((p) => { const h = norm(`${p.t} ${p.d} ${p.k}`); return termos.every((t) => h.includes(t)); });
+      n.textContent = achados.length ? `${achados.length} artigo(s) encontrado(s)` : "Nenhum artigo encontrado. Tente outra palavra.";
+      lista.innerHTML = achados.map((p) => `<li><a class="servico-item" href="/${p.s}/"><span style="display:block"><strong>${esc(p.t)}</strong><span>${esc(p.d)}</span></span></a></li>`).join("");
+    });
+  </script>
+</Base>

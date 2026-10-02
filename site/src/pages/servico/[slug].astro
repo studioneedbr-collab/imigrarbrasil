@@ -1,0 +1,99 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import ServicoItem from "../../components/ServicoItem.astro";
+import Depoimentos from "../../components/Depoimentos.astro";
+import LeadForm from "../../components/LeadForm.astro";
+import Chamada from "../../components/Chamada.astro";
+import Dobra from "../../components/Dobra.astro";
+import Img from "../../components/Img.astro";
+import { SITE } from "../../config";
+import { ICONE } from "../../lib/icones";
+import servicos from "../../data/servicos.json";
+import categorias from "../../data/categorias.json";
+
+export function getStaticPaths() {
+  return servicos.map((s) => ({ params: { slug: s.slug }, props: { s } }));
+}
+const { s } = Astro.props;
+const cat = categorias.find((c) => c.servicos.includes(s.slug))!;
+const irmaos = cat.servicos.filter((x) => x !== s.slug).map((x) => servicos.find((y) => y.slug === x)!).slice(0, 4);
+const icones = [ICONE.escudo, ICONE.documento, ICONE.relogio];
+
+const schema = {
+  "@type": "Service",
+  name: s.title,
+  description: s.description,
+  serviceType: cat.nome,
+  url: `${SITE.url}/servico/${s.slug}/`,
+  image: s.image ? SITE.url + s.image : undefined,
+  provider: { "@id": `${SITE.url}/#organizacao` },
+  areaServed: { "@type": "Country", name: "Brasil" },
+};
+---
+<Base titulo={s.seoTitle} descricao={s.description} imagem={s.image} schema={[schema]} modificado={s.modified}>
+  <CabecaPagina titulo={s.title} sobretitulo={cat.nome} texto={s.description} migalhas={[{ href: "/nossos-servicos/", rotulo: "Serviços" }, { href: `/categoria-servico/${cat.slug}/`, rotulo: cat.nome }, { rotulo: s.title.length > 48 ? s.title.slice(0, s.title.lastIndexOf(" ", 46)) + "…" : s.title }]}>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:28px">
+      <a class="btn btn-zap btn-grande" href="#contato"><Fragment set:html={ICONE.whatsapp} /> Quero ajuda com isso</a>
+    </div>
+  </CabecaPagina>
+
+  {s.beneficios.length > 0 && (
+    <section style="padding:40px 0 0">
+      <div class="container">
+        <ul class="grade grade-3" style="list-style:none;padding:0;margin:0">
+          {s.beneficios.map((b, i) => (
+            <li class="caixa" style="display:flex;gap:16px">
+              <span style="flex:none;width:44px;height:44px;border-radius:12px;background:var(--bruma);color:var(--carimbo);display:grid;place-items:center"><span style="width:22px;height:22px;display:block" set:html={icones[i]} /></span>
+              <div><strong style="display:block;font:700 1.08rem var(--f-titulo);color:var(--casa);margin-bottom:4px">{b.titulo}</strong><span style="color:var(--slate);font-size:.96rem">{b.texto}</span></div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )}
+
+  <section class="secao">
+    <div class="container com-lateral">
+      <article>
+        <Img src={s.image} alt={s.title} width={960} height={540} loading="eager" style="border-radius:var(--raio-g);margin-bottom:36px;width:100%;aspect-ratio:16/9;object-fit:cover" />
+        <Dobra altura={340}><div class="prosa" set:html={s.html} /></Dobra>
+        {s.paraQuem && (
+          <div class="caixa" style="margin-top:40px;background:var(--papel);border:0">
+            <h2 style="font-size:1.4rem">Para quem é?</h2>
+            <div class="prosa" style="font-size:1.05rem" set:html={s.paraQuem} />
+          </div>
+        )}
+        {s.fechamento && <div class="prosa" style="margin-top:32px" set:html={s.fechamento} />}
+      </article>
+      <aside class="lateral" id="contato">
+        <div class="caixa caixa-cta">
+          <span class="sobretitulo">Atendimento online</span>
+          <h2>Fale com um especialista</h2>
+          <p style="font-size:.95rem">Analisamos o seu caso e indicamos o caminho mais seguro.</p>
+          <LeadForm origem={`servico:${s.slug}`.slice(0, 60)} compacto />
+        </div>
+        <div class="caixa">
+          <h2>Mais em {cat.nome}</h2>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px">
+            {irmaos.map((x) => <li><a href={`/servico/${x.slug}/`} style="text-decoration:none;font-weight:600">{x.title}</a></li>)}
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <Depoimentos />
+
+  <section class="secao">
+    <div class="container">
+      {irmaos.length > 0 && (
+        <>
+          <h2 style="font-size:1.6rem">Mais serviços</h2>
+          <div class="grade grade-2" style="gap:14px;margin-bottom:64px">{irmaos.map((x) => <ServicoItem s={x} />)}</div>
+        </>
+      )}
+      <Chamada />
+    </div>
+  </section>
+</Base>

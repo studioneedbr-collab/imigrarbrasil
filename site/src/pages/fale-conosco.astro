@@ -1,0 +1,42 @@
+---
+import Base from "../layouts/Base.astro";
+import CabecaPagina from "../components/CabecaPagina.astro";
+import LeadForm from "../components/LeadForm.astro";
+import { SITE, whatsappLink } from "../config";
+import { ICONE } from "../lib/icones";
+const end = `${SITE.endereco.rua}, ${SITE.endereco.bairro}, ${SITE.endereco.cidade}/${SITE.endereco.uf}`;
+const contatos = [
+  { icone: ICONE.whatsapp, rotulo: "WhatsApp", valor: SITE.telefone, href: whatsappLink() },
+  { icone: ICONE.email, rotulo: "E-mail", valor: SITE.email, href: `mailto:${SITE.email}` },
+  { icone: ICONE.local, rotulo: "Endereço", valor: `${end} · CEP ${SITE.endereco.cep}`, href: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(end)}` },
+];
+---
+<Base titulo="Fale Conosco" descricao="Imigrar Brasil – Fale Conosco: tire suas dúvidas sobre vistos, residência, cidadania e regularização migratória com uma equipe especializada, ética e segura.">
+  <CabecaPagina titulo="Fale Conosco" sobretitulo="Atendimento online para todo o mundo" texto="Conte sua situação. Respondemos em português, espanhol, inglês e francês — por WhatsApp, e-mail ou videoconferência." migalhas={[{ rotulo: "Fale Conosco" }]} />
+  <section class="secao">
+    <div class="container com-lateral" style="grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)">
+      <div>
+        <h2 style="font-size:1.6rem">Imigrar Brasil</h2>
+        <ul style="list-style:none;padding:0;margin:0 0 32px;display:grid;gap:14px">
+          {contatos.map((c) => (
+            <li>
+              <a class="servico-item" href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noopener">
+                <span class="ico" set:html={c.icone} />
+                <span style="display:block"><strong>{c.rotulo}</strong><span class="notranslate" translate="no">{c.valor}</span></span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <iframe title="Mapa: escritório da Imigrar Brasil" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+          src={`https://www.google.com/maps?q=${encodeURIComponent(end)}&output=embed`}
+          style="width:100%;height:320px;border:0;border-radius:var(--raio-g)"></iframe>
+      </div>
+      <div class="caixa" style="padding:clamp(24px,4vw,40px)">
+        <span class="sobretitulo">Envie uma mensagem</span>
+        <h2 style="font-size:1.6rem">Solicite um orçamento</h2>
+        <p style="color:var(--slate)">Quanto mais detalhes, mais precisa a orientação: nacionalidade, onde você está hoje e o que quer fazer no Brasil.</p>
+        <LeadForm origem="fale-conosco" depois="obrigado" botao="Enviar mensagem" />
+      </div>
+    </div>
+  </section>
+</Base>

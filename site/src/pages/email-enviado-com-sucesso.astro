@@ -1,0 +1,18 @@
+---
+import Base from "../layouts/Base.astro";
+import { whatsappLink } from "../config";
+import { ICONE } from "../lib/icones";
+---
+<Base titulo="Mensagem enviada" noindex>
+  <section class="secao">
+    <div class="container" style="max-width:640px;text-align:center">
+      <div style="width:72px;height:72px;border-radius:50%;background:var(--selo);color:#fff;display:grid;place-items:center;margin:0 auto 24px"><span style="width:34px;height:34px;display:block" set:html={ICONE.check} /></div>
+      <h1 style="font-size:clamp(1.8rem,4vw,2.6rem)">Recebemos sua mensagem!</h1>
+      <p style="font-size:1.15rem;color:var(--slate)">Nossa equipe vai analisar e responder em breve. Se for urgente, fale agora pelo WhatsApp.</p>
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:28px">
+        <a class="btn btn-zap btn-grande" href={whatsappLink()} target="_blank" rel="noopener"><Fragment set:html={ICONE.whatsapp} /> Falar no WhatsApp</a>
+        <a class="btn btn-contorno btn-grande" href="/blog-imigracao-brasil/">Ler o blog</a>
+      </div>
+    </div>
+  </section>
+</Base>

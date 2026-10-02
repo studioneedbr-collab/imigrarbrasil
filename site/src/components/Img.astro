@@ -1,0 +1,7 @@
+---
+// <img> com dimensões e carregamento certos. A versão WebP é entregue pelo nginx no mesmo
+// endereço (ver scripts/otimizar-imagens.mjs e deploy/vhost-cloudpanel.conf).
+interface Props { src: string | null | undefined; alt?: string; width?: number; height?: number; class?: string; style?: string; loading?: "lazy" | "eager"; fetchpriority?: "high" | "low" | "auto" }
+const { src, alt = "", width, height, class: classe, style, loading = "lazy", fetchpriority } = Astro.props;
+---
+{src && <img src={src} alt={alt} width={width} height={height} class={classe} style={style} loading={loading} decoding="async" fetchpriority={fetchpriority} />}

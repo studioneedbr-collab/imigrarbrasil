@@ -1,0 +1,13 @@
+---
+import Img from "./Img.astro";
+const logos = ["1", "2", "3", "10", "11", "12", "13"].map((n) => `/wp-content/uploads/2025/07/${n}.jpg`);
+const itens = [...logos, ...logos, ...logos, ...logos];
+---
+<section class="parceiros" aria-label="Parceiros e instituições">
+  <p>Parceiros e instituições que confiam na Imigrar Brasil</p>
+  <div class="esteira esteira-logos esteira-reverso" style="--duracao:40s;--vao:clamp(24px,4vw,56px)">
+    <ul class="esteira-trilho" style="list-style:none;margin:0;padding:0">
+      {itens.map((src, i) => <li aria-hidden={i >= logos.length ? "true" : undefined}><Img src={src} width={150} height={150} /></li>)}
+    </ul>
+  </div>
+</section>

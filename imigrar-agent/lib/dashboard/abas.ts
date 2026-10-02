@@ -31,6 +31,8 @@ export interface Aba {
    */
   nota: string;
   icone: IconName;
+  /** Acende só no endereço exato — para a aba "raiz" não ficar acesa junto com as filhas. */
+  exata?: boolean;
 }
 
 /** O trabalho do dia: os três recortes da mesma carteira de casos. */
@@ -42,6 +44,19 @@ export const ABAS_ATENDIMENTO: Aba[] = [
   // que se faz ao funil, não uma tela que se visita. Quem procura por ela está olhando o
   // quadro e pensando "preciso trazer aquela planilha para cá".
   { href: "/dashboard/importar", label: "Importar", nota: "trazer uma planilha", icone: "plus" },
+];
+
+/**
+ * O SITE imigrarbrasil.com: o que ele traz (visão geral, formulários) e o que se edita
+ * nele (blog, serviços, configurações). Publicar fica na visão geral — é o botão que
+ * leva o que foi editado para o ar.
+ */
+export const ABAS_SITE: Aba[] = [
+  { href: "/dashboard/site", label: "Visão geral", nota: "visitas, cliques e publicação", icone: "activity", exata: true },
+  { href: "/dashboard/site/formularios", label: "Formulários", nota: "quem preencheu no site", icone: "mail" },
+  { href: "/dashboard/site/blog", label: "Blog", nota: "artigos do site", icone: "book" },
+  { href: "/dashboard/site/servicos", label: "Serviços", nota: "as páginas de serviço", icone: "doc" },
+  { href: "/dashboard/site/configuracoes", label: "Configurações", nota: "contato, redes sociais e chamadas", icone: "gear" },
 ];
 
 /** O que entrou pelo WhatsApp — inclusive o que não virou caso. */

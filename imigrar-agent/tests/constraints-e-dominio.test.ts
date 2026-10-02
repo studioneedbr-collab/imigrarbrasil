@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { COLUNAS } from "@/lib/fila/kanban";
 import { MOTIVOS_DE_PERDA, CLASSIFICACOES } from "@/lib/domain/types";
+import { TIPOS_CONTEUDO_SITE, TIPOS_EVENTO_SITE, DISPOSITIVOS_SITE } from "@/lib/site/conteudo";
 
 /**
  * O BANCO E O DOMÍNIO CONTAM A MESMA HISTÓRIA?
@@ -184,4 +185,24 @@ describe("o que rola na horizontal contém os absolutos de dentro", () => {
       "o selo que abriga um `sr-only` precisa de `relative`",
     ).toBeTruthy();
   });
+});
+
+/**
+ * O SITE (migration 035). Três listas, e as três nos dois sentidos: o painel oferecer um
+ * tipo que o banco recusa é o defeito de 'proposta_enviada' outra vez; o banco aceitar um
+ * que o código não conhece é linha gravada que nenhuma tela mostra.
+ */
+describe("as listas do site batem com o banco", () => {
+  const PARES: [string, readonly string[]][] = [
+    ["tipo_conteudo", TIPOS_CONTEUDO_SITE],
+    ["tipo_evento", TIPOS_EVENTO_SITE],
+    ["dispositivo", DISPOSITIVOS_SITE],
+  ];
+  for (const [coluna, doCodigo] of PARES) {
+    it(`${coluna}: banco e código têm os mesmos valores`, () => {
+      const doBanco = valoresDoCheck(coluna);
+      expect(doBanco, `${coluna} perdeu o check`).not.toBeNull();
+      expect([...doBanco!].sort()).toEqual([...doCodigo].sort());
+    });
+  }
 });

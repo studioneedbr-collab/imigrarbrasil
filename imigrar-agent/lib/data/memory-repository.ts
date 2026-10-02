@@ -1,3 +1,4 @@
+import type { TipoConteudoSite, RegistroSite, EventoSite } from "@/lib/site/conteudo";
 import type { Repository } from "@/lib/data/repository";
 import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
@@ -472,6 +473,33 @@ export class MemoryRepository implements Repository {
     { id: "motivo:fora_do_perfil", tipo: "desqualificacao", chave: "fora_do_perfil", rotulo: "Fora do perfil", ordem: 1, protegido: false, arquivado: false },
     { id: "motivo:sem_contato", tipo: "desqualificacao", chave: "sem_contato", rotulo: "Não conseguimos contato", ordem: 2, protegido: false, arquivado: false },
   ];
+
+  // ── site ─────────────────────────────────────────────────────────────────────
+  private site = new Map<string, RegistroSite>();
+  private eventosSite: EventoSite[] = [];
+  async listarConteudoSite(tipo: TipoConteudoSite) {
+    return Array.from(this.site.values()).filter((r) => r.tipo === tipo).sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm));
+  }
+  async obterConteudoSite(tipo: TipoConteudoSite, slug: string) {
+    return this.site.get(`${tipo}:${slug}`) ?? null;
+  }
+  async salvarConteudoSite(r: { tipo: TipoConteudoSite; slug: string; dados: unknown; publicado: boolean; por: string | null }) {
+    const reg: RegistroSite = { tipo: r.tipo, slug: r.slug, dados: r.dados, publicado: r.publicado, atualizadoEm: new Date().toISOString(), atualizadoPor: r.por };
+    this.site.set(`${r.tipo}:${r.slug}`, reg);
+    return reg;
+  }
+  async excluirConteudoSite(tipo: TipoConteudoSite, slug: string) {
+    this.site.delete(`${tipo}:${slug}`);
+  }
+  async registrarEventoSite(e: Omit<EventoSite, "criadoEm">) {
+    this.eventosSite.push({ ...e, criadoEm: new Date().toISOString() });
+    // Sem teto, o processo de dev cresceria para sempre com os cliques de teste.
+    if (this.eventosSite.length > 50_000) this.eventosSite.splice(0, 10_000);
+  }
+  async listarEventosSite(desde: Date) {
+    const iso = desde.toISOString();
+    return this.eventosSite.filter((e) => e.criadoEm >= iso);
+  }
 
   async listMotivos(tipo?: TipoDeMotivo) {
     return this.motivos

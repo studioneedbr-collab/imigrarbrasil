@@ -1,0 +1,30 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import Chamada from "../../components/Chamada.astro";
+import { textoPuro } from "../../lib/util";
+import depoimentos from "../../data/depoimentos.json";
+
+export function getStaticPaths() {
+  return depoimentos.map((d) => ({ params: { slug: d.slug }, props: { d } }));
+}
+const { d } = Astro.props;
+const outros = depoimentos.filter((x) => x.slug !== d.slug);
+const resumo = textoPuro(d.html).slice(0, 155);
+---
+<Base titulo={`Depoimento de ${d.nome}`} descricao={resumo} imagem={d.foto}>
+  <CabecaPagina titulo={d.nome} sobretitulo={d.origem ?? "Depoimento"} migalhas={[{ href: "/quem-somos/", rotulo: "Quem Somos" }, { rotulo: `Depoimento de ${d.nome}` }]} />
+  <section class="secao">
+    <div class="container" style="max-width:900px">
+      <figure style="margin:0;display:grid;grid-template-columns:auto 1fr;gap:clamp(20px,4vw,40px);align-items:start">
+        <img src={d.foto} alt={d.nome} width="160" height="160" style="width:clamp(96px,16vw,160px);height:auto;aspect-ratio:1;border-radius:50%;object-fit:cover;box-shadow:var(--sombra)" />
+        <blockquote class="prosa" style="margin:0;font-size:1.2rem" set:html={d.html} />
+      </figure>
+      <h2 style="font-size:1.4rem;margin-top:64px">Mais depoimentos</h2>
+      <ul style="list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:10px;margin-bottom:64px">
+        {outros.map((o) => <li><a class="chip" style="text-decoration:none;padding:8px 16px" href={`/depoimento/${o.slug}/`}>{o.nome} · {o.origem}</a></li>)}
+      </ul>
+      <Chamada />
+    </div>
+  </section>
+</Base>

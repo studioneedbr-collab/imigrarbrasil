@@ -116,6 +116,19 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    // O site imigrarbrasil.com: o que ele traz e o que se edita nele. Item único com as
+    // seções em abas, pelo mesmo motivo do CRM — são recortes do mesmo assunto.
+    section: "Site",
+    links: [
+      {
+        href: "/dashboard/site",
+        label: "Site imigrarbrasil.com",
+        icon: "external",
+        ativoEm: ["/dashboard/site/formularios", "/dashboard/site/blog", "/dashboard/site/servicos", "/dashboard/site/configuracoes"],
+      },
+    ],
+  },
+  {
     section: "Gestão",
     links: [
       {

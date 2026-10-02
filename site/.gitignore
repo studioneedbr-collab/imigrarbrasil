@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.cache-wp/
+# Gerados no build por scripts/otimizar-imagens.mjs (foto.jpg.webp ao lado de foto.jpg).
+*.jpg.webp
+*.jpeg.webp
+*.png.webp
+pacote/

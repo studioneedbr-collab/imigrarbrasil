@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- rows come from untyped Supabase query results; mapped explicitly below */
+import type { TipoConteudoSite, RegistroSite, EventoSite } from "@/lib/site/conteudo";
 import type { Repository } from "@/lib/data/repository";
 import { conversasSemResposta } from "@/lib/operacao/sem-resposta";
 import type { Conversation, Message, MessageMedia, DocumentItem, MediaKind, Lead, Followup, FollowupStatus, Cliente, FlowStateId, TransferTicket, User, Classificacao, Reclassificacao, AccessLogEntry, EventoOperacao, TipoEventoOperacao, Lembrete, ZapiInstancia, RascunhoAgente, RascunhoStatus, AmbienteInstancia, ModoDesligado, ChamadaLlm, FunilCrm, EtapaCrm, ToqueDeFollowup,
@@ -765,6 +766,65 @@ export class SupabaseRepository implements Repository {
       protegido: !!r.protegido,
       arquivado: !!r.arquivado,
     };
+  }
+
+  // ── site (migration 035) ─────────────────────────────────────────────────────
+  private mapSite(r: Record<string, any>): RegistroSite {
+    return {
+      tipo: r.tipo_conteudo, slug: r.slug, dados: r.dados, publicado: !!r.publicado,
+      atualizadoEm: r.atualizado_em, atualizadoPor: r.atualizado_por ?? null,
+    };
+  }
+  async listarConteudoSite(tipo: TipoConteudoSite): Promise<RegistroSite[]> {
+    const { data, error } = await this.db.from("site_conteudo").select("*")
+      .eq("tipo_conteudo", tipo).order("atualizado_em", { ascending: false });
+    if (error) throw error;
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapSite(r));
+  }
+  async obterConteudoSite(tipo: TipoConteudoSite, slug: string): Promise<RegistroSite | null> {
+    const { data, error } = await this.db.from("site_conteudo").select("*")
+      .eq("tipo_conteudo", tipo).eq("slug", slug).maybeSingle();
+    if (error) throw error;
+    return data ? this.mapSite(data) : null;
+  }
+  async salvarConteudoSite(r: { tipo: TipoConteudoSite; slug: string; dados: unknown; publicado: boolean; por: string | null }): Promise<RegistroSite> {
+    const { data, error } = await this.db.from("site_conteudo")
+      .upsert({ tipo_conteudo: r.tipo, slug: r.slug, dados: r.dados, publicado: r.publicado, atualizado_em: new Date().toISOString(), atualizado_por: r.por }, { onConflict: "tipo_conteudo,slug" })
+      .select("*").single();
+    if (error) throw error;
+    return this.mapSite(data);
+  }
+  async excluirConteudoSite(tipo: TipoConteudoSite, slug: string): Promise<void> {
+    const { error } = await this.db.from("site_conteudo").delete().eq("tipo_conteudo", tipo).eq("slug", slug);
+    if (error) throw error;
+  }
+  async registrarEventoSite(e: Omit<EventoSite, "criadoEm">): Promise<void> {
+    const { error } = await this.db.from("site_eventos").insert({
+      tipo_evento: e.tipo, alvo: e.alvo, pagina: e.pagina, idioma: e.idioma,
+      pais: e.pais, dispositivo: e.dispositivo, origem: e.origem,
+    });
+    if (error) throw error;
+  }
+  async listarEventosSite(desde: Date): Promise<EventoSite[]> {
+    // O PostgREST devolve no máximo 1000 linhas por pedido: sem paginar, o painel mostraria
+    // "1000 visitas" para sempre a partir do dia em que o site passasse disso.
+    const linhas: EventoSite[] = [];
+    const LOTE = 1000;
+    for (let de = 0; de < 200_000; de += LOTE) {
+      const { data, error } = await this.db.from("site_eventos")
+        .select("tipo_evento, alvo, pagina, idioma, pais, dispositivo, origem, criado_em")
+        .gte("criado_em", desde.toISOString())
+        .order("criado_em", { ascending: false })
+        .range(de, de + LOTE - 1);
+      if (error) throw error;
+      const lote = (data as Record<string, any>[] | null) ?? [];
+      for (const r of lote) linhas.push({
+        tipo: r.tipo_evento, alvo: r.alvo, pagina: r.pagina, idioma: r.idioma, pais: r.pais,
+        dispositivo: r.dispositivo, origem: r.origem, criadoEm: r.criado_em,
+      });
+      if (lote.length < LOTE) break;
+    }
+    return linhas;
   }
 
   async listMotivos(tipo?: TipoDeMotivo): Promise<MotivoDesfecho[]> {

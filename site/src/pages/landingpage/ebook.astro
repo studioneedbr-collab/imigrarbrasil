@@ -1,0 +1,58 @@
+---
+import Base from "../../layouts/Base.astro";
+import Depoimentos from "../../components/Depoimentos.astro";
+import { SITE } from "../../config";
+import { ICONE } from "../../lib/icones";
+
+const itens = [
+  ["Passo a passo completo no Naturalizar-se", "Da criação do cadastro até o acompanhamento do protocolo, explicado tela por tela."],
+  ["Requisitos traduzidos em tarefas práticas", "Tempo de residência, idoneidade e capacidade civil: o que provar e como provar."],
+  ["Mapa de prazos e planilha de acompanhamento", "Fluxograma visual, cronograma sugerido e planilha para acompanhar cada etapa."],
+  ["Documentos sem dor de cabeça", "Padrões de arquivo, traduções, apostilas e legalizações consulares para evitar indeferimentos."],
+];
+---
+<Base titulo="E-book: guias práticos de naturalização brasileira" descricao="Guias práticos de naturalização ordinária, extraordinária e especial, com passo a passo, checklists e modelos prontos. Escritos pela equipe da Imigrar Brasil.">
+  <section class="hero">
+    <div class="container hero-in">
+      <div>
+        <span class="sobretitulo">E-book Imigrar Brasil</span>
+        <h1>Realize o sonho de conquistar a <em>cidadania brasileira.</em></h1>
+        <p class="hero-lead">Guias práticos de naturalização ordinária, extraordinária e especial, com passo a passo, checklists e modelos prontos.</p>
+        <p style="margin:0 0 20px;font-family:var(--f-titulo)"><s style="color:var(--slate)">de R$ 97,00</s> por <strong style="font-size:2.4rem;color:var(--carimbo)">R$ 37,00</strong></p>
+        <div class="hero-acoes">
+          <a class="btn btn-primario btn-grande" href={SITE.ebookCheckout} target="_blank" rel="noopener">Comprar agora <Fragment set:html={ICONE.seta} /></a>
+        </div>
+        <p style="color:var(--slate);font-size:.95rem;margin:0">Acesso imediato · Garantia incondicional</p>
+      </div>
+      <div style="position:relative;aspect-ratio:16/9;border-radius:var(--raio-g);overflow:hidden;box-shadow:var(--sombra-g);background:var(--casa)">
+        <iframe src="https://www.youtube-nocookie.com/embed/XHOmBV4js_E" title="Vídeo: Imigrar Brasil" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+      </div>
+    </div>
+  </section>
+
+  <section class="secao">
+    <div class="container">
+      <div class="cabeca-secao"><span class="sobretitulo">O que você recebe</span><h2>Método, não atalho milagroso</h2><p>Sem juridiquês, atualizado e alinhado às fontes oficiais.</p></div>
+      <ul class="grade grade-2" style="list-style:none;padding:0;margin:0">
+        {itens.map(([t, d]) => (
+          <li class="caixa" style="display:flex;gap:16px">
+            <span style="flex:none;width:32px;height:32px;border-radius:50%;background:var(--selo);color:#fff;display:grid;place-items:center"><span style="width:18px;height:18px;display:block" set:html={ICONE.check} /></span>
+            <div><h3 style="margin-bottom:4px">{t}</h3><p style="color:var(--slate);margin:0">{d}</p></div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="secao secao-papel">
+    <div class="container">
+      <div class="cabeca-secao centro"><span class="sobretitulo">Depoimentos</span><h2>Os resultados falam por nós</h2></div>
+    </div>
+    <Depoimentos titulo={false} />
+    <div class="container">
+      <div style="text-align:center;margin-top:48px">
+        <a class="btn btn-primario btn-grande" href={SITE.ebookCheckout} target="_blank" rel="noopener">Quero o e-book por R$ 37,00</a>
+      </div>
+    </div>
+  </section>
+</Base>

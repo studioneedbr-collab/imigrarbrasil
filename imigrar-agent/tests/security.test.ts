@@ -23,6 +23,8 @@ describe("allowlist de rotas públicas", () => {
         // O que o WordPress do site empurra quando um registro é salvo lá (Orçamentos e
         // os outros tipos de conteúdo dele). Mesmo segredo, mesma postura fail-closed.
         "/api/captura/registro",
+        "/api/site/evento",
+        "/api/site/exportar",
         "/api/health",
         "/api/cron/followups",
         "/api/cron/followup",

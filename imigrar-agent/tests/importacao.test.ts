@@ -325,7 +325,7 @@ describe("separador errado era o que escondia o cabeçalho", () => {
 
 // ── O CSV QUE O WORDPRESS EXPORTA ─────────────────────────────────────────────────
 //
-// `wordpress/imigrar-captura.php` gera um CSV a partir de um tipo de conteúdo do site, e
+// `integracoes/wordpress/` (o antigo `imigrar-captura.php`) gera um CSV a partir de um tipo de conteúdo do site, e
 // esta é a única amarração entre os dois lados: lá as colunas são escolhidas, aqui elas
 // são interpretadas. Ninguém roda os dois juntos, então o contrato fica escrito aqui.
 describe("o CSV exportado do WordPress cai de pé na importação", () => {

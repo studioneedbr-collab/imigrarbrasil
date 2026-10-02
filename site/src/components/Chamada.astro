@@ -1,0 +1,13 @@
+---
+import { ICONE } from "../lib/icones";
+import { whatsappLink, SITE } from "../config";
+interface Props { titulo?: string; texto?: string }
+const { titulo = SITE.ctas.chamadaTitulo, texto = SITE.ctas.chamadaTexto } = Astro.props;
+---
+<div class="chamada">
+  <div><h2>{titulo}</h2><p>{texto}</p></div>
+  <div class="chamada-acoes">
+    <a class="btn btn-zap btn-grande" href={whatsappLink()} target="_blank" rel="noopener" data-abrir-lead data-rastrear="cta:chamada-whatsapp"><Fragment set:html={ICONE.whatsapp} /> {SITE.ctas.botaoWhatsapp}</a>
+    <a class="btn btn-claro btn-grande" href="/fale-conosco/" data-rastrear="cta:chamada-orcamento">Solicitar orçamento</a>
+  </div>
+</div>

@@ -22,7 +22,7 @@ import {
 } from "@/lib/agent/training";
 import { REGRAS_INVIOLAVEIS, blocoMaterialOficial } from "@/lib/agent/material-oficial";
 import { acervoDoPrompt } from "@/lib/agent/acervo";
-import type { FaqItem } from "@/app/api/faq/route";
+import type { FaqItem } from "@/lib/domain/faq";
 
 export const dynamic = "force-dynamic";
 

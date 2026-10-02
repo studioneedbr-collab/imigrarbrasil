@@ -18,7 +18,6 @@ export const env = {
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   whatsappToken: process.env.WHATSAPP_ACCESS_TOKEN ?? "",
   phoneNumberId: process.env.PHONE_NUMBER_ID ?? "",
-  whatsappAppSecret: process.env.WHATSAPP_APP_SECRET ?? "",
   // Z-API (gateway de WhatsApp) — provedor ativo de envio/recebimento.
   zapiInstanceId: process.env.ZAPI_INSTANCE_ID ?? "",
   zapiToken: process.env.ZAPI_TOKEN ?? "",
@@ -43,6 +42,17 @@ export const env = {
   // Segredo da captura de lead do site (formulário / chat do Danilo). Mesma postura do
   // webhook: em produção, sem ele configurado a rota recusa tudo em vez de ficar aberta.
   siteCaptureToken: devOnlyDefault(process.env.SITE_CAPTURE_TOKEN ?? "", "imigrar_site_dev"),
+  // O SITE (painel → build). O build do site busca o conteúdo em /api/site/exportar com
+  // este segredo; sem ele configurado a rota recusa tudo (fail-closed). Segredo PRÓPRIO, e
+  // não o da captura: quem tem o de criar lead não deve conseguir ler o site inteiro, e
+  // vice-versa.
+  siteExportToken: devOnlyDefault(process.env.SITE_EXPORT_TOKEN ?? "", "imigrar_export_dev"),
+  // Para o botão Publicar disparar o GitHub Actions (repository_dispatch) e para importar
+  // o conteúdo que já está no repositório. Token fine-grained: Contents read + Actions write.
+  githubToken: process.env.GITHUB_TOKEN ?? "",
+  githubRepo: process.env.GITHUB_REPO ?? "studioneedbr-collab/imigrarbrasil",
+  // De onde o site manda os cliques (CORS de /api/site/evento). Mesma lista da captura.
+  siteOrigins: (process.env.SITE_CAPTURE_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean),
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
 };
 

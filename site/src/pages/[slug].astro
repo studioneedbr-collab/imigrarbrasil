@@ -1,0 +1,204 @@
+---
+// Artigos do blog. A URL é /<slug>/ na raiz, igual ao WordPress — é a URL que o Google indexou.
+import Base from "../layouts/Base.astro";
+import PostCard from "../components/PostCard.astro";
+import LeadForm from "../components/LeadForm.astro";
+import Chamada from "../components/Chamada.astro";
+import { SITE, CARGOS, whatsappLink } from "../config";
+import { ICONE } from "../lib/icones";
+import { slugify, textoPuro } from "../lib/util";
+import { dataHora, temasDoPost, urlDoTema, TEMAS_ATIVOS, servicosRelacionados, perguntasDoPost } from "../lib/blog";
+import Img from "../components/Img.astro";
+import posts from "../data/posts.json";
+import equipe from "../data/equipe.json";
+
+export function getStaticPaths() {
+  return posts.map((p) => ({ params: { slug: p.slug }, props: { p } }));
+}
+const { p } = Astro.props;
+
+// Âncoras nos h2 para o índice lateral.
+const indice: { id: string; texto: string }[] = [];
+const usados = new Set<string>();
+const html = p.html.replace(/<h2>([\s\S]*?)<\/h2>/g, (_, dentro) => {
+  const texto = textoPuro(dentro);
+  let id = slugify(texto).slice(0, 60) || "secao";
+  while (usados.has(id)) id += "-2";
+  usados.add(id);
+  indice.push({ id, texto });
+  return `<h2 id="${id}">${dentro}</h2>`;
+});
+
+// Relacionados: mais palavras-chave em comum; empate, o mais recente.
+const minhas = new Set(p.keywords.map((k) => k.toLowerCase()));
+const relacionados = posts
+  .filter((x) => x.slug !== p.slug)
+  .map((x) => ({ x, n: x.keywords.filter((k) => minhas.has(k.toLowerCase()) && k.toLowerCase() !== "imigrar brasil").length }))
+  .sort((a, b) => b.n - a.n || (b.x.published ?? "").localeCompare(a.x.published ?? ""))
+  .slice(0, 3)
+  .map((r) => r.x);
+
+const i = posts.findIndex((x) => x.slug === p.slug);
+const anterior = posts[i + 1], proximo = posts[i - 1];
+const autor = equipe.find((e) => e.nome === p.author) ?? equipe.find((e) => e.slug === "walter-gama")!;
+const url = `${SITE.url}/${p.slug}/`;
+
+const schema = [
+  {
+    "@type": "BlogPosting",
+    "@id": `${url}#artigo`,
+    headline: p.title,
+    description: p.description,
+    image: p.image ? { "@type": "ImageObject", url: SITE.url + p.image, width: 960, height: 540 } : undefined,
+    articleSection: temasDoPost(p)[0]?.nome ?? "Imigração",
+    about: temasDoPost(p).map((t) => ({ "@type": "Thing", name: t.nome })),
+    isPartOf: { "@type": "Blog", name: "Blog Imigrar Brasil", url: `${SITE.url}/blog-imigracao-brasil/` },
+    datePublished: p.published,
+    dateModified: p.modified ?? p.published,
+    inLanguage: "pt-BR",
+    keywords: p.keywords.join(", "),
+    wordCount: textoPuro(p.html).split(" ").length,
+    mainEntityOfPage: url,
+    // O WordPress apontava o autor para o domínio temporário da Hostinger.
+    author: { "@type": "Person", name: autor.nome, url: `${SITE.url}/equipe/${autor.slug}/`, jobTitle: CARGOS[autor.slug] },
+    publisher: { "@id": `${SITE.url}/#organizacao` },
+  },
+  {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE.url}/` },
+      { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE.url}/blog-imigracao-brasil/` },
+      { "@type": "ListItem", position: 3, name: p.title },
+    ],
+  },
+];
+const compartilhar = encodeURIComponent(`${p.title} ${url}`);
+const temas = temasDoPost(p).filter((t) => TEMAS_ATIVOS.includes(t));
+const [servico, servico2] = servicosRelacionados(p, 2);
+const perguntas = perguntasDoPost(p.html);
+if (perguntas.length >= 2) schema.push({
+  "@type": "FAQPage",
+  mainEntity: perguntas.map((q) => ({ "@type": "Question", name: q.pergunta, acceptedAnswer: { "@type": "Answer", text: q.resposta } })),
+} as any);
+// Palavras-chave limpas: sem a marca e sem ano solto, que não descrevem o assunto.
+const palavras = [...new Set(p.keywords.map((k) => k.trim()).filter((k) => k && !/^(imigrar brasil|brasil|20\d\d)$/i.test(k)))];
+---
+<Base titulo={p.seoTitle} descricao={p.description} imagem={p.image} tipo="article" publicado={p.published} modificado={p.modified} schema={schema} keywords={palavras}>
+  <Fragment slot="head">
+    <meta property="article:author" content={autor.nome} />
+    <meta property="article:section" content={temasDoPost(p)[0]?.nome ?? "Imigração"} />
+    {palavras.slice(0, 10).map((k) => <meta property="article:tag" content={k} />)}
+  </Fragment>
+  <div class="progresso" aria-hidden="true"></div>
+  <article data-artigo>
+    <header class="cabeca-pagina" style="padding-bottom:clamp(120px,14vw,180px)">
+      <div class="container estreito" style="max-width:860px">
+        <nav aria-label="Você está em">
+          <ol class="migalhas"><li><a href="/">Home</a></li><li><a href="/blog-imigracao-brasil/">Blog</a></li>{temas[0] && <li><a href={urlDoTema(temas[0])}>{temas[0].nome}</a></li>}</ol>
+        </nav>
+        <h1 style="max-width:none;font-size:clamp(1.9rem,4vw,3rem)">{p.title}</h1>
+        <p style="margin-bottom:22px">{p.description}</p>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;font-size:.95rem">
+          <img src={autor.foto} alt="" width="44" height="44" style="width:44px;height:44px;border-radius:50%;object-fit:cover" />
+          <span>Por <a href={`/equipe/${autor.slug}/`} style="color:#fff;font-weight:600">{autor.nome}</a></span>
+          <span aria-hidden="true">·</span>
+          <time datetime={p.published}>{dataHora(p.published)}</time>
+          <span aria-hidden="true">·</span>
+          <span>{p.readingMinutes} min de leitura</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="container" style="max-width:1100px;margin-top:clamp(-150px,-12vw,-100px);position:relative">
+      <Img src={p.image} alt={p.imageAlt || p.title} width={960} height={540} loading="eager" fetchpriority="high" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--raio-g);box-shadow:var(--sombra-g)" />
+    </div>
+
+    <div class="secao" style="padding-top:56px">
+      <div class="container com-lateral" style="max-width:1160px">
+        <div style="min-width:0">
+          <div class="prosa" set:html={html} />
+          {p.modified && p.modified.slice(0, 10) !== p.published?.slice(0, 10) && (
+            <p style="color:var(--slate);font-size:.9rem;margin-top:32px">Atualizado em <time datetime={p.modified}>{dataHora(p.modified)}</time>.</p>
+          )}
+
+          {servico && (
+            <aside class="servico-destaque" aria-label="Serviço relacionado">
+              <span class="sobretitulo" style="margin-bottom:6px">Como a Imigrar Brasil ajuda</span>
+              <h2><a href={`/servico/${servico.slug}/`}>{servico.title}</a></h2>
+              <p>{(servico.description ?? "").replace(/^[^:]{0,140}:\s*/, "").replace(/^./, (c) => c.toUpperCase())}</p>
+              <div style="display:flex;flex-wrap:wrap;gap:10px">
+                <a class="btn btn-primario" href={`/servico/${servico.slug}/`}>Conhecer o serviço <Fragment set:html={ICONE.seta} /></a>
+                <a class="btn btn-zap" href={whatsappLink()} target="_blank" rel="noopener" data-abrir-lead><Fragment set:html={ICONE.whatsapp} /> Falar com especialista</a>
+              </div>
+              {servico2 && <p style="margin:14px 0 0;font-size:.92rem">Veja também: <a href={`/servico/${servico2.slug}/`}>{servico2.title}</a></p>}
+            </aside>
+          )}
+
+          {temas.length > 0 && (
+            <nav aria-label="Temas deste artigo" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:32px">
+              <strong style="font-family:var(--f-titulo);color:var(--casa);margin-right:4px">Temas:</strong>
+              {temas.map((t) => <a class="chip chip-link" href={urlDoTema(t)}>{t.nome}</a>)}
+            </nav>
+          )}
+
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:32px 0 40px;padding:20px 0;border-block:1px solid var(--line)">
+            <strong style="font-family:var(--f-titulo);color:var(--casa);margin-right:6px">Compartilhe:</strong>
+            <a class="btn btn-contorno" style="min-height:40px;padding:8px 16px;font-size:.9rem" href={`https://wa.me/?text=${compartilhar}`} target="_blank" rel="noopener">WhatsApp</a>
+            <a class="btn btn-contorno" style="min-height:40px;padding:8px 16px;font-size:.9rem" href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noopener">LinkedIn</a>
+            <a class="btn btn-contorno" style="min-height:40px;padding:8px 16px;font-size:.9rem" href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`} target="_blank" rel="noopener">Facebook</a>
+          </div>
+
+          <aside class="caixa" style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap" aria-label="Sobre o autor">
+            <img src={autor.foto} alt="" width="88" height="88" loading="lazy" style="width:88px;height:88px;border-radius:50%;object-fit:cover" />
+            <div style="flex:1;min-width:220px">
+              <span class="sobretitulo" style="margin-bottom:4px">Quem escreveu</span>
+              <h2 style="font-size:1.25rem;margin-bottom:4px"><a href={`/equipe/${autor.slug}/`} style="text-decoration:none">{autor.nome}</a></h2>
+              <p style="color:var(--slate);font-size:.95rem;margin:0">{autor.description}</p>
+            </div>
+          </aside>
+
+          <nav aria-label="Outros artigos" class="grade grade-2" style="margin-top:32px;gap:14px">
+            {anterior ? <a class="servico-item" href={`/${anterior.slug}/`} rel="prev"><span style="display:block"><span>← Anterior</span><strong>{anterior.title}</strong></span></a> : <span />}
+            {proximo && <a class="servico-item" href={`/${proximo.slug}/`} rel="next" style="text-align:right;justify-content:flex-end"><span style="display:block"><span>Próximo →</span><strong>{proximo.title}</strong></span></a>}
+          </nav>
+        </div>
+
+        <aside class="lateral">
+          {indice.length > 2 && (
+            <nav class="caixa indice" aria-label="Neste artigo">
+              <h2 style="font-size:1rem;margin-bottom:10px">Neste artigo</h2>
+              <ol>{indice.map((h) => <li><a href={`#${h.id}`}>{h.texto}</a></li>)}</ol>
+            </nav>
+          )}
+          <div class="caixa caixa-cta">
+            <h2>Precisa de ajuda com o seu caso?</h2>
+            <p style="font-size:.95rem">Fale com a equipe do {autor.nome.split(" ")[0]} pelo WhatsApp.</p>
+            <LeadForm origem="blog" compacto botao="Conversar agora" />
+          </div>
+        </aside>
+      </div>
+    </div>
+  </article>
+
+  <section class="secao secao-papel">
+    <div class="container">
+      <div class="cabeca-secao"><span class="sobretitulo">Continue lendo</span><h2>Artigos relacionados</h2></div>
+      <div class="grade grade-3">{relacionados.map((r) => <PostCard post={r} />)}</div>
+    </div>
+  </section>
+  <section class="secao"><div class="container"><Chamada /></div></section>
+
+  <script>
+    // Marca no índice a seção que está na tela.
+    const links = new Map<string, HTMLAnchorElement>();
+    document.querySelectorAll<HTMLAnchorElement>(".indice a").forEach((a) => links.set(a.hash.slice(1), a));
+    if (links.size) {
+      const obs = new IntersectionObserver((es) => es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        links.forEach((a) => a.classList.remove("ativo"));
+        links.get(e.target.id)?.classList.add("ativo");
+      }), { rootMargin: "-20% 0px -70% 0px" });
+      document.querySelectorAll(".prosa h2[id]").forEach((h) => obs.observe(h));
+    }
+  </script>
+</Base>

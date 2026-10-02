@@ -1,0 +1,29 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import Chamada from "../../components/Chamada.astro";
+import { CARGOS } from "../../config";
+import equipe from "../../data/equipe.json";
+const socios = [...equipe].sort((a) => (a.slug === "walter-gama" ? -1 : 1));
+---
+<Base titulo="Equipe" descricao={"Nossa equipe é formada por profissionais altamente qualificados, com vivência internacional, formação multidisciplinar e compromisso real com cada etapa da jornada migratória dos nossos clientes. Da análise jurídica à execução documental, cada integrante da Imigrar Brasil atua com excelência, empatia e foco em resultados concretos."}>
+  <CabecaPagina titulo="Conheça quem faz a Imigrar Brasil acontecer" sobretitulo="Equipe" texto="Profissionais com vivência internacional, formação multidisciplinar e compromisso real com cada etapa da jornada migratória. Da análise jurídica à execução documental, com excelência, empatia e foco em resultados concretos." migalhas={[{ rotulo: "Equipe" }]} />
+  <section class="secao">
+    <div class="container">
+      <div class="grade grade-2">
+        {socios.map((p) => (
+          <article class="card">
+            <div class="card-img" style="aspect-ratio:4/3"><img src={p.foto} alt={p.nome} width="800" height="600" style="object-position:top" /></div>
+            <div class="card-corpo">
+              <span class="chip" style="align-self:flex-start">{CARGOS[p.slug]}</span>
+              <h2 style="font-size:1.6rem;margin:0"><a class="card-link" href={`/equipe/${p.slug}/`}>{p.nome}</a></h2>
+              <p>{p.description}</p>
+              <span class="link-seta" aria-hidden="true">Ver perfil completo</span>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div style="margin-top:72px"><Chamada /></div>
+    </div>
+  </section>
+</Base>

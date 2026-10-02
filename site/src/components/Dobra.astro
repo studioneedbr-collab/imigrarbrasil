@@ -1,0 +1,10 @@
+---
+// "Ler mais": o texto inteiro está no HTML (o Google lê tudo); só a tela mostra o começo.
+// Se o texto for curto, o script não mostra o botão e não corta nada.
+interface Props { altura?: number; rotulo?: string }
+const { altura = 260, rotulo = "Ler mais" } = Astro.props;
+---
+<div class="dobra fechada" data-dobra style={`--altura:${altura}px`}>
+  <div class="dobra-corpo"><slot /></div>
+  <button type="button" class="dobra-botao" aria-expanded="false" data-mais={rotulo} data-menos="Ler menos" hidden>{rotulo}</button>
+</div>

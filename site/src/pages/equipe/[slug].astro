@@ -1,0 +1,44 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import PostCard from "../../components/PostCard.astro";
+import Chamada from "../../components/Chamada.astro";
+import Dobra from "../../components/Dobra.astro";
+import Img from "../../components/Img.astro";
+import { SITE, CARGOS } from "../../config";
+import equipe from "../../data/equipe.json";
+import posts from "../../data/posts.json";
+
+export function getStaticPaths() {
+  return equipe.map((p) => ({ params: { slug: p.slug }, props: { p } }));
+}
+const { p } = Astro.props;
+const artigos = posts.filter((x) => x.author === p.nome).slice(0, 6);
+const schema = {
+  "@type": "Person",
+  name: p.nome,
+  jobTitle: CARGOS[p.slug],
+  description: p.description,
+  image: p.foto ? SITE.url + p.foto : undefined,
+  url: `${SITE.url}/equipe/${p.slug}/`,
+  worksFor: { "@id": `${SITE.url}/#organizacao` },
+};
+---
+<Base titulo={p.nome} descricao={p.description} imagem={p.foto} schema={[schema]}>
+  <CabecaPagina titulo={p.nome} sobretitulo={CARGOS[p.slug]} migalhas={[{ href: "/equipe/", rotulo: "Equipe" }, { rotulo: p.nome }]} />
+  <section class="secao">
+    <div class="container" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:clamp(32px,5vw,64px);align-items:start;max-width:1080px">
+      <Img src={p.foto} alt={p.nome} width={480} height={600} loading="eager" style="border-radius:var(--raio-g);box-shadow:var(--sombra-g);width:100%;max-width:420px" />
+      <Dobra altura={300}><div class="prosa" set:html={p.html} /></Dobra>
+    </div>
+  </section>
+  {artigos.length > 0 && (
+    <section class="secao secao-papel">
+      <div class="container">
+        <div class="cabeca-secao"><span class="sobretitulo">Artigos</span><h2>Escritos por {p.nome.split(" ")[0]}</h2></div>
+        <div class="grade grade-3">{artigos.map((a) => <PostCard post={a} />)}</div>
+      </div>
+    </section>
+  )}
+  <section class="secao"><div class="container"><Chamada /></div></section>
+</Base>

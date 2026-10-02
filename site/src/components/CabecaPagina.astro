@@ -1,0 +1,23 @@
+---
+interface Props { titulo: string; sobretitulo?: string; texto?: string | null; migalhas?: { href?: string; rotulo: string }[] }
+const { titulo, sobretitulo, texto, migalhas = [] } = Astro.props;
+const lista = [{ href: "/", rotulo: "Home" }, ...migalhas];
+const schema = {
+  "@context": "https://schema.org", "@type": "BreadcrumbList",
+  itemListElement: lista.map((m, i) => ({ "@type": "ListItem", position: i + 1, name: m.rotulo, ...(m.href ? { item: new URL(m.href, "https://imigrarbrasil.com").href } : {}) })),
+};
+---
+<section class="cabeca-pagina">
+  <div class="container">
+    <nav aria-label="Você está em">
+      <ol class="migalhas">
+        {lista.map((m) => <li>{m.href ? <a href={m.href}>{m.rotulo}</a> : <span aria-current="page">{m.rotulo}</span>}</li>)}
+      </ol>
+    </nav>
+    {sobretitulo && <span class="sobretitulo">{sobretitulo}</span>}
+    <h1>{titulo}</h1>
+    {texto && <p>{texto}</p>}
+    <slot />
+  </div>
+  <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+</section>

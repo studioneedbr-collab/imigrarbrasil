@@ -1,0 +1,35 @@
+{
+  "telefone": "+55 (11) 91985-4664",
+  "whatsapp": "5511919854664",
+  "email": "atendimento@imigrarbrasil.com",
+  "endereco": {
+    "rua": "Rua Bento Freitas, 181",
+    "bairro": "Vila Buarque",
+    "cidade": "São Paulo",
+    "uf": "SP",
+    "cep": "01220-000"
+  },
+  "social": {
+    "instagram": "https://www.instagram.com/imigrarbrasil/",
+    "linkedin": "https://www.linkedin.com/company/imigrar-brasil/",
+    "facebook": "https://www.facebook.com/imigrarbrasil",
+    "x": "https://x.com/ImigrarBrasil",
+    "youtube": "",
+    "tiktok": ""
+  },
+  "numeros": [
+    { "valor": "352 mil", "rotulo": "vidas impactadas" },
+    { "valor": "80+", "rotulo": "processos ativos" },
+    { "valor": "50+", "rotulo": "países atendidos" },
+    { "valor": "332", "rotulo": "imigrantes naturalizados" }
+  ],
+  "ctas": {
+    "heroPrincipal": "Nossos serviços",
+    "heroSecundario": "Fale com a gente",
+    "chamadaTitulo": "Vamos olhar o seu caso?",
+    "chamadaTexto": "Conte sua situação e receba uma orientação inicial com o caminho mais seguro para você ou sua família.",
+    "botaoWhatsapp": "Falar no WhatsApp",
+    "mensagemWhatsapp": "Olá, estive no site da Imigrar Brasil. Gostaria de mais informações."
+  },
+  "ebookCheckout": "https://pay.kiwify.com.br/g7DvjHI"
+}

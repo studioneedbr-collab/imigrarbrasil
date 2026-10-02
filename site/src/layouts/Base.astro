@@ -1,0 +1,236 @@
+---
+import "../styles/fontes.css";
+import "../styles/global.css";
+import { SITE, MENU, whatsappLink } from "../config";
+import { ICONE } from "../lib/icones";
+import { BANDEIRA } from "../lib/bandeiras";
+import LeadForm from "../components/LeadForm.astro";
+import servicos from "../data/servicos.json";
+
+interface Props {
+  titulo: string;           // vai para <title> com " | Imigrar Brasil"
+  descricao?: string | null;
+  imagem?: string | null;
+  tipo?: "website" | "article";
+  publicado?: string | null;
+  modificado?: string | null;
+  schema?: Record<string, unknown>[];
+  noindex?: boolean;
+  tituloCompleto?: boolean; // não acrescenta o nome da marca
+  keywords?: string[];
+}
+
+const { titulo, descricao, imagem, tipo = "website", publicado, modificado, schema = [], noindex = false, tituloCompleto = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, SITE.url).href;
+const tituloFinal = tituloCompleto ? titulo : `${titulo} | ${SITE.nome}`;
+const desc = descricao || SITE.descricao;
+const og = new URL(imagem || "/og-imigrar-brasil.png", SITE.url).href;
+const caminho = Astro.url.pathname;
+const ativo = (href: string) => (href === "/" ? caminho === "/" : caminho.startsWith(href));
+
+const organizacao = {
+  "@context": "https://schema.org",
+  "@type": "LegalService",
+  "@id": `${SITE.url}/#organizacao`,
+  name: SITE.nome,
+  legalName: SITE.razaoSocial,
+  url: SITE.url,
+  logo: `${SITE.url}/marca/logotipo-original-640.png`,
+  image: `${SITE.url}/og-imigrar-brasil.png`,
+  description: SITE.descricao,
+  foundingDate: String(SITE.fundacao),
+  telephone: SITE.telefoneE164,
+  email: SITE.email,
+  taxID: SITE.cnpj,
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: SITE.endereco.rua,
+    addressLocality: SITE.endereco.cidade,
+    addressRegion: SITE.endereco.uf,
+    postalCode: SITE.endereco.cep,
+    addressCountry: "BR",
+  },
+  geo: { "@type": "GeoCoordinates", latitude: SITE.geo.lat, longitude: SITE.geo.lng },
+  areaServed: "Worldwide",
+  availableLanguage: ["pt-BR", "es", "en", "fr"],
+  sameAs: Object.values(SITE.social),
+};
+const servicosRodape = servicos.slice(0, 6);
+const LINGUAS = [
+  { cod: "pt", nome: "Português", atendimento: "Atendimento em português", sugerido: "Sugerido para você" },
+  { cod: "es", nome: "Español", atendimento: "Atención en español", sugerido: "Sugerido para ti" },
+  { cod: "en", nome: "English", atendimento: "Support in English", sugerido: "Suggested for you" },
+  { cod: "fr", nome: "Français", atendimento: "Accompagnement en français", sugerido: "Suggéré pour vous" },
+] as const;
+const REDES: Record<string, string> = { instagram: "Instagram", linkedin: "LinkedIn", facebook: "Facebook", x: "X (Twitter)", youtube: "YouTube", tiktok: "TikTok" };
+---
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <script is:inline>document.documentElement.classList.add("js")</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{tituloFinal}</title>
+  <meta name="description" content={desc} />
+  <link rel="canonical" href={canonical} />
+  {noindex ? <meta name="robots" content="noindex, follow" /> : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />}
+  <meta name="theme-color" content="#12335C" />
+  <link rel="icon" href="/favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="alternate" type="application/rss+xml" title="Blog Imigrar Brasil" href="/rss.xml" />
+  <link rel="sitemap" href="/sitemap-index.xml" />
+
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:site_name" content={SITE.nome} />
+  <meta property="og:type" content={tipo} />
+  <meta property="og:title" content={titulo} />
+  <meta property="og:description" content={desc} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:image" content={og} />
+  {publicado && <meta property="article:published_time" content={publicado} />}
+  {modificado && <meta property="article:modified_time" content={modificado} />}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@ImigrarBrasil" />
+
+  <script type="application/ld+json" set:html={JSON.stringify(organizacao)} />
+  {schema.map((s) => <script type="application/ld+json" set:html={JSON.stringify({ "@context": "https://schema.org", ...s })} />)}
+  {Astro.props.keywords?.length ? <meta name="keywords" content={Astro.props.keywords.join(", ")} /> : null}
+  <slot name="head" />
+</head>
+<body>
+  <a class="sr-only" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="topo" id="topo">
+    <div class="topo-faixa"></div>
+    <div class="container topo-in">
+      <a class="topo-logo notranslate" href="/" aria-label="Imigrar Brasil — página inicial" translate="no">
+        <img src="/marca/logotipo-original-640.png" alt="Imigrar Brasil" width="168" height="47" />
+      </a>
+      <nav aria-label="Principal" style="display:contents">
+        <ul class="menu" id="menu">
+          {MENU.map((m) => <li><a href={m.href} aria-current={ativo(m.href) ? "page" : undefined}>{m.rotulo}</a></li>)}
+        </ul>
+      </nav>
+      <div class="topo-acoes">
+        <div class="idioma notranslate" data-idioma translate="no">
+          <button class="idioma-botao" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Idioma do site">
+            <span class="idioma-bandeira" data-bandeira set:html={BANDEIRA.pt} /><span data-atual>PT</span>
+          </button>
+          <ul class="idioma-lista" hidden>
+            {LINGUAS.map((l) => <li><button type="button" data-l={l.cod} lang={l.cod}><span class="idioma-bandeira" set:html={BANDEIRA[l.cod]} />{l.nome} <small>{l.cod.toUpperCase()}</small></button></li>)}
+          </ul>
+        </div>
+        <a class="btn btn-primario btn-contato" href={whatsappLink()} data-abrir-lead data-rastrear="cta:topo" target="_blank" rel="noopener">
+          <Fragment set:html={ICONE.whatsapp} /> {SITE.ctas.heroSecundario}
+        </a>
+        <button class="btn-menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Abrir menu">
+          <Fragment set:html={ICONE.menu} />
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <slot />
+  </main>
+
+  <footer class="rodape">
+    <div class="container">
+      <div class="rodape-grade">
+        <div>
+          <img class="rodape-logo" src="/marca/logotipo-branco-640.png" alt="Imigrar Brasil" width="180" height="50" loading="lazy" />
+          <p>Desde {SITE.fundacao}, com soluções migratórias que acolhem pessoas e impulsionam empresas.</p>
+          <div class="sociais">
+            {Object.entries(SITE.social).map(([rede, url]) => (
+              <a href={url} target="_blank" rel="noopener" aria-label={REDES[rede] ?? rede} data-rastrear={rede}><Fragment set:html={(ICONE as Record<string, string>)[rede] ?? ICONE.globo} /></a>
+            ))}
+          </div>
+        </div>
+        <nav aria-label="Rodapé">
+          <h2>Menu</h2>
+          <ul>
+            {MENU.map((m) => <li><a href={m.href}>{m.rotulo}</a></li>)}
+            <li><a href="/politica-de-privacidade/">Política de Privacidade</a></li>
+          </ul>
+        </nav>
+        <div>
+          <h2>Serviços</h2>
+          <ul>
+            {servicosRodape.map((s) => <li><a href={`/servico/${s.slug}/`}>{s.title.split(/\s[(–-]\s?/)[0]}</a></li>)}
+            <li><a href="/nossos-servicos/"><strong>Ver todos os serviços →</strong></a></li>
+          </ul>
+        </div>
+        <div>
+          <h2>Contato</h2>
+          <ul class="contato-lista">
+            <li><Fragment set:html={ICONE.whatsapp} /><a href={whatsappLink()} target="_blank" rel="noopener" class="notranslate" translate="no">{SITE.telefone}</a></li>
+            <li><Fragment set:html={ICONE.email} /><a href={`mailto:${SITE.email}`} class="notranslate" translate="no">{SITE.email}</a></li>
+            <li><Fragment set:html={ICONE.local} /><span>{SITE.endereco.rua}, {SITE.endereco.bairro}<br />{SITE.endereco.cidade}/{SITE.endereco.uf} · CEP {SITE.endereco.cep}</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="rodape-base">
+        <p>© {new Date().getFullYear()} {SITE.razaoSocial} Todos os direitos reservados. CNPJ nº {SITE.cnpj}. IMIGRAR BRASIL® é marca registrada no INPI.</p>
+        <p>A Imigrar Brasil é uma empresa privada de consultoria e assessoria migratória e não tem vínculo com a Polícia Federal, o Ministério da Justiça, o Itamaraty ou qualquer órgão público.</p>
+        <p class="credito notranslate" translate="no">Site desenvolvido por <a href="https://www.instagram.com/studio.need/" target="_blank" rel="noopener"><strong>Studio Need</strong> · @studio.need</a></p>
+      </div>
+    </div>
+  </footer>
+
+  <a class="zap-flutuante" href={whatsappLink()} target="_blank" rel="noopener" data-abrir-lead data-rastrear="cta:flutuante" aria-label="Conversar no WhatsApp"><Fragment set:html={ICONE.whatsapp} /><span class="balao" aria-hidden="true">Fale com a gente</span></a>
+
+  <!-- Boas-vindas na primeira visita: em que língua a pessoa quer ser atendida.
+       Escrito nas quatro línguas de propósito — quem chega ainda não escolheu nenhuma. -->
+  <dialog class="modal boas-vindas notranslate" id="boas-vindas" aria-labelledby="boas-vindas-t" translate="no">
+    <div class="modal-in">
+      <button class="fechar" type="button" aria-label="Fechar" data-fechar>×</button>
+      <img src="/marca/simbolo-256.png" alt="" width="52" height="52" class="boas-vindas-marca" />
+      <h2 id="boas-vindas-t">Bem-vindo <span>·</span> Bienvenido <span>·</span> Welcome <span>·</span> Bienvenue</h2>
+      <p class="boas-vindas-pergunta">Em qual idioma você prefere falar com a gente?</p>
+      <ul class="boas-vindas-linguas">
+        {LINGUAS.map((l) => (
+          <li>
+            <button type="button" data-escolher={l.cod} lang={l.cod}>
+              <span class="boas-vindas-bandeira" set:html={BANDEIRA[l.cod]} />
+              <span class="boas-vindas-texto"><strong>{l.nome}</strong><small>{l.atendimento}</small></span>
+              <span class="boas-vindas-sugerido" hidden>{l.sugerido}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p class="boas-vindas-nota">Você pode trocar quando quiser, no topo do site. Traduções automáticas; nossa equipe atende nos quatro idiomas.</p>
+    </div>
+  </dialog>
+
+  <dialog class="modal" id="modal-lead" aria-labelledby="modal-lead-t">
+    <div class="modal-in">
+      <button class="fechar" type="button" aria-label="Fechar">×</button>
+      <span class="sobretitulo">Atendimento online</span>
+      <h2 id="modal-lead-t" style="font-size:1.5rem">Conte rapidinho sobre você</h2>
+      <p style="color:var(--slate);font-size:.95rem">Deixe seu nome e WhatsApp. Abrimos a conversa com a nossa equipe na hora.</p>
+      <LeadForm origem="modal" compacto />
+    </div>
+  </dialog>
+
+  <script>
+    import { iniciarIdioma } from "../scripts/idioma";
+    import { iniciarFormularios } from "../scripts/lead";
+    import { iniciarEfeitos } from "../scripts/efeitos";
+    import { iniciarRastreio } from "../scripts/rastreio";
+    iniciarIdioma();
+    iniciarFormularios();
+    iniciarEfeitos();
+    iniciarRastreio();
+
+    const topo = document.getElementById("topo")!;
+    const botaoMenu = topo.querySelector<HTMLButtonElement>(".btn-menu")!;
+    botaoMenu.addEventListener("click", () => {
+      const aberto = topo.classList.toggle("aberto");
+      botaoMenu.setAttribute("aria-expanded", String(aberto));
+    });
+    const marcar = () => topo.classList.toggle("rolou", scrollY > 8);
+    addEventListener("scroll", marcar, { passive: true });
+    marcar();
+  </script>
+</body>
+</html>

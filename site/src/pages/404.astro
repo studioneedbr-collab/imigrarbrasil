@@ -1,0 +1,20 @@
+---
+import Base from "../layouts/Base.astro";
+import PostCard from "../components/PostCard.astro";
+import posts from "../data/posts.json";
+---
+<Base titulo="Página não encontrada" noindex>
+  <section class="secao">
+    <div class="container" style="max-width:720px;text-align:center">
+      <span class="sobretitulo" style="justify-content:center">Erro 404</span>
+      <h1 style="font-size:clamp(1.8rem,4vw,2.6rem)">Esta página não existe mais</h1>
+      <p style="font-size:1.1rem;color:var(--slate)">O site da Imigrar Brasil foi renovado e alguns endereços mudaram. Comece por aqui:</p>
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin:28px 0 64px">
+        <a class="btn btn-primario" href="/">Página inicial</a>
+        <a class="btn btn-contorno" href="/nossos-servicos/">Serviços</a>
+        <a class="btn btn-contorno" href="/blog-imigracao-brasil/">Blog</a>
+      </div>
+    </div>
+    <div class="container"><div class="grade grade-3">{posts.slice(0, 3).map((p) => <PostCard post={p} />)}</div></div>
+  </section>
+</Base>

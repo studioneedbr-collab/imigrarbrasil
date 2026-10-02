@@ -819,8 +819,10 @@ imigrar-agent/      a aplicação (painel, webhook, agente)
   components/atendimentos/qualidade.tsx  completude + prioridade do lead
 ingestao/           pipeline Python que vira base vetorial (não precisa de pip)
 material-oficial/   as 7 cartilhas + legislação — a fonte de tudo que a Ana afirma
-marca/              logotipos originais do cliente
-docs/               referência (system-prompt-v1.md — histórico, não é a fonte da verdade)
+site/               o site imigrarbrasil.com — HTML estático (Astro), sobe no CloudPanel
+integracoes/wordpress/  plugin do WordPress antigo (captura de leads) — sai junto com ele
+assets/marca/       logotipos originais do cliente
+docs/historico/     system-prompt-v1 e planos já entregues — não são a fonte da verdade
 ```
 
 Os PDFs têm o nome do `id` que já têm em `ingestao/fontes.json`. Os scripts da raiz

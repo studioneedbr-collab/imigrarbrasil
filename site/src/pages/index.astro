@@ -1,0 +1,180 @@
+---
+import Base from "../layouts/Base.astro";
+import PostCard from "../components/PostCard.astro";
+import Depoimentos from "../components/Depoimentos.astro";
+import Parceiros from "../components/Parceiros.astro";
+import Faq from "../components/Faq.astro";
+import Chamada from "../components/Chamada.astro";
+import LeadForm from "../components/LeadForm.astro";
+import Img from "../components/Img.astro";
+import Dobra from "../components/Dobra.astro";
+import { SITE, CATEGORIAS_INFO, CARGOS, whatsappLink } from "../config";
+import { ICONE } from "../lib/icones";
+import { textoPuro } from "../lib/util";
+import posts from "../data/posts.json";
+import categorias from "../data/categorias.json";
+import equipe from "../data/equipe.json";
+import faq from "../data/faq.json";
+
+const cats = [...categorias].sort((a, b) => CATEGORIAS_INFO[a.slug].ordem - CATEGORIAS_INFO[b.slug].ordem);
+const recentes = posts.slice(0, 3);
+const socios = [...equipe].sort((a) => (a.slug === "walter-gama" ? -1 : 1));
+const walter = equipe.find((e) => e.slug === "walter-gama")!;
+const diferenciais = [
+  { icone: ICONE.escudo, titulo: "Base legal em cada decisão", texto: "Lei 13.445/2017, Decreto 9.199/2017 e as resoluções do CNIg." },
+  { icone: ICONE.relogio, titulo: "Prazos e status claros", texto: "Orçamento, prazo estimado e andamento sem surpresa." },
+  { icone: ICONE.globo, titulo: "100% on-line, no mundo todo", texto: "Para quem está no Brasil ou ainda no exterior." },
+  { icone: ICONE.pessoas, titulo: "Atendimento em 4 idiomas", texto: "Português, espanhol, inglês e francês." },
+];
+
+const schemaFaq = {
+  "@type": "FAQPage",
+  mainEntity: faq.map((f) => ({ "@type": "Question", name: f.pergunta, acceptedAnswer: { "@type": "Answer", text: textoPuro(f.resposta) } })),
+};
+const schemaSite = { "@type": "WebSite", "@id": `${SITE.url}/#site`, url: SITE.url, name: SITE.nome, inLanguage: "pt-BR", publisher: { "@id": `${SITE.url}/#organizacao` } };
+---
+<Base titulo="Imigrar Brasil | Assessoria em vistos, residência e naturalização" tituloCompleto schema={[schemaSite, schemaFaq]}>
+  <section class="hero">
+    <div class="container hero-in">
+      <div>
+        <span class="sobretitulo">Assessoria jurídica migratória desde {SITE.fundacao}</span>
+        <h1>Imigrar com segurança, <em>viver com liberdade.</em></h1>
+        <p class="hero-lead">Do visto à residência, oferecemos soluções completas e acolhimento real para quem quer viver, empreender ou investir no Brasil.</p>
+        <div class="hero-acoes">
+          <a class="btn btn-primario btn-grande" href="/nossos-servicos/" data-rastrear="cta:hero-servicos">{SITE.ctas.heroPrincipal} <Fragment set:html={ICONE.seta} /></a>
+          <a class="btn btn-contorno btn-grande" href={whatsappLink()} target="_blank" rel="noopener" data-abrir-lead data-rastrear="cta:hero-contato"><Fragment set:html={ICONE.whatsapp} /> {SITE.ctas.heroSecundario}</a>
+        </div>
+        <ul class="numeros">
+          {SITE.numeros.filter((n) => n.rotulo !== "processos ativos").map((n) => <li><strong data-contar>{n.valor}</strong><span>{n.rotulo}</span></li>)}
+        </ul>
+      </div>
+      <Img class="hero-img" src="/hero-pessoas.png" alt="Imigrantes de diferentes origens que vivem no Brasil" width={700} height={546} loading="eager" fetchpriority="high" />
+    </div>
+  </section>
+
+  <Parceiros />
+
+  <section class="secao">
+    <div class="container">
+      <div class="cabeca-secao" data-revelar>
+        <span class="sobretitulo">Serviços</span>
+        <h2>Soluções completas para a sua imigração</h2>
+        <p>Seis frentes de atuação, do primeiro visto à cidadania. Escolha por onde começar.</p>
+      </div>
+      <div class="grade grade-3">
+        {cats.map((c) => (
+          <article class="card card-categoria" data-revelar>
+            <div class="card-corpo">
+              <span class="chip">{CATEGORIAS_INFO[c.slug].chamada}</span>
+              <h3><a class="card-link" href={`/categoria-servico/${c.slug}/`} style="color:inherit">{c.nome}</a></h3>
+              <p>{CATEGORIAS_INFO[c.slug].resumo}</p>
+              <span class="link-seta" style="color:#fff" aria-hidden="true">{c.servicos.length} serviços</span>
+            </div>
+            {c.image && <div class="card-img"><Img src={c.image} width={405} height={506} /></div>}
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="secao secao-casa sobre" aria-labelledby="sobre-t">
+    <div class="container sobre-in">
+      <div class="sobre-foto" data-revelar>
+        <Img src={walter.foto} alt={`${walter.nome}, fundador da Imigrar Brasil`} width={480} height={600} />
+        <div class="sobre-selo">
+          <strong>{new Date().getFullYear() - SITE.fundacao}+</strong>
+          <span>anos de Imigrar Brasil</span>
+        </div>
+        <div class="sobre-assinatura">
+          <strong>{walter.nome}</strong>
+          <span>{CARGOS[walter.slug]}</span>
+        </div>
+      </div>
+      <div>
+        <div data-revelar>
+          <span class="sobretitulo">Sobre nós</span>
+          <h2 id="sobre-t">Uma assessoria feita de pessoas, tecnologia e confiança.</h2>
+          <Dobra altura={120}>
+            <p style="font-size:1.1rem">Fundada em {SITE.fundacao}, a Imigrar Brasil nasceu para transformar burocracia em acolhimento. Unimos advocacia especializada, automação inteligente e empatia real para oferecer uma jornada migratória mais leve, transparente e segura — do visto à residência.</p>
+            <p>Nossa missão é tornar a vida do estrangeiro no Brasil juridicamente segura, organizada e previsível: que cada pessoa, família ou empresa decida com clareza, consciência dos riscos e conhecimento dos próprios direitos, sem se perder na burocracia.</p>
+            <p>A visão é ser, até 2030, a plataforma latino-americana de referência em mobilidade internacional — construindo pontes duradouras entre o Brasil e o mundo.</p>
+          </Dobra>
+        </div>
+        <ul class="sobre-lista">
+          {diferenciais.map((d) => (
+            <li data-revelar>
+              <span class="ico" set:html={d.icone} />
+              <div><strong>{d.titulo}</strong><span>{d.texto}</span></div>
+            </li>
+          ))}
+        </ul>
+        <a class="btn btn-claro" href="/quem-somos/" data-revelar>Conheça a empresa <Fragment set:html={ICONE.seta} /></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="secao">
+    <div class="container">
+      <div class="cabeca-secao" data-revelar>
+        <span class="sobretitulo">Diretoria</span>
+        <h2>Liderança especializada. Compromisso com resultados.</h2>
+        <p>Atendimento estratégico, transparente e humano — do primeiro contato à conquista da sua residência.</p>
+      </div>
+      <div class="grade grade-2">
+        {socios.map((p) => (
+          <article class="card card-pessoa" data-revelar>
+            <div class="card-img"><Img src={p.foto} alt={`${p.nome}, ${CARGOS[p.slug]}`} width={400} height={500} /></div>
+            <div class="card-corpo" style="justify-content:center">
+              <span class="chip" style="align-self:flex-start">{CARGOS[p.slug]}</span>
+              <h3 style="font-size:1.4rem"><a class="card-link" href={`/equipe/${p.slug}/`}>{p.nome}</a></h3>
+              <p>{p.description?.split(":")[0]}</p>
+              <span class="link-seta" aria-hidden="true">Ver perfil</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <Depoimentos />
+
+  <section class="secao">
+    <div class="container">
+      <div class="cabeca-secao" style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;max-width:none;flex-wrap:wrap" data-revelar>
+        <div style="max-width:620px">
+          <span class="sobretitulo">Blog</span>
+          <h2>Para quem quer viver no Brasil</h2>
+          <p>Leis, prazos e documentos explicados sem juridiquês, com base nas fontes oficiais.</p>
+        </div>
+        <a class="btn btn-contorno" href="/blog-imigracao-brasil/">Ver todos os artigos <Fragment set:html={ICONE.seta} /></a>
+      </div>
+      <div class="grade grade-3">
+        {recentes.map((p) => <PostCard post={p} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="secao secao-papel">
+    <div class="container com-lateral">
+      <div>
+        <div class="cabeca-secao" data-revelar>
+          <span class="sobretitulo">FAQ</span>
+          <h2>Dúvidas comuns</h2>
+        </div>
+        <Faq itens={faq} />
+      </div>
+      <aside class="lateral">
+        <div class="caixa caixa-cta" data-revelar>
+          <span class="sobretitulo">Atendimento online</span>
+          <h2>Não achou sua dúvida?</h2>
+          <p>Deixe seu nome e WhatsApp e fale direto com a nossa equipe.</p>
+          <LeadForm origem="home-faq" compacto />
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="secao">
+    <div class="container" data-revelar><Chamada /></div>
+  </section>
+</Base>

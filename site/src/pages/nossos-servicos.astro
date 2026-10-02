@@ -1,0 +1,66 @@
+---
+import Base from "../layouts/Base.astro";
+import CabecaPagina from "../components/CabecaPagina.astro";
+import ServicoItem from "../components/ServicoItem.astro";
+import Chamada from "../components/Chamada.astro";
+import { CATEGORIAS_INFO } from "../config";
+import { ICONE } from "../lib/icones";
+import categorias from "../data/categorias.json";
+import servicos from "../data/servicos.json";
+
+const cats = [...categorias].sort((a, b) => CATEGORIAS_INFO[a.slug].ordem - CATEGORIAS_INFO[b.slug].ordem);
+const porSlug = Object.fromEntries(servicos.map((s) => [s.slug, s]));
+const schema = {
+  "@type": "ItemList",
+  name: "Serviços da Imigrar Brasil",
+  itemListElement: servicos.map((s, i) => ({ "@type": "ListItem", position: i + 1, url: `https://imigrarbrasil.com/servico/${s.slug}/`, name: s.title })),
+};
+---
+<Base titulo="Nossos Serviços" descricao="Nossos Serviços: assessoria completa em vistos, residência, naturalização, regularização migratória, e tudo relacionado a imigração com orientação jurídica segura e personalizada." schema={[schema]}>
+  <CabecaPagina titulo="Nossos Serviços" sobretitulo={`${servicos.length} serviços em 6 frentes`} texto="Do visto à residência, entregamos soluções jurídicas completas — com orientação estratégica e acolhimento genuíno — para quem deseja visitar, viver, empreender ou investir no Brasil." migalhas={[{ rotulo: "Nossos Serviços" }]}>
+    <div style="margin-top:28px;max-width:560px;position:relative">
+      <label class="sr-only" for="busca-servico">Buscar serviço</label>
+      <input id="busca-servico" type="search" placeholder="Buscar: naturalização, estudante, CRNM, overstay…" autocomplete="off"
+        style="width:100%;min-height:56px;padding:14px 18px 14px 50px;border-radius:999px;border:0;font:1.02rem var(--f-texto);box-shadow:var(--sombra-g)" />
+      <span style="position:absolute;left:18px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--slate)" set:html={ICONE.busca} />
+    </div>
+  </CabecaPagina>
+
+  <section class="secao" style="padding-top:48px">
+    <div class="container">
+      <nav aria-label="Categorias" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:48px">
+        {cats.map((c) => <a class="chip" style="text-decoration:none;padding:8px 16px;font-size:.88rem" href={`#${c.slug}`}>{c.nome}</a>)}
+      </nav>
+      {cats.map((c) => (
+        <section id={c.slug} data-grupo style="margin-bottom:56px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--line)">
+            <div>
+              <span class="sobretitulo" style="margin-bottom:6px">{CATEGORIAS_INFO[c.slug].chamada}</span>
+              <h2 style="margin:0;font-size:clamp(1.4rem,2.4vw,1.8rem)">{c.nome}</h2>
+            </div>
+            <a class="link-seta" href={`/categoria-servico/${c.slug}/`}>Ver categoria</a>
+          </div>
+          <div class="grade grade-2" style="gap:14px">
+            {c.servicos.map((slug) => porSlug[slug] && <div data-item={`${porSlug[slug].title} ${porSlug[slug].description}`.toLowerCase()}><ServicoItem s={porSlug[slug]} /></div>)}
+          </div>
+        </section>
+      ))}
+      <p id="sem-resultado" hidden style="text-align:center;color:var(--slate);padding:40px 0">Nenhum serviço encontrado. <a href="/fale-conosco/">Fale com a gente</a> — provavelmente atendemos o seu caso.</p>
+      <Chamada titulo="Não sabe qual é o seu caso?" texto="Normal: muitas situações se encaixam em mais de um caminho. Conte o seu e indicamos o mais seguro." />
+    </div>
+  </section>
+  <script>
+    const campo = document.getElementById("busca-servico") as HTMLInputElement;
+    const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    campo.addEventListener("input", () => {
+      const q = norm(campo.value.trim());
+      let total = 0;
+      document.querySelectorAll<HTMLElement>("[data-grupo]").forEach((g) => {
+        let n = 0;
+        g.querySelectorAll<HTMLElement>("[data-item]").forEach((i) => { const ok = !q || norm(i.dataset.item!).includes(q); i.hidden = !ok; if (ok) n++; });
+        g.hidden = n === 0; total += n;
+      });
+      document.getElementById("sem-resultado")!.hidden = total > 0;
+    });
+  </script>
+</Base>

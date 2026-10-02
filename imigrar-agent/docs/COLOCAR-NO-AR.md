@@ -37,8 +37,6 @@ sem perceber.
 
    Se preferir à mão, é o **SQL Editor** rodando os arquivos **em ordem numérica**, do
    `001` até o último, um por vez, conferindo que cada um termina sem erro.
-   - `SETUP_COMPLETO.sql` é um consolidado antigo, da base que originou este código. Ignore: use as
-     migrations numeradas.
    - A `017_rag_chunks.sql` cria a extensão `vector` e a função `buscar_chunks`. Se a
      extensão falhar, habilite `vector` em **Database → Extensions** e rode de novo.
    - A `024_custo_e_vocabulario.sql` faz duas coisas que precisam existir ANTES do

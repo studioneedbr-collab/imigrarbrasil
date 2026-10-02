@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/dashboard/ui";
-import { ABAS_ATENDIMENTO, ABAS_CONVERSAS, rotaAtiva, type Aba } from "@/lib/dashboard/abas";
+import { ABAS_ATENDIMENTO, ABAS_CONVERSAS, ABAS_SITE, rotaAtiva, type Aba } from "@/lib/dashboard/abas";
 
 /**
  * A FAIXA DE ABAS DE UM ASSUNTO.
@@ -36,7 +36,7 @@ function Faixa({ abas, rotulo }: { abas: Aba[]; rotulo: string }) {
     <nav aria-label={rotulo} className="-mx-1 overflow-x-auto px-1">
       <ul className="inline-flex min-w-max items-center gap-1 rounded-xl bg-ib-papel p-1 ring-1 ring-inset ring-ib-line">
         {abas.map((aba) => {
-          const ativa = rotaAtiva(pathname, aba.href);
+          const ativa = aba.exata ? pathname === aba.href : rotaAtiva(pathname, aba.href);
           return (
             <li key={aba.href}>
               <Link
@@ -69,4 +69,8 @@ export function AbasDeAtendimento() {
 
 export function AbasDeConversas() {
   return <Faixa abas={ABAS_CONVERSAS} rotulo="Recortes das conversas" />;
+}
+
+export function AbasDoSite() {
+  return <Faixa abas={ABAS_SITE} rotulo="Seções do site" />;
 }

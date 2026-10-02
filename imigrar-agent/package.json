@@ -13,11 +13,10 @@
     "test": "vitest run",
     "test:rag": "vitest run --config vitest.rag.config.ts",
     "test:watch": "vitest",
-    "senha": "node scripts/redefinir-senha.mjs"
+    "senha": "node scripts/redefinir-senha.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-pdf/renderer": "^4.5.1",
-    "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.0",
     "exceljs": "^4.4.0",
     "fflate": "^0.8.3",

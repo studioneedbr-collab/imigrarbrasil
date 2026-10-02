@@ -3,18 +3,24 @@
 Agente de WhatsApp para assessoria jurídica em imigração. Nasceu da duplicação de um
 agente comercial de terceirização de mão de obra, com duas diferenças estruturais:
 atendimento multi-idioma e base de conhecimento jurídica própria (RAG sobre as cartilhas
-oficiais). A lógica comercial herdada já saiu de dentro do agente — ver
-[o que sobrou da base comercial](#o-que-sobrou-da-base-comercial).
+oficiais). A lógica comercial herdada (preço, CCT, proposta em PDF) foi removida do
+repositório em agosto de 2026.
 
 ```
-imigrar-agent/      aplicação Next.js 14 (painel, webhook, orquestração, transbordo)
+imigrar-agent/      aplicação Next.js 14 (painel, webhook, orquestração, transbordo) — Vercel
   IDENTIDADE.md       paleta, tipografia e a faixa MRZ — leia antes de mexer em tela
   public/marca/       os logotipos já recortados e otimizados para a aplicação
+site/               o site imigrarbrasil.com — HTML estático (Astro), sobe no CloudPanel
 ingestao/           pipeline que transforma o material oficial na base vetorial
 material-oficial/   as 7 cartilhas e a legislação — a fonte de tudo que o agente afirma
-marca/              os arquivos originais de marca, como o cliente entregou
-docs/               documentos de referência (o system prompt da v1)
+integracoes/wordpress/  plugin de captura do WordPress antigo — sai quando o site novo entrar
+assets/marca/       os arquivos originais de marca, como o cliente entregou
+docs/historico/     o system prompt da v1 e planos já entregues
 ```
+
+`material-oficial/` e `ingestao/` **não mudam de lugar**: `next.config.mjs`,
+`lib/agent/acervo-arquivos.ts`, `ingestao/extrair.py` e `tests/rag-recall/` apontam para
+esses caminhos.
 
 O nome dos PDFs em `material-oficial/` é o mesmo `id` que eles têm em
 `ingestao/fontes.json`: `regularizacao-migratoria.pdf` é a fonte `regularizacao`. Trocar
@@ -29,7 +35,8 @@ npm run dev          # http://localhost:3000
 ```
 
 Os scripts da raiz (`dev`, `build`, `test`, `typecheck`) só encaminham para
-`imigrar-agent/` — dá na mesma rodá-los de lá. Existem porque `npm run dev` na raiz é o
+`imigrar-agent/` — dá na mesma rodá-los de lá. O site tem os seus: `npm run site:dev`
+(<http://localhost:4321>) e `npm run site:build`; ver [site/README.md](site/README.md). Existem porque `npm run dev` na raiz é o
 reflexo de quem clona o repositório, e antes isso respondia só `ENOENT: package.json`.
 
 **Configuração local:** copie `imigrar-agent/.env.example` para
@@ -60,7 +67,7 @@ as migrations com `npm --prefix imigrar-agent run migrar` (aplica só o que falt
 
 ### Testes
 
-`npm test` — 851 testes, todos passando. Cobrem webhook, sessão, transbordo e
+`npm test` — 1033 testes, todos passando. Cobrem sessão, transbordo e
 anti-loop, o atendimento do domínio (gatilhos de transbordo jurídico, "não inventar
 informação migratória", "não falar de honorários", "não prometer enviar documento", triagem de
 nacionalidade/onde a pessoa está/o que ela procura), a recuperação do material oficial e a
@@ -139,27 +146,6 @@ dado de ninguém.
 Aplicada. Paleta tirada pixel a pixel do logotipo, tipografia própria (Archivo /
 Public Sans / IBM Plex Mono) e a faixa MRZ como elemento de assinatura. O detalhe
 das decisões está em [imigrar-agent/IDENTIDADE.md](imigrar-agent/IDENTIDADE.md).
-
-## O que sobrou da base comercial
-
-O **agente** está limpo: `lib/agent/` não tem mais precificação, CCT, dimensionamento de
-posto, proposta em PDF nem cadastro de funcionário, e as tools correspondentes deixaram de
-ser oferecidas ao modelo. A Ana não cota, não propõe e não fala de valor.
-
-A maquinaria em si continua no repositório, **fora do agente**, servindo às telas do
-painel:
-
-| onde | o que é | quem usa |
-|---|---|---|
-| `imigrar-agent/lib/comercial/` | preço, CCT, catálogo de funções, dimensionamento | telas Preços e Orçamento |
-| `imigrar-agent/lib/pdf/`, `lib/planilha/`, `lib/email/proposal-email.ts` | proposta em PDF, planilha de composição, e-mail de envio | tela Orçamento |
-| rotas `/api/quote*`, `/api/proposal*`, `/api/pricing-params`, `/api/funcionarios` | back-end dessas telas | painel |
-
-As telas **Propostas, Preços, Orçamento e Funcionários saíram do menu** mas seguem no
-disco. **Atenção:** o PDF da proposta e o e-mail que o acompanha ainda carregam a marca e
-o texto institucional da empresa de origem. Nada do agente os aciona — mas a tela de
-Orçamento sim. Se essas telas forem ficar, esse texto precisa ser reescrito antes de
-alguém enviar um deles; se forem sair, é uma decisão à parte.
 
 ## O que NÃO fazer
 

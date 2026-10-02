@@ -1,0 +1,12 @@
+---
+import { ICONE } from "../lib/icones";
+import { tituloCurto } from "../lib/util";
+interface Props { s: { slug: string; title: string; description: string | null } }
+const { s } = Astro.props;
+// A descrição do SEO começa repetindo o título ("Visto X: assessoria para…"); no card, só o que vem depois.
+const resumo = (s.description ?? "").replace(/^[^:]{0,140}:\s*/, "").replace(/^./, (c) => c.toUpperCase());
+---
+<a class="servico-item" href={`/servico/${s.slug}/`}>
+  <span class="ico" set:html={ICONE.documento} />
+  <span style="display:block"><strong>{tituloCurto(s.title)}</strong><span>{resumo}</span></span>
+</a>

@@ -1,5 +1,9 @@
 # Captura de lead do site → CRM
 
+> **O site novo (`site/`, HTML estático) substitui o WordPress.** Ele manda os leads para
+> `/api/captura/site` por conta própria (`site/public/api/lead.php`), sem plugin. Este
+> documento vale enquanto o WordPress estiver no ar.
+
 Para quem tem acesso ao WordPress da Imigrar Brasil (`imigrarbrasil.com`, Hostinger).
 
 ## O que está acontecendo hoje
@@ -22,7 +26,7 @@ WhatsApp cai no atendimento pelo caminho normal.
 
 ## Instalação (5 minutos)
 
-**1.** `Plugins → Adicionar novo → Enviar plugin` → escolha **`imigrar-agent/wordpress/imigrar-crm.zip`** → Instalar → **Ativar**.
+**1.** `Plugins → Adicionar novo → Enviar plugin` → escolha **`integracoes/wordpress/imigrar-crm.zip`** → Instalar → **Ativar**.
 
 **2.** No menu lateral aparece **Imigrar CRM**. Cole ali o token — é o mesmo valor de
 `SITE_CAPTURE_TOKEN` no Vercel — e marque o que deve subir:
@@ -66,7 +70,7 @@ banco aparece num dump e o da constante não.
 
 ### Regerar o ZIP
 
-Depois de mexer em `wordpress/imigrar-crm/`, rode `wordpress/build.sh`. Ele refaz o
+Depois de mexer em `integracoes/wordpress/imigrar-crm/`, rode `integracoes/wordpress/build.sh`. Ele refaz o
 `imigrar-crm.zip` com a pasta interna certa (`imigrar-crm/`), que é o que faz o WordPress
 reconhecer um reenvio como atualização em vez de instalar um segundo plugin ao lado.
 

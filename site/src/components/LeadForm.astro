@@ -1,0 +1,39 @@
+---
+// Nome e WhatsApp são o mínimo; o resto é opcional (no formulário completo).
+interface Props { origem: string; compacto?: boolean; depois?: "whatsapp" | "obrigado"; botao?: string }
+const { origem, compacto = false, depois = "whatsapp", botao = "Falar no WhatsApp" } = Astro.props;
+import { PAISES, bandeira } from "../lib/paises";
+const id = `f-${origem}`;
+---
+<form class="form" data-lead={origem} data-depois={depois} novalidate>
+  <label><span>Nome <span class="obrig" aria-hidden="true">*</span></span>
+    <input name="nome" id={`${id}-nome`} autocomplete="name" required maxlength="120" placeholder="Seu nome" />
+  </label>
+  <div class="campo-tel">
+    <label for={`${id}-tel`}><span>WhatsApp <span class="obrig" aria-hidden="true">*</span></span></label>
+    <div class="tel" data-tel>
+      <label class="tel-pais">
+        <span class="sr-only">País do telefone</span>
+        <span class="tel-pais-ver" aria-hidden="true" data-tel-ver>{bandeira("BR")} +55</span>
+        <select name="ddi" data-tel-pais autocomplete="tel-country-code">
+          {PAISES.map((p) => <option value={p.iso} data-ddi={p.ddi} selected={p.iso === "BR"}>{bandeira(p.iso)} {p.nome} (+{p.ddi})</option>)}
+        </select>
+      </label>
+      <input name="telefone" id={`${id}-tel`} type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="20" placeholder="(11) 91234-5678" data-tel-numero />
+    </div>
+  </div>
+  {!compacto && (
+    <>
+      <label>E-mail
+        <input name="email" type="email" autocomplete="email" maxlength="160" placeholder="voce@email.com" />
+      </label>
+      <label>Como podemos ajudar?
+        <textarea name="mensagem" maxlength="4000" placeholder="Ex.: sou da Colômbia, moro em São Paulo há 3 anos e quero me naturalizar."></textarea>
+      </label>
+    </>
+  )}
+  <label class="armadilha" aria-hidden="true">Não preencha <input name="website" tabindex="-1" autocomplete="off" /></label>
+  <p class="erro" role="alert" hidden></p>
+  <button class="btn btn-zap btn-grande" type="submit">{botao}</button>
+  <p class="aviso">Seus dados são usados só para responder ao seu contato. <a href="/politica-de-privacidade/">Política de Privacidade</a>.</p>
+</form>

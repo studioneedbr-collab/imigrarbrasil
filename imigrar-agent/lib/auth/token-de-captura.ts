@@ -23,16 +23,28 @@ export function conferirTokenDeCaptura(
   req: NextRequest,
   headers: Record<string, string> = {},
 ): NextResponse | null {
-  const segredo = env.siteCaptureToken;
+  return conferirSegredo(req, env.siteCaptureToken, "SITE_CAPTURE_TOKEN", "captura_sem_autenticacao_configurada", headers);
+}
+
+/** A exportação do conteúdo do site para o build (/api/site/exportar). */
+export function conferirTokenDeExportacao(req: NextRequest): NextResponse | null {
+  return conferirSegredo(req, env.siteExportToken, "SITE_EXPORT_TOKEN", "exportacao_sem_autenticacao_configurada");
+}
+
+/**
+ * A REGRA, UMA VEZ SÓ: sem segredo configurado, recusa tudo (503, fail-closed); com ele,
+ * compara em tempo constante. Cada porta tem o SEU segredo; a regra é a mesma.
+ */
+function conferirSegredo(
+  req: NextRequest,
+  segredo: string,
+  nomeDaVariavel: string,
+  erro: string,
+  headers: Record<string, string> = {},
+): NextResponse | null {
   if (!segredo) {
-    console.error(
-      "[captura] RECUSADO: SITE_CAPTURE_TOKEN não está configurado. Enquanto isso não for " +
-        "resolvido, nenhum lead vindo de fora é aceito.",
-    );
-    return NextResponse.json(
-      { ok: false, error: "captura_sem_autenticacao_configurada" },
-      { status: 503, headers },
-    );
+    console.error(`[${req.nextUrl.pathname}] RECUSADO: ${nomeDaVariavel} não está configurado.`);
+    return NextResponse.json({ ok: false, error: erro }, { status: 503, headers });
   }
 
   const enviado =

@@ -14,3 +14,7 @@ __pycache__/
 # é ruído em todo diff de quem usa macOS.
 .DS_Store
 Thumbs.db
+
+# Exportações de conversas reais do WhatsApp: CPF, passaporte, chave Pix de clientes.
+# O README sempre disse que estava aqui; não estava.
+conversa/

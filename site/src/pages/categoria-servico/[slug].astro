@@ -1,0 +1,32 @@
+---
+import Base from "../../layouts/Base.astro";
+import CabecaPagina from "../../components/CabecaPagina.astro";
+import ServicoItem from "../../components/ServicoItem.astro";
+import Chamada from "../../components/Chamada.astro";
+import { CATEGORIAS_INFO } from "../../config";
+import categorias from "../../data/categorias.json";
+import servicos from "../../data/servicos.json";
+
+export function getStaticPaths() {
+  return categorias.map((c) => ({ params: { slug: c.slug }, props: { c } }));
+}
+const { c } = Astro.props;
+const info = CATEGORIAS_INFO[c.slug];
+const lista = c.servicos.map((s) => servicos.find((x) => x.slug === s)!).filter(Boolean);
+const outras = categorias.filter((x) => x.slug !== c.slug).sort((a, b) => CATEGORIAS_INFO[a.slug].ordem - CATEGORIAS_INFO[b.slug].ordem);
+---
+<Base titulo={c.nome} descricao={`${c.nome}: ${info.resumo} Assessoria jurídica migratória da Imigrar Brasil, com atendimento on-line para todo o mundo.`} imagem={lista[0]?.image}>
+  <CabecaPagina titulo={c.nome} sobretitulo={info.chamada} texto={info.resumo} migalhas={[{ href: "/nossos-servicos/", rotulo: "Serviços" }, { rotulo: c.nome }]} />
+  <section class="secao">
+    <div class="container">
+      <div class="grade grade-2" style="gap:14px;margin-bottom:64px">
+        {lista.map((s) => <ServicoItem s={s} />)}
+      </div>
+      <h2 style="font-size:1.4rem">Outras categorias</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:64px">
+        {outras.map((o) => <a class="chip" style="text-decoration:none;padding:8px 16px;font-size:.9rem" href={`/categoria-servico/${o.slug}/`}>{o.nome}</a>)}
+      </div>
+      <Chamada />
+    </div>
+  </section>
+</Base>

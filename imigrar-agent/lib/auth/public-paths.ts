@@ -11,6 +11,12 @@
 //  /api/captura/site — autenticada no próprio handler por SITE_CAPTURE_TOKEN (header
 //                      X-Imigrar-Token ou ?token=), fail-closed: sem o segredo
 //                      configurado ela recusa tudo com 503 em vez de ficar aberta.
+//  /api/site/evento  — os cliques e visitas do site, mandados do navegador de quem visita.
+//                      SEM token de propósito (estaria no código-fonte da página): só
+//                      grava uma linha anônima de contagem, não lê nem devolve nada, e tem
+//                      limite por IP no handler. Ver migration 035.
+//  /api/site/exportar — o conteúdo do site para o build (GitHub Actions). Autenticada no
+//                      handler por SITE_EXPORT_TOKEN, fail-closed (503 sem o segredo).
 //  /api/captura/registro — o mesmo segredo e a mesma postura. É por onde o WordPress do
 //                      site empurra cada registro dos tipos de conteúdo dele (Orçamentos e
 //                      afins) no momento em que são salvos lá.
@@ -33,6 +39,8 @@ const PUBLIC_PATHS = new Set([
   "/api/webhook/whatsapp",
   "/api/captura/site",
   "/api/captura/registro",
+  "/api/site/evento",
+  "/api/site/exportar",
   "/api/health",
   "/api/cron/followups",
   "/api/cron/followup",

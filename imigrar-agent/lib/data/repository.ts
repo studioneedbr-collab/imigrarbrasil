@@ -1,3 +1,4 @@
+import type { TipoConteudoSite, RegistroSite, EventoSite } from "@/lib/site/conteudo";
 import type {
   Conversation, Message, MessageMedia, DocumentItem, Lead, Followup,
   FollowupStatus, Cliente, FlowStateId, TransferTicket, User,
@@ -240,6 +241,18 @@ export interface Repository {
   criarMotivo(m: { tipo: TipoDeMotivo; chave: string; rotulo: string; ajuda?: string | null; ordem?: number }): Promise<MotivoDesfecho>;
   atualizarMotivo(id: string, patch: Partial<Pick<MotivoDesfecho, "rotulo" | "ajuda" | "ordem" | "arquivado">>): Promise<MotivoDesfecho>;
   excluirMotivo(id: string): Promise<void>;
+
+  /**
+   * O SITE imigrarbrasil.com (migration 035): o conteúdo que o painel edita e os eventos
+   * anônimos que o site manda. `listarEventosSite` devolve as linhas cruas do período; quem
+   * resume é lib/site/resumo.ts, para o resumo ser o mesmo nos dois repositórios.
+   */
+  listarConteudoSite(tipo: TipoConteudoSite): Promise<RegistroSite[]>;
+  obterConteudoSite(tipo: TipoConteudoSite, slug: string): Promise<RegistroSite | null>;
+  salvarConteudoSite(r: { tipo: TipoConteudoSite; slug: string; dados: unknown; publicado: boolean; por: string | null }): Promise<RegistroSite>;
+  excluirConteudoSite(tipo: TipoConteudoSite, slug: string): Promise<void>;
+  registrarEventoSite(e: Omit<EventoSite, "criadoEm">): Promise<void>;
+  listarEventosSite(desde: Date): Promise<EventoSite[]>;
 
   /** Log de acesso e de exportação (LGPD): quem, o quê, quando. */
   registrarAcesso(entry: Omit<AccessLogEntry, "id" | "criadoEm">): Promise<void>;

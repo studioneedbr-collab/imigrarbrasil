@@ -20,7 +20,9 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       // data:/blob: são necessários para os PDFs de proposta.
-      "img-src 'self' data: blob:",
+      // As prévias da aba Site mostram as imagens do site (imigrarbrasil.com) e as que o
+      // painel enviou ao Storage (bucket `site`). Só esses dois — nada de img-src aberto.
+      "img-src 'self' data: blob: https://imigrarbrasil.com https://www.imigrarbrasil.com https://*.supabase.co",
       "font-src 'self' data:",
       // Só a própria origem: o front nunca chama Supabase nem Anthropic direto
       // do browser — tudo passa pelas rotas de API.

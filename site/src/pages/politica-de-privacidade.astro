@@ -1,0 +1,9 @@
+---
+import Base from "../layouts/Base.astro";
+import CabecaPagina from "../components/CabecaPagina.astro";
+import privacidade from "../data/privacidade.json";
+---
+<Base titulo="Política de Privacidade" descricao={"Sua privacidade é nosso compromisso. Na Imigrar Brasil, protegemos seus dados com a transparência e a segurança que você merece, em total conformidade com a LGPD."}>
+  <CabecaPagina titulo="Política de Privacidade" sobretitulo="LGPD" migalhas={[{ rotulo: "Política de Privacidade" }]} />
+  <section class="secao"><div class="container estreito"><div class="prosa" set:html={privacidade.html} /></div></section>
+</Base>
