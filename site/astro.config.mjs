@@ -17,7 +17,9 @@ const maisRecente = [...datas.values()].sort().at(-1);
 export default defineConfig({
   site: "https://imigrarbrasil.com",
   trailingSlash: "always",
-  build: { format: "directory", inlineStylesheets: "auto" },
+  // CSS dentro de cada página: o extrator de zip do CloudPanel já pulou o .css separado
+  // duas vezes, e sem ele o site inteiro aparece sem estilo. Embutido, isso não acontece.
+  build: { format: "directory", inlineStylesheets: "always" },
   compressHTML: true,
   integrations: [
     sitemap({

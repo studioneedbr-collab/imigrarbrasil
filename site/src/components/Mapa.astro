@@ -1,0 +1,34 @@
+---
+// Mapa-múndi do fundo da home, com um ponto em cada país onde a Imigrar Brasil atende
+// (o mesmo do Corporate Profile). O contorno vem de public/mapa-terra.svg
+// (scripts/gerar-mapa.mjs); os pontos são lon/lat. Para tirar ou pôr país, edite a lista.
+import mapa from "../data/mapa.json";
+import fs from "node:fs";
+import { createHash } from "node:crypto";
+// O servidor manda guardar .svg por 30 dias: o endereço muda quando o desenho muda, senão
+// quem já visitou continua vendo o mapa antigo.
+const versaoMapa = createHash("md5").update(fs.readFileSync("public/mapa-terra.svg")).digest("hex").slice(0, 8);
+export const PAISES: [string, number, number][] = [
+  ["Estados Unidos", -98, 39], ["Canadá", -100, 53], ["México", -102, 23],
+  ["Venezuela", -66.6, 7], ["Colômbia", -74, 4.5], ["Peru", -75, -10], ["Bolívia", -64.7, -16.5],
+  ["Brasil", -47.9, -15.8], ["Paraguai", -58.4, -23.4], ["Uruguai", -56, -32.8], ["Argentina", -64, -34], ["Chile", -71, -33.5],
+  ["Portugal", -8.2, 39.6], ["Espanha", -3.7, 40.4], ["França", 2.3, 46.6], ["Reino Unido", -1.5, 52.4], ["Alemanha", 10.4, 51.2],
+  ["Itália", 12.6, 42.8], ["Holanda", 5.3, 52.1], ["Suíça", 8.2, 46.8], ["Polônia", 19.1, 51.9], ["Rússia", 60, 58],
+  ["Turquia", 35.2, 39], ["Líbano", 35.9, 33.9], ["Síria", 38.5, 35], ["Israel", 34.9, 31.5], ["Irã", 53.7, 32.4],
+  ["Índia", 78.9, 22], ["Paquistão", 69.3, 30.4], ["Bangladesh", 90.4, 23.7], ["China", 104, 35], ["Japão", 138.3, 36.2],
+  ["Coreia do Sul", 127.8, 36.5], ["Filipinas", 121.8, 12.9], ["Indonésia", 113.9, -0.8], ["Austrália", 134, -25.3],
+  ["Nigéria", 8.7, 9.1], ["Gana", -1, 7.9], ["Senegal", -14.5, 14.5], ["Camarões", 12.4, 5.7], ["R. D. do Congo", 23.7, -2.9],
+  ["Angola", 17.9, -11.2], ["Moçambique", 35.5, -18.7], ["África do Sul", 24, -29], ["Egito", 30.8, 26.8], ["Marrocos", -7.1, 31.8],
+];
+const x = (lon: number) => ((lon + 180) / 360) * mapa.largura;
+const y = (lat: number) => ((mapa.norte - lat) / (mapa.norte - mapa.sul)) * mapa.altura;
+---
+<svg class="mapa-fundo" viewBox={`0 0 ${mapa.largura} ${mapa.altura}`} aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+  <image href={`/mapa-terra.svg?v=${versaoMapa}`} width={mapa.largura} height={mapa.altura} />
+  {PAISES.map(([, lon, lat], i) => (
+    <g>
+      <circle class="mapa-pulso" cx={x(lon).toFixed(1)} cy={y(lat).toFixed(1)} r="3" style={`animation-delay:${((i * 0.37) % 6).toFixed(2)}s`} />
+      <circle class="mapa-ponto" cx={x(lon).toFixed(1)} cy={y(lat).toFixed(1)} r="2.6" />
+    </g>
+  ))}
+</svg>

@@ -4,6 +4,7 @@ import CabecaPagina from "../../components/CabecaPagina.astro";
 import PostCard from "../../components/PostCard.astro";
 import Img from "../../components/Img.astro";
 import Chamada from "../../components/Chamada.astro";
+import BuscaBlog from "../../components/BuscaBlog.astro";
 import { ICONE } from "../../lib/icones";
 import { TEMAS_ATIVOS, postsDoTema, urlDoTema, dataHora } from "../../lib/blog";
 import posts from "../../data/posts.json";
@@ -87,5 +88,5 @@ const schema = {
   </section>
 
   <script type="application/json" id="indice-blog" set:html={JSON.stringify(indice)} />
-  <script>import "../../scripts/busca-blog";</script>
+  <BuscaBlog />
 </Base>

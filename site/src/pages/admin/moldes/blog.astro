@@ -3,10 +3,11 @@
 // Ver src/pages/admin/moldes/artigo.astro.
 import Base from "../../../layouts/Base.astro";
 import Chamada from "../../../components/Chamada.astro";
+import BuscaBlog from "../../../components/BuscaBlog.astro";
 ---
 <Base titulo="@@TITULO@@" descricao="@@DESCRICAO@@" imagem="@@IMAGEM@@" schema={[{ "@type": "@@SCHEMA@@" }]}>
   <Fragment slot="head"><meta name="@@HEAD@@" /></Fragment>
   <i hidden data-molde="corpo"></i>
   <template data-peca="chamada"><Chamada /></template>
-  <script>import "../../../scripts/busca-blog";</script>
+  <BuscaBlog />
 </Base>

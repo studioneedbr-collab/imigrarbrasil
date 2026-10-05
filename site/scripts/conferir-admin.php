@@ -7,7 +7,7 @@ define('RAIZ', $dist);
 foreach (['nucleo', 'conteudo', 'limpar', 'render', 'gerar'] as $l) require __DIR__ . "/../public/admin/lib/$l.php";
 
 // O script do molde tem outro nome de arquivo, com o mesmo conteúdo (o hash é igual).
-$normal = fn(string $h) => trim(preg_replace(['/>\s+</', '/\s+/', '~/_astro/[^"]*?\.([A-Za-z0-9_-]{8})\.js~'], ['><', ' ', '/_astro/$1.js'], $h));
+$normal = fn(string $h) => trim(preg_replace(['/>\s+</', '/\s+/', '~/_astro/(?:[^"]*?\.)?([A-Za-z0-9_-]{8})\.js~'], ['><', ' ', '/_astro/$1.js'], $h));
 $posts = todos_posts();
 $casos = [];
 foreach ($posts as $p) $casos["/{$p['slug']}/"] = fn() => pagina_artigo($p, $posts);
@@ -20,7 +20,7 @@ foreach ($casos as $caminho => $f) {
     $esperado = $normal(file_get_contents("$dist{$caminho}index.html"));
     $gerado = $normal($f());
     // A página de tema usa o molde do blog, que traz o script da busca (inofensivo ali).
-    if (str_contains($caminho, '/tema/')) $gerado = preg_replace('~<script type="module" src="/_astro/[^"]+"></script></main>~', '</main>', $gerado);
+    if (str_contains($caminho, '/tema/')) $gerado = preg_replace('~<script type="module"[^>]*>(?:(?!</script>).)*</script></main>~s', '</main>', $gerado);
     if ($esperado === $gerado) continue;
     $erros++;
     $i = 0; $max = min(strlen($esperado), strlen($gerado));

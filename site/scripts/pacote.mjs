@@ -37,6 +37,9 @@ const arquivos = [];
 const andar = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); e.isDirectory() ? andar(p) : arquivos.push(path.relative(DIST, p)); } };
 andar(DIST);
 const ruins = arquivos.filter((f) => proibido.test(f));
+// Nome com ".." trava o extrator do CloudPanel no meio do zip (ver astro.config.mjs).
+const reticencias = arquivos.filter((f) => f.includes(".."));
+if (reticencias.length) { console.error("Não empacotei: nomes com \"..\" travam a extração no CloudPanel:\n  " + reticencias.join("\n  ")); process.exit(1); }
 for (const f of ruins.filter((f) => f.endsWith(".DS_Store"))) fs.rmSync(path.join(DIST, f));
 const graves = ruins.filter((f) => !f.endsWith(".DS_Store"));
 if (graves.length) { console.error("Não empacotei: arquivos que não podem ir ao ar em dist/:\n  " + graves.join("\n  ")); process.exit(1); }

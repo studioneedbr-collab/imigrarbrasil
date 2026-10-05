@@ -18,10 +18,10 @@
     "tiktok": ""
   },
   "numeros": [
-    { "valor": "352 mil", "rotulo": "vidas impactadas" },
-    { "valor": "80+", "rotulo": "processos ativos" },
-    { "valor": "50+", "rotulo": "países atendidos" },
-    { "valor": "332", "rotulo": "imigrantes naturalizados" }
+    { "valor": "+82 mil", "rotulo": "vidas impactadas" },
+    { "valor": "+80", "rotulo": "processos ativos" },
+    { "valor": "+50", "rotulo": "países atendidos" },
+    { "valor": "+800", "rotulo": "imigrantes naturalizados" }
   ],
   "ctas": {
     "heroPrincipal": "Nossos serviços",

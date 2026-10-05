@@ -174,10 +174,13 @@ p { margin: 0 0 1em; }
 
 /* ── hero ──────────────────────────────────────────────── */
 .hero { position: relative; overflow: hidden; padding: clamp(40px, 6vw, 80px) 0 clamp(56px, 7vw, 96px); background: linear-gradient(180deg, #fff 0%, var(--papel) 100%); }
-.hero::before { /* o guilhoché da marca (IDENTIDADE.md), no lugar do mapa do site antigo */
-  content: ""; position: absolute; inset: 0; opacity: .5; pointer-events: none;
-  background: url("/textura-guilloche.svg") right -180px top -120px / 820px auto no-repeat;
-}
+/* mapa-múndi com os países de atuação, no estilo do Corporate Profile (Mapa.astro) */
+.mapa-fundo { position: absolute; right: -4%; top: 50%; width: min(1180px, 78%); transform: translateY(-50%); pointer-events: none; opacity: .95; }
+.mapa-ponto { fill: var(--selo); }
+.mapa-pulso { fill: none; stroke: var(--selo); stroke-width: 1; transform-box: fill-box; transform-origin: center; animation: mapa-pulso 3.6s ease-out infinite; opacity: 0; }
+@keyframes mapa-pulso { from { transform: scale(.8); opacity: .7; } to { transform: scale(3.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .mapa-pulso { animation: none; } }
+@media (max-width: 900px) { .mapa-fundo { width: 160%; max-width: none; right: -30%; top: 400px; transform: none; opacity: .45; } }
 .hero-in { position: relative; display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(32px, 5vw, 64px); align-items: center; }
 .hero h1 { margin-bottom: 20px; }
 .hero h1 em { font-style: normal; color: var(--selo); }

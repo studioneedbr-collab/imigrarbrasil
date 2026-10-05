@@ -6,6 +6,7 @@ import Parceiros from "../components/Parceiros.astro";
 import Faq from "../components/Faq.astro";
 import Chamada from "../components/Chamada.astro";
 import LeadForm from "../components/LeadForm.astro";
+import Mapa from "../components/Mapa.astro";
 import Img from "../components/Img.astro";
 import Dobra from "../components/Dobra.astro";
 import { SITE, CATEGORIAS_INFO, CARGOS, whatsappLink } from "../config";
@@ -35,6 +36,7 @@ const schemaSite = { "@type": "WebSite", "@id": `${SITE.url}/#site`, url: SITE.u
 ---
 <Base titulo="Imigrar Brasil | Assessoria em vistos, residência e naturalização" tituloCompleto schema={[schemaSite, schemaFaq]}>
   <section class="hero">
+    <Mapa />
     <div class="container hero-in">
       <div>
         <span class="sobretitulo">Assessoria jurídica migratória desde {SITE.fundacao}</span>

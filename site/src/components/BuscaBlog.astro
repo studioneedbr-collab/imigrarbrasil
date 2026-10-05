@@ -1,0 +1,6 @@
+---
+// O script da busca do blog. Mora num componente (e não direto em [...pagina].astro) porque
+// o Astro dá ao script o nome do arquivo onde ele está, e "_...pagina_.astro_….js" trava o
+// extrator de zip do CloudPanel (ver scripts/pacote.mjs).
+---
+<script>import "../scripts/busca-blog";</script>
