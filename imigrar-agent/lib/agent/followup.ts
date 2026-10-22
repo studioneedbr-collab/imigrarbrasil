@@ -1,11 +1,12 @@
 import { env, useDeepseek } from "@/lib/env";
 import { NOME_DO_IDIOMA } from "@/lib/agent/idioma";
+import { DEFAULT_IDENTITY } from "@/lib/agent/training";
 import type { Conversation, Message } from "@/lib/domain/types";
 import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 
 // Follow-up gerado pelo DeepSeek com o CONTEXTO da conversa — nunca genérico.
 // Retoma exatamente de onde parou (serviço/assunto + nome, quando houver).
-const FOLLOWUP_SYSTEM = `Você é a Ana, do atendimento da Imigrar Brasil (assessoria jurídica em imigração para o Brasil). A pessoa parou de responder.
+const followupSystem = (nome: string) => `Você é a ${nome}, do atendimento da Imigrar Brasil (assessoria jurídica em imigração para o Brasil). A pessoa parou de responder.
 Baseado no histórico, gere UMA mensagem curta e natural de retomada, ESCRITA NO MESMO IDIOMA que a pessoa usou na conversa.
 NÃO seja genérica: retome o assunto específico que estava sendo tratado e, se souber, use o nome dela.
 Tom acolhedor, nunca cobrando resposta e nunca pressionando — muita gente aqui está em situação delicada e sumiu por medo, não por desinteresse.
@@ -37,6 +38,7 @@ export function followupFallback(idioma?: string | null): string {
 export async function generateFollowupMessage(
   conversation: Conversation,
   messages: Message[],
+  agentName = DEFAULT_IDENTITY.agentName,
 ): Promise<string> {
   const FALLBACK = followupFallback(conversation.idioma);
   if (!useDeepseek) return FALLBACK;
@@ -49,7 +51,7 @@ export async function generateFollowupMessage(
     : "";
   const history = messages
     .slice(-12)
-    .map((m) => `${m.role === "user" ? "Pessoa" : "Ana"}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? "Pessoa" : agentName}: ${m.content}`)
     .join("\n");
 
   const inicio = Date.now();
@@ -63,7 +65,7 @@ export async function generateFollowupMessage(
       body: JSON.stringify({
         model: env.deepseekModel,
         messages: [
-          { role: "system", content: `${FOLLOWUP_SYSTEM}\n${nome}${idioma}` },
+          { role: "system", content: `${followupSystem(agentName)}\n${nome}${idioma}` },
           { role: "user", content: `Histórico da conversa:\n${history}\n\nGere a mensagem de follow-up.` },
         ],
         max_tokens: 160,

@@ -4,6 +4,7 @@ import { getRepository } from "@/lib/data";
 import { sendMessage } from "@/lib/whatsapp/send";
 import { timingSafeEq } from "@/lib/auth/secret-compare";
 import { novaRodada, podeDispararAgora } from "@/lib/whatsapp/janela";
+import { lerChaveGeral } from "@/lib/agent/estado";
 import { varrerEspera } from "@/lib/followup/varredura";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +46,10 @@ export async function GET(req: NextRequest) {
     (f) => new Date(f.scheduledAt).getTime() <= now,
   );
 
-  const janelaAberta = podeDispararAgora(new Date());
+  // Chave geral desligada cala o agente em tudo, inclusive aqui: o que estiver vencido
+  // espera, como fora do horário, e sai quando alguém religar.
+  const agenteLigado = (await lerChaveGeral()).ligada;
+  const janelaAberta = podeDispararAgora(new Date()) && agenteLigado;
   const rodada = novaRodada();
   let sent = 0;
   let restantes = 0;
@@ -94,10 +98,12 @@ export async function GET(req: NextRequest) {
   // Ela roda DEPOIS dos lembretes agendados e nunca derruba esta resposta: os dois
   // trabalhos são independentes, e uma falha na régua nova não pode impedir que o
   // lembrete que a Ana marcou saia.
-  const espera = await varrerEspera(repo, new Date()).catch((e) => {
-    console.error("[cron/followups] varredura da espera falhou:", e instanceof Error ? e.message : e);
-    return null;
-  });
+  const espera = !agenteLigado
+    ? null
+    : await varrerEspera(repo, new Date()).catch((e) => {
+        console.error("[cron/followups] varredura da espera falhou:", e instanceof Error ? e.message : e);
+        return null;
+      });
 
   return NextResponse.json({
     ok: true,

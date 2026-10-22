@@ -69,6 +69,7 @@ export function trainingToOverrides(t: TrainingConfig): PromptOverrides {
   return {
     reasoningBlock: serializeReasoning(t.reasoning),
     identityBlock: buildIdentityBlock(t.identity),
+    agentName: t.identity.agentName,
     behaviorBlock: buildBehaviorRulesBlock(t.guardrails.regras),
     technicalBlock: buildTechnicalBlock(t.technical),
     objections,

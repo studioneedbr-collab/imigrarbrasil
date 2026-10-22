@@ -32,7 +32,7 @@ export interface SinalDePrazo {
 const SINAIS: Array<[PrazoTipo, RegExp]> = [
   [
     "multa",
-    /\bmulta(?:d[oa]|ram|s)?\b|\bmulta migrat[óo]ria\b|\bfui multad|\bme multaron\b|\bmulta de (?:R\$|reais)|\bfine\b|\bfined\b/i,
+    /\bmulta(?:d[oa]|ram|s)?\b|\bmulta migrat[óo]ria\b|\bfui multad|\bme multaron\b|\bmulta de (?:R\$|reais)|\b(?:a|an|the|immigration)\s+fine\b|\bfined\b/i,
   ],
   [
     "indeferimento",
@@ -44,7 +44,10 @@ const SINAIS: Array<[PrazoTipo, RegExp]> = [
   ],
   [
     "outro",
-    /\b(?:prazo|recurso|intima[çc][ãa]o|notifica[çc][ãa]o|exig[êe]ncia|cumprimento de exig[êe]ncia)\b[^.]{0,40}\b(?:de|em|at[ée]|dentro de|vence|venceu|vencendo|correndo|acabando|termina|expira)\b|\btenho (?:at[ée] )?\d{1,3} dias\b|\bvence (?:hoje|amanh[ãa]|essa semana|em \d{1,3} dias)\b|\bprazo (?:est[áa] )?(?:correndo|vencendo|acabando)\b|\bdeadline\b/i,
+    // Só o prazo do PROCESSO. "O passaporte vence em 60 dias" e "tenho 20 dias até
+    // começar o contrato" são relógio, não prazo processual — a pergunta da validade do
+    // passaporte é a própria Ana quem faz, e a resposta não pode virar urgência.
+    /\b(?:prazo|recurso|intima[çc][ãa]o|notifica[çc][ãa]o|exig[êe]ncia|cumprimento de exig[êe]ncia)\b[^.]{0,40}\b(?:vence|venceu|vencendo|correndo|acabando|termina|expira|dentro de \d{1,3})\b|\btenho (?:at[ée] )?\d{1,3} dias (?:para|pra) (?:recorrer|responder|sair|deixar|apresentar|cumprir|regularizar)\b|\bprazo (?:est[áa] )?(?:correndo|vencendo|acabando)\b|\bdeadline\b/i,
   ],
 ];
 

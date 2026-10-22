@@ -1224,11 +1224,25 @@ export interface PromptOverrides {
   /** Substitui o AGENT_REASONING inteiro. Vem da aba "Raciocínio" do painel. */
   reasoningBlock?: string;
   identityBlock?: string;
+  /** O nome da aba Identidade. Substitui o "Ana" que a persona gravada ainda traga. */
+  agentName?: string;
   behaviorBlock?: string;
   technicalBlock?: string;
   objections?: Objection[];
   transferRules?: Array<{ categoria: string; resposta: string }>;
   confidential?: string[];
+}
+
+/**
+ * O NOME DA AGENTE É UM SÓ. A persona padrão dizia "Você é a Ana" e fica gravada no banco
+ * quando alguém salva a aba de treino; trocar o nome na Identidade deixava a persona antiga
+ * de pé, e o prompt passava a dizer "Você é a Ana" e, logo abaixo, "Você se chama Sofia".
+ * Quem manda é a Identidade: o "Ana" da persona vira o nome configurado.
+ */
+export function personaComNome(persona: string, agentName?: string): string {
+  const nome = agentName?.trim();
+  if (!nome || nome === "Ana") return persona.trim();
+  return persona.trim().replace(/\bAna\b/g, nome);
 }
 
 // Monta o system prompt final a partir da Base de Conhecimento + comportamento fixo.
@@ -1252,5 +1266,5 @@ export function buildSystemPrompt(kb: KnowledgeBase, o: PromptOverrides = {}): s
   // e da base de conhecimento. Sem fluxo rígido: ela pensa como quem acolhe e decide a ação.
   const identidade = o.identityBlock ? `\n\n${o.identityBlock}` : "";
   const raciocinio = o.reasoningBlock?.trim() || AGENT_REASONING;
-  return `${raciocinio}\n\n${kb.persona.trim()}${identidade}\n\n${facts}\n\n${extras}`;
+  return `${raciocinio}\n\n${personaComNome(kb.persona, o.agentName)}${identidade}\n\n${facts}\n\n${extras}`;
 }

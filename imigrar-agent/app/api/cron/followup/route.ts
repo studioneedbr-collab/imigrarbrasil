@@ -4,7 +4,9 @@ import { timingSafeEq } from "@/lib/auth/secret-compare";
 import { getRepository } from "@/lib/data";
 import { sendMessage } from "@/lib/whatsapp/send";
 import { generateFollowupMessage } from "@/lib/agent/followup";
+import { getTrainingConfig } from "@/lib/agent/system-prompt";
 import { novaRodada, podeDispararAgora } from "@/lib/whatsapp/janela";
+import { lerChaveGeral } from "@/lib/agent/estado";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -48,10 +50,15 @@ export async function GET(req: NextRequest) {
   // 1) Follow-up de 24h. Só em horário civilizado — a marcação de inatividade (2) não
   //    manda nada para o cliente e por isso roda a qualquer hora.
   const forFollowup = await repo.getConversationsForFollowup();
-  const janelaAberta = podeDispararAgora(new Date());
+  // Chave geral desligada cala o agente em tudo, inclusive aqui: o que estiver vencido
+  // espera, como fora do horário, e sai quando alguém religar.
+  const janelaAberta = podeDispararAgora(new Date()) && (await lerChaveGeral()).ligada;
   const rodada = novaRodada();
   let followedUp = 0;
   let restantes = 0;
+
+  // O nome da agente vem da Identidade, uma leitura para a rodada inteira.
+  const agentName = (await getTrainingConfig().catch(() => null))?.identity.agentName;
 
   for (const conv of forFollowup) {
     // Conversa de simulador não tem WhatsApp: encerra o ciclo sem gastar a rodada.
@@ -65,7 +72,7 @@ export async function GET(req: NextRequest) {
     }
     try {
       const messages = await repo.listMessages(conv.id);
-      const msg = await generateFollowupMessage(conv, messages);
+      const msg = await generateFollowupMessage(conv, messages, agentName);
       await sendMessage(conv.whatsappNumber, msg);
       await repo.addMessage(conv.id, "assistant", msg);
       await repo.markFollowupSent(conv.id); // status permanece 'waiting'

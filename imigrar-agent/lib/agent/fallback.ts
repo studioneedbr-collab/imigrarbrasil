@@ -81,13 +81,13 @@ function saudacaoAgora(agora: Date): Record<Fala, string> {
 // mensagem ainda não dá para saber o idioma de quem escreveu. E não se pede documento
 // nenhum — pedir número de documento a quem chega com medo é exatamente o que este
 // atendimento não faz.
-function saudacao(agora: Date): string {
+function saudacao(agora: Date, nome: string): string {
   const s = saudacaoAgora(agora);
   return (
-    `${s.pt}! Aqui é a Ana, da Imigrar Brasil. A gente cuida de imigração para o Brasil: ` +
+    `${s.pt}! Aqui é a ${nome}, da Imigrar Brasil. A gente cuida de imigração para o Brasil: ` +
     `visto, regularização, naturalização, refúgio, Mercosul e reunião familiar. Me conta o ` +
     `que você precisa resolver que eu te ajudo.\n` +
-    `${s.es}! Soy Ana, de Imigrar Brasil. Cuidamos de inmigración hacia Brasil: visa, ` +
+    `${s.es}! Soy ${nome}, de Imigrar Brasil. Cuidamos de inmigración hacia Brasil: visa, ` +
     `regularización, naturalización, refugio, Mercosur y reunificación familiar. Cuéntame ` +
     `qué necesitas resolver.`
   );
@@ -642,7 +642,9 @@ export async function runFallback({
   // Antes de qualquer triagem. Continuar perguntando a quem já disse que não pode pagar é
   // levantar dados de alguém que a gente não vai atender — e ela precisa do endereço certo
   // agora, não no fim do questionário.
-  if (caso.semCondicoes) return { reply: DPU[fala], toolCalls };
+  // Menos quando é risco: "não tenho dinheiro" no primeiro turno e "estão me ameaçando"
+  // no segundo devolvia o endereço da DPU de novo, sem ninguém do time ficar sabendo.
+  if (caso.semCondicoes && !EMERGENCIA.test(lastRaw)) return { reply: DPU[fala], toolCalls };
 
   // ─── 2) GUARDRAIL: honorários e o que mais a equipe marcou como confidencial ───
   if (isConfidentialAsk(lastRaw, training.guardrails.termos)) {
@@ -690,7 +692,7 @@ export async function runFallback({
   }
 
   // ─── 9) Porta de entrada ───
-  if (primeiraMensagem) return { reply: saudacao(new Date()), toolCalls };
+  if (primeiraMensagem) return { reply: saudacao(new Date(), training.identity.agentName), toolCalls };
 
   // ─── 10) Mandou documento por conta própria ───
   if (DOCUMENTO_ENVIADO.test(lastRaw)) return { reply: NAO_PRECISA_DOCUMENTO[fala], toolCalls };

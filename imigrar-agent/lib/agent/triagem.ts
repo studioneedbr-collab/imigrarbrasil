@@ -108,7 +108,7 @@ export function detectarNacionalidade(texto: string): string | undefined {
 // regex só significava listar à mão cada cidade depois de cada verbo, e "moro em Boa
 // Vista" (uma das cidades onde este atendimento mais acontece) passava batido.
 const PRESENCA =
-  /\b(estou|est[áa]|t[ôo]|moro|morando|vivo|vivendo|cheguei|chegamos|entrei|estamos|resido|fico|vim para|estoy|vivimos|llegu[ée]|llegamos|entr[ée]|resido en|i am|i'm|i live|i've been|i have been|i arrived|i came|i moved)\b/i;
+  /\b(estou|est[áa]|tô|to(?!\s+(?:work|study|live|move|go|come|get|be|stay|apply|visit|bring|travel)\b)|moro|morando|vivo|vivendo|cheguei|chegamos|entrei|estamos|resido|fico|vim para|estoy|vivimos|llegu[ée]|llegamos|entr[ée]|resido en|i am|i'm|i live|i've been|i have been|i arrived|i came|i moved)\b/i;
 const AQUI_NO_BRASIL =
   /\b(no brasil|aqui no brasil|aqui em|aqui no|aqui na|en brasil|aqu[íi] en|in brazil|here in brazil)\b/i;
 const NO_EXTERIOR =
@@ -116,6 +116,11 @@ const NO_EXTERIOR =
 
 const CIDADE_BR =
   /\b(?:em|no|na|en|in)\s+(s[ãa]o paulo|rio de janeiro|bras[íi]lia|curitiba|porto alegre|belo horizonte|salvador|recife|fortaleza|manaus|bel[ée]m|boa vista|pacaraima|foz do igua[çc]u|corumb[áa]|florian[óo]polis|goi[âa]nia|campinas|guarulhos)\b/i;
+
+const perto = (lugar: RegExp) =>
+  new RegExp(`${PRESENCA.source}(?:\\s+\\S+){0,2}?\\s*${lugar.source}`, "i");
+const PRESENCA_PERTO_DO_BRASIL = perto(AQUI_NO_BRASIL);
+const PRESENCA_PERTO_DE_CIDADE = perto(CIDADE_BR);
 
 export function detectarOndeEsta(texto: string): string | undefined {
   // O exterior vem primeiro: "estou fora do Brasil" também contém a palavra "Brasil".
@@ -126,11 +131,14 @@ export function detectarOndeEsta(texto: string): string | undefined {
     }
     return "Exterior";
   }
-  if (PRESENCA.test(texto)) {
-    const cidade = texto.match(CIDADE_BR)?.[1];
+  // O verbo e o lugar têm que estar PERTO. "Estou na Venezuela e quero ir morar no
+  // Brasil" tem os dois, longe um do outro — e virava "no Brasil", mandando a conversa
+  // inteira para o ramo de quem já está aqui.
+  if (PRESENCA_PERTO_DE_CIDADE.test(texto)) {
+    const cidade = texto.match(PRESENCA_PERTO_DE_CIDADE)?.[2];
     if (cidade) return `Brasil — ${titleCase(cidade)}`;
-    if (AQUI_NO_BRASIL.test(texto)) return "Brasil";
   }
+  if (PRESENCA_PERTO_DO_BRASIL.test(texto)) return "Brasil";
   return undefined;
 }
 

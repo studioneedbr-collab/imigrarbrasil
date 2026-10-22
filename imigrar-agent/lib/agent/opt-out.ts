@@ -28,9 +28,13 @@ const BLOQUEAR: RegExp[] = [
   // "não me manda mais nada" / "não me mande mais mensagem"
   /\bn[ãa]o\s+me\s+(mand|envi|escrev)\w*\s+mais\b/,
   // "não quero (mais) receber" / "não quero receber nada"
-  /\bn[ãa]o\s+quero\s+(mais\s+)?receber\b/,
+  // O que ela não quer receber tem que ser mensagem. "Não quero receber outra multa da
+  // PF" é o caso dela, não um pedido de parar.
+  /\bn[ãa]o\s+quero\s+(mais\s+)?receber\s*(mais\s+)?(mensage|nada|isso|contato|liga|spam|[.!]*$)/,
   // "me tira dessa lista" / "quero ser removido da lista" / "excluir da lista"
-  /\b(tir[ae]r?|tirem|remov\w+|retir\w+|exclu\w+)\b[^.!?]{0,30}\blista\b/,
+  // A lista tem que ser a de envio. "Tirar meu nome da lista de impedidos" é caso.
+  /\b(tir[ae]r?|tirem|remov\w+|retir\w+|exclu\w+)\b[^.!?]{0,30}\b(dessa|desta|nessa|nesta|da\s+sua|de\s+voc[êe]s)\s+lista\b/,
+  /\b(tir[ae]r?|tirem|remov\w+|retir\w+|exclu\w+)\b[^.!?]{0,30}\blista\b\s*(de\s+(contatos?|envio|transmiss[ãa]o|mensagens|voc[êe]s))?\s*[.!?]*$/,
   /descadastr/,
   // "me deixa em paz"
   /\bdeix\w*\s+(me\s+|eu\s+)?em\s+paz\b/,
@@ -38,7 +42,11 @@ const BLOQUEAR: RegExp[] = [
   /\b(par[ae]|parem|parar)\s+de\s+(me\s+)?perturbar\b/,
   /\bn[ãa]o\s+(me\s+)?perturb/,
   // Ameaça de bloqueio/denúncia — é o aviso final antes do estrago de verdade.
-  /\bvou\s+(te\s+|os\s+|o\s+|vos\s+)?(bloquear|denunciar|reportar)\b/,
+  // Só quando o alvo somos nós. "Vou denunciar meu patrão, ele pegou meu passaporte"
+  // pode ser exploração de trabalho — silenciar essa pessoa é o pior erro possível.
+  /\bvou\s+(te|os|vos)\s+(bloquear|denunciar|reportar)\b/,
+  /\bvou\s+(bloquear|denunciar|reportar)\s+(voc[êe]s?|vcs|esse\s+n[úu]mero|este\s+n[úu]mero|esse\s+contato|isso)\b/,
+  /\bvou\s+(bloquear|denunciar|reportar)\s*[.!]*$/,
   // "spam" só na forma de reclamação. "vê se não caiu no spam" é sobre o e-mail da
   // proposta e não pode silenciar ninguém.
   /\b(isso|isto|voc[êe]s?|vcs)\s+(é|e|s[ãa]o|t[áa]|fazem|mandam)\s+\w*\s*spam\b/,

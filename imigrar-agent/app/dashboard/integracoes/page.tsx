@@ -16,6 +16,7 @@ type StatusData = {
   connected: boolean;
   configured: boolean;
   detail?: string;
+  phone?: string;
 };
 
 type Feedback = { kind: "success" | "error"; text: string } | null;
