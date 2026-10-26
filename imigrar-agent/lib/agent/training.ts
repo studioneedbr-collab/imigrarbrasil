@@ -99,7 +99,7 @@ export type MessageLength = "curtas" | "medias" | "detalhadas";
  *
  * Para aumentar: mude aqui. A tela e a API acompanham.
  */
-export const PERSONA_MAX = 8000;
+export const PERSONA_MAX = 15000;
 
 export interface Identity {
   agentName: string;

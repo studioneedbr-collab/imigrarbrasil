@@ -1,7 +1,7 @@
 import { mensagemSemConteudo } from "@/lib/agent/triagem";
 import type { LeadSetor } from "@/lib/domain/types";
 
-// Rede de segurança contra REPETIÇÃO. Quando a Ana esbarra em algo que ela não consegue
+// Rede de segurança contra REPETIÇÃO. Quando a agente esbarra em algo que ela não consegue
 // resolver — uma pergunta que o material oficial não cobre, um caso que ela não deveria
 // estar conduzindo —, ela tende a reformular a MESMA pergunta indefinidamente: a pessoa
 // responde, ela repergunta, e a conversa nunca sai do lugar.
@@ -90,7 +90,7 @@ export function similaridade(a: string, b: string): number {
 const LIMITE = 0.6;
 
 /**
- * A resposta nova repete alguma das últimas respostas da Ana?
+ * A resposta nova repete alguma das últimas respostas da agente?
  * @param novaResposta resposta que ela está prestes a enviar
  * @param anteriores respostas anteriores dela, da mais recente para a mais antiga
  */
@@ -167,7 +167,7 @@ function msgImpasse(setor: LeadSetor, proximoRetorno?: string): string {
 }
 
 export interface ImpasseInput {
-  /** Resposta que a Ana está prestes a enviar. */
+  /** Resposta que a agente está prestes a enviar. */
   novaResposta: string;
   /** Respostas anteriores dela, da mais recente para a mais antiga. */
   respostasAnteriores: string[];
@@ -218,7 +218,7 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
   // QUEM NÃO DISSE NADA FOI A PESSOA. Esta rede existe para detectar que o AGENTE travou.
   // Diante de "oi", "sim", "ta", repetir um convite é o comportamento certo — e acusar
   // impasse aí produzia um "acho que me embolei aqui, desculpa" que não era verdade, com
-  // um pedido de desculpas por algo que a Ana não fez.
+  // um pedido de desculpas por algo que a agente não fez.
   if (mensagemSemConteudo(i.ultimaMensagemDoCliente)) return null;
   if (!ehRepeticao(i.novaResposta, i.respostasAnteriores)) return null;
   const setor = i.setor;
@@ -239,7 +239,7 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
   return {
     acao: "encaminhar",
     setor,
-    motivo: `Atendimento travado (${setor}): a Ana repetiu a mesma resposta sem conseguir avançar.`,
+    motivo: `Atendimento travado (${setor}): a agente repetiu a mesma resposta sem conseguir avançar.`,
     msg: msgImpasse(setor, i.proximoRetorno),
     // O funil de imigração ("comercial") trata impasse como urgente: quem está travado numa
     // conversa dessas costuma estar com prazo correndo ou com medo.

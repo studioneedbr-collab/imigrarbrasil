@@ -45,7 +45,7 @@ const MODO_LABEL: Record<Instancia["modoDesligado"], string> = {
 const MODO_EXPLICA: Record<Instancia["modoDesligado"], string> = {
   silencio: "Nada volta para quem escreve. Só existe em instância de teste.",
   resposta_fixa: "Avisa que uma pessoa vai responder, e quando.",
-  sombra: "A Ana monta a resposta, ela fica no painel para revisão e nada é enviado.",
+  sombra: "A agente monta a resposta, ela fica no painel para revisão e nada é enviado.",
 };
 
 const inputClass =
@@ -366,7 +366,7 @@ export default function Instancias() {
             <p className="mb-3 text-sm font-semibold text-ib-ink">Nova instância</p>
             <p className="mb-3 text-xs leading-relaxed text-ib-slate">
               Ela nasce em <strong>teste</strong> e <strong>desligada</strong>, sempre — e em
-              modo sombra, gravando o que a Ana responderia sem enviar nada. Promover a
+              modo sombra, gravando o que a agente responderia sem enviar nada. Promover a
               produção e ligar são duas decisões separadas, depois.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -449,18 +449,18 @@ export default function Instancias() {
                 confirmar.inst.ambiente === "producao" ? (
                   <>
                     Esta é uma instância de <strong className="text-ib-danger">PRODUÇÃO</strong>.
-                    A Ana vai responder sozinha para clientes de verdade neste número. Isto é
+                    A agente vai responder sozinha para clientes de verdade neste número. Isto é
                     uma decisão separada da chave geral do agente.
                   </>
                 ) : (
                   <>
-                    A Ana passa a responder no número de teste. As instâncias de produção não
+                    A agente passa a responder no número de teste. As instâncias de produção não
                     são afetadas por isto.
                   </>
                 )
               ) : (
                 <>
-                  A Ana para de responder neste número. As mensagens continuam chegando e sendo
+                  A agente para de responder neste número. As mensagens continuam chegando e sendo
                   gravadas — o que sai de volta passa a ser{" "}
                   <strong className="text-ib-ink">{MODO_LABEL[confirmar.inst.modoDesligado].toLowerCase()}</strong>.
                 </>

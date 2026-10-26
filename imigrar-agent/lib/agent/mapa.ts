@@ -1,7 +1,7 @@
 // O MAPA DO ATENDIMENTO — o caminho de uma mensagem, escrito uma vez.
 //
 // A pergunta que este arquivo responde é a que todo mundo faz na terceira semana usando o
-// painel: "se a pessoa disser X, o que a Ana faz?". Hoje a resposta existe, mas espalhada
+// painel: "se a pessoa disser X, o que a agente faz?". Hoje a resposta existe, mas espalhada
 // por doze arquivos e uns três mil comentários — quem precisa dela (o sócio decidindo se
 // confia no agente, o atendente entendendo por que um caso não foi encaminhado) não vai
 // ler `lib/agent/index.ts`.
@@ -54,7 +54,7 @@ export const ETAPAS: EtapaDoMapa[] = [
     oQue:
       "WhatsApp entrega a mensagem no webhook. Mensagens em sequência são AGRUPADAS antes de acionar o agente, e reentrega da mesma mensagem é descartada pelo id.",
     porQue:
-      "Quem escreve no WhatsApp manda três linhas seguidas em vez de um parágrafo. Responder cada uma faria a Ana falar por cima da pessoa — e a Meta reentrega tudo que não recebe 200 a tempo.",
+      "Quem escreve no WhatsApp manda três linhas seguidas em vez de um parágrafo. Responder cada uma faria a agente falar por cima da pessoa — e a Meta reentrega tudo que não recebe 200 a tempo.",
     caminhos: [
       { se: "é reentrega da mesma mensagem", entao: "descarta em silêncio" },
       { se: "áudio", entao: "transcreve antes (falha vira alerta em Falhas de transcrição)" },
@@ -67,11 +67,11 @@ export const ETAPAS: EtapaDoMapa[] = [
     titulo: "O agente está calado nesta conversa?",
     tipo: "portao",
     oQue:
-      "Se um atendente assumiu a conversa, ou se o contato pediu para parar de receber mensagem, a Ana não responde — nem para dizer que não vai responder.",
+      "Se um atendente assumiu a conversa, ou se o contato pediu para parar de receber mensagem, a agente não responde — nem para dizer que não vai responder.",
     porQue:
-      "Humano e agente respondendo na mesma thread é o defeito mais caro que existe aqui: a pessoa liga para quem assumiu, e enquanto isso a Ana responde outra coisa.",
+      "Humano e agente respondendo na mesma thread é o defeito mais caro que existe aqui: a pessoa liga para quem assumiu, e enquanto isso a agente responde outra coisa.",
     caminhos: [
-      { se: "alguém assumiu o atendimento", entao: "a Ana se cala nesta conversa" },
+      { se: "alguém assumiu o atendimento", entao: "a agente se cala nesta conversa" },
       { se: "o contato pediu opt-out", entao: "silêncio definitivo neste número" },
       { se: "modo sombra ligado", entao: "ela pensa a resposta, mas ela vira rascunho e não sai" },
     ],
@@ -98,7 +98,7 @@ export const ETAPAS: EtapaDoMapa[] = [
     oQue:
       "Nome, nacionalidade, onde está, objetivo, intenção declarada, situação documental, vínculo familiar e o prazo — inclusive a data limite JÁ confirmada por um humano.",
     porQue:
-      "Quem chega com medo e tem que repetir de onde veio pela terceira vez desiste. Este bloco é o que faz a Ana confirmar em vez de reperguntar.",
+      "Quem chega com medo e tem que repetir de onde veio pela terceira vez desiste. Este bloco é o que faz a agente confirmar em vez de reperguntar.",
     arquivo: "lib/agent/index.ts · buildDadosConhecidosBlock",
   },
   {
@@ -122,7 +122,7 @@ export const ETAPAS: EtapaDoMapa[] = [
     caminhos: [
       { se: "primeira mensagem, sem caso concreto", entao: "a tool fica bloqueada: acolher e perguntar o que a pessoa precisa" },
       { se: "prazo, irregularidade, refúgio, risco ou pedido de humano", entao: "libera imediatamente, mesmo sem saber o nome" },
-      { se: "a Ana pediu autorização e a pessoa não disse sim", entao: "não encaminha e NÃO escreve que encaminhou" },
+      { se: "a agente pediu autorização e a pessoa não disse sim", entao: "não encaminha e NÃO escreve que encaminhou" },
     ],
     arquivo: "lib/agent/transfer-gate.ts",
   },
@@ -161,12 +161,12 @@ export const ETAPAS: EtapaDoMapa[] = [
     oQue:
       "Seis regras invioláveis e a lista do acervo entram em TODO prompt, por último — inclusive por cima de um prompt cru gravado à mão.",
     porQue:
-      "O RAG é condicional; a proibição de dar parecer não pode ser. Numa conversa real a Ana afirmou que o carimbo de entrada de alguém “quedó registrada de forma regular” — isso é parecer, e a pessoa decide a vida em cima.",
+      "O RAG é condicional; a proibição de dar parecer não pode ser. Numa conversa real a agente afirmou que o carimbo de entrada de alguém “quedó registrada de forma regular” — isso é parecer, e a pessoa decide a vida em cima.",
     arquivo: "lib/agent/material-oficial.ts",
   },
   {
     id: "modelo",
-    titulo: "A Ana escreve",
+    titulo: "A agente escreve",
     tipo: "modelo",
     oQue:
       "O modelo recebe o prompt montado e o histórico, e pode acionar cinco ferramentas: registrar dados, transferir para humano, buscar material, agendar follow-up e enviar opções em botão.",

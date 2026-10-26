@@ -121,6 +121,18 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [enviandoDoc, setEnviandoDoc] = useState(false);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+
+  // A caixa cresce com o texto até metade da tela. Com altura fixa de duas linhas, quem
+  // escrevia uma resposta longa revisava o texto rolando dentro de uma fresta.
+  useEffect(() => {
+    const el = replyRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * 0.5))}px`;
+  }, [replyText]);
   const [iaToggling, setIaToggling] = useState(false);
 
   // Quem está olhando. Só administrador pode excluir a conversa — ver o botão abaixo.
@@ -212,6 +224,24 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
       setReplyError(e instanceof Error ? e.message : "Falha ao enviar a mensagem.");
     } finally {
       setSending(false);
+    }
+  }
+
+  // Envia um arquivo (orçamento, proposta) pelo WhatsApp. Como a resposta manual, assume.
+  async function enviarDocumento(arquivo: File) {
+    setEnviandoDoc(true);
+    setReplyError(null);
+    try {
+      const form = new FormData();
+      form.append("arquivo", arquivo);
+      const res = await fetch(`/api/conversations/${id}/documento`, { method: "POST", body: form });
+      const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "Falha ao enviar o documento.");
+    } finally {
+      setEnviandoDoc(false);
+      if (arquivoRef.current) arquivoRef.current.value = "";
     }
   }
 
@@ -387,7 +417,8 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   };
   // Assumida = tem uma PESSOA no comando (o agente cala). Encaminhar pro setor não
   // assume: `status: 'transferred'` sozinho não significa que alguém pegou a conversa.
-  const documentos = messages.filter((m) => !!m.mediaUrl);
+  // Só o que o CLIENTE mandou: o que a equipe envia já aparece na própria conversa.
+  const documentos = messages.filter((m) => !!m.mediaUrl && m.role === "user");
   const assumida = !!conversation.assumedBy;
   const euAssumi = assumida && !!meEmail && conversation.assumedBy === meEmail;
 
@@ -630,7 +661,7 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                     <span className="h-1.5 w-1.5 rounded-full bg-ib-success" />
                     Encaminhada
                     {conversation.handedOffTo ? ` para ${conversation.handedOffTo}` : ""} — ninguém
-                    assumiu ainda. O agente segue atendendo.
+                    assumiu ainda. O agente está em silêncio até alguém assumir e devolver.
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-ib-slate">
@@ -648,7 +679,28 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                 </button>
               </div>
               <div className="flex items-end gap-2">
+                <input
+                  ref={arquivoRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void enviarDocumento(f);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => arquivoRef.current?.click()}
+                  disabled={enviandoDoc}
+                  title="Enviar documento (PDF, Word, Excel ou imagem, até 4 MB)"
+                  className="inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-xl border border-ib-line bg-white px-3 text-sm font-semibold text-ib-ink transition hover:border-ib-mar hover:text-ib-mar disabled:opacity-50"
+                >
+                  <Icon name="doc" className="h-4 w-4" />
+                  {enviandoDoc ? "Enviando…" : "Documento"}
+                </button>
                 <textarea
+                  ref={replyRef}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   onKeyDown={(e) => {
@@ -657,9 +709,9 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                       sendReply();
                     }
                   }}
-                  rows={1}
-                  placeholder="Responder como humano…"
-                  className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-ib-line bg-ib-papel px-3 py-2.5 text-sm text-ib-ink outline-none transition focus:border-ib-mar focus:bg-white focus:ring-2 focus:ring-ib-mar/20"
+                  rows={4}
+                  placeholder="Responder como humano… (Enter envia, Shift+Enter quebra linha)"
+                  className="max-h-[50vh] min-h-[104px] flex-1 resize-y overflow-y-auto rounded-xl border border-ib-line bg-ib-papel px-3 py-2.5 text-sm text-ib-ink outline-none transition focus:border-ib-mar focus:bg-white focus:ring-2 focus:ring-ib-mar/20"
                 />
                 <button
                   type="button"

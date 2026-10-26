@@ -9,7 +9,7 @@ import RascunhoSombra, { type RascunhoView } from "@/components/agente/rascunho-
  * A FILA DE SOMBRA.
  *
  * Durante a fase de testes, esta tela vale mais do que o botão de ligar/desligar: é aqui
- * que a Ana é avaliada contra conversa real, sem risco nenhum. Cada linha é uma resposta
+ * que a agente é avaliada contra conversa real, sem risco nenhum. Cada linha é uma resposta
  * que ela montou lendo uma mensagem de verdade e que não foi para lugar nenhum.
  *
  * A tela não ordena por "mais recente" por acaso — do outro lado de cada rascunho tem
@@ -54,7 +54,7 @@ export default function SombraPage() {
       <PageHeader
         eyebrow="Agente"
         title="Modo sombra"
-        description="O que a Ana teria respondido, e não foi enviado. Cada decisão aqui vira dado de treinamento."
+        description="O que a agente teria respondido, e não foi enviado. Cada decisão aqui vira dado de treinamento."
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">

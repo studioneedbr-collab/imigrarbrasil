@@ -1394,7 +1394,7 @@ function TabTecnico({
       <Card className="p-5 sm:p-6">
         <BlockHeading
           eyebrow="Seção 1"
-          title="Termos que a Ana explica"
+          title="Termos que a agente explica"
           description="Sigla e termo técnico que ela precisa traduzir em uma linha na conversa. Nada aqui é procedimento: requisito, prazo e documento vêm do material oficial."
           right={
             <button type="button" onClick={onRestore} className={btnGhost}>
@@ -1457,7 +1457,7 @@ function TabTecnico({
         <BlockHeading
           eyebrow="Seção 3"
           title="Caminhos migratórios"
-          description="O que é cada caminho atendido e quando ele entra na conversa. Serve para a Ana orientar — não para afirmar requisito nem prazo."
+          description="O que é cada caminho atendido e quando ele entra na conversa. Serve para a agente orientar — não para afirmar requisito nem prazo."
         />
         <div className="grid gap-3 pt-5 md:grid-cols-3">
           {t.escalas.map((e) => (
@@ -1822,7 +1822,7 @@ function TabMaterial({ material }: { material: MaterialOficialResposta | null })
         <BlockHeading
           eyebrow="Acervo"
           title="Os documentos que sustentam as respostas"
-          description="Cada um é quebrado em trechos e recuperado a cada mensagem que pede pesquisa. A Ana conhece esta lista: é o que a impede de prometer resposta sobre tema que o acervo não cobre — e o que faz ela usar o que foi acrescentado."
+          description="Cada um é quebrado em trechos e recuperado a cada mensagem que pede pesquisa. A agente conhece esta lista: é o que a impede de prometer resposta sobre tema que o acervo não cobre — e o que faz ela usar o que foi acrescentado."
           right={
             documentos.length > 0 ? (
               <button

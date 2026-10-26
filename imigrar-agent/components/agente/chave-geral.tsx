@@ -109,7 +109,7 @@ export default function ChaveGeral() {
           <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="font-medium text-ib-ink">Agente ligado</span>
           <span className="text-ib-slate">
-            · a Ana está respondendo nas instâncias que estão ligadas
+            · a agente está respondendo nas instâncias que estão ligadas
           </span>
           {admin ? (
             <button
@@ -181,13 +181,13 @@ export default function ChaveGeral() {
             <div className="mt-2 text-sm leading-relaxed text-ib-slate">
               {confirmando === "desligar" ? (
                 <>
-                  A Ana para de responder em <strong>todas</strong> as instâncias. As mensagens
+                  A agente para de responder em <strong>todas</strong> as instâncias. As mensagens
                   continuam chegando, sendo gravadas e aparecendo no painel — e cada conversa
                   entra na fila esperando resposta humana, com o relógio de SLA correndo.
                 </>
               ) : (
                 <>
-                  A Ana volta a responder nas instâncias que estiverem ligadas. Isto{" "}
+                  A agente volta a responder nas instâncias que estiverem ligadas. Isto{" "}
                   <strong>não</strong> liga instância nenhuma por conta própria — cada uma
                   tem o seu botão.
                 </>

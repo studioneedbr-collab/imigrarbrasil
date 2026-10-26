@@ -253,12 +253,12 @@ export default function Provedores() {
     <>
       {secao(
         "Provedores de LLM",
-        "Quem escreve as respostas da Ana e lê os documentos que chegam. A chave nunca aparece aqui, nem mascarada — o que se decide olhando meia chave se decide igual olhando “configurada” e a data da última chamada que funcionou.",
+        "Quem escreve as respostas da agente e lê os documentos que chegam. A chave nunca aparece aqui, nem mascarada — o que se decide olhando meia chave se decide igual olhando “configurada” e a data da última chamada que funcionou.",
         ["llm"],
       )}
       {secao(
         "Transcrição e embeddings",
-        "As duas coisas que o provedor do agente não faz: ouvir o áudio que a pessoa mandou e vetorizar a consulta ao material oficial. Quando a transcrição para, o atendimento continua — a Ana pede para a pessoa escrever —, e é por isso que ela precisa ser vigiada aqui.",
+        "As duas coisas que o provedor do agente não faz: ouvir o áudio que a pessoa mandou e vetorizar a consulta ao material oficial. Quando a transcrição para, o atendimento continua — a agente pede para a pessoa escrever —, e é por isso que ela precisa ser vigiada aqui.",
         ["transcricao", "embedding"],
       )}
     </>

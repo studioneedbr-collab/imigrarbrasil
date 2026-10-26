@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * A queda é elegante: a chamada ao provedor falha, o atendimento cai no motor
  * determinístico e a pessoa recebe resposta do mesmo jeito. É exatamente por isso que
  * ela precisa de uma tela. De fora nada parece errado — a conversa anda, o painel mostra
- * mensagem entrando e saindo — mas naquele turno a Ana deixou de conduzir e passou a
+ * mensagem entrando e saindo — mas naquele turno a agente deixou de conduzir e passou a
  * despachar. Quem estava contando um caso difícil recebeu um menu.
  *
  * ISTO NÃO É A TELA DE ÁUDIOS, e essa separação é o conserto de um erro concreto: o
@@ -37,7 +37,7 @@ export default async function FalhasLlmPage({
       <PageHeader
         eyebrow="Saúde da operação"
         title="Falhas de LLM"
-        description="A chamada ao modelo falhou e o atendimento caiu no motor determinístico. A pessoa recebeu resposta, mas a Ana não conduziu aquele turno. Se isso se repete, o lugar de olhar é a credencial ou a conta do provedor."
+        description="A chamada ao modelo falhou e o atendimento caiu no motor determinístico. A pessoa recebeu resposta, mas a agente não conduziu aquele turno. Se isso se repete, o lugar de olhar é a credencial ou a conta do provedor."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Link

@@ -33,7 +33,7 @@ export const maxDuration = 300;
 /**
  * O ACERVO — ler é para qualquer sessão, mexer é só para administrador.
  *
- * A assimetria é deliberada e foi pedida: o acervo é o que sustenta tudo que a Ana afirma a
+ * A assimetria é deliberada e foi pedida: o acervo é o que sustenta tudo que a agente afirma a
  * quem está do outro lado. Quem atende precisa VER qual documento responde o quê (é o que
  * evita prometer resposta sobre tema que a base não cobre); trocar a base jurídica do
  * escritório é outra ordem de decisão.
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Escreva o que este documento cobre. É essa frase que a Ana lê para saber quando usá-lo — sem ela, o documento é indexado e nunca oferecido.",
+          "Escreva o que este documento cobre. É essa frase que a agente lê para saber quando usá-lo — sem ela, o documento é indexado e nunca oferecido.",
       },
       { status: 400 },
     );
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
   const guardado = await guardarPdf(nome, bytes);
 
   // A LISTA SÓ DEPOIS DA INDEXAÇÃO. Na ordem inversa, uma falha de vetorização deixaria o
-  // documento visível na tela e no prompt sem nada na base — a Ana ofereceria um material
+  // documento visível na tela e no prompt sem nada na base — a agente ofereceria um material
   // que não existe.
   const novo: MaterialAdicionado = {
     arquivo: nome,

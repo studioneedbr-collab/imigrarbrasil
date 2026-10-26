@@ -41,7 +41,7 @@ const TIPO: Record<TipoDeEtapa, { rotulo: string; ponto: string; caixa: string; 
     texto: "text-ib-mar",
   },
   modelo: {
-    rotulo: "A Ana escreve",
+    rotulo: "A agente escreve",
     ponto: "bg-ib-selo",
     caixa: "border-ib-selo/40 bg-ib-selo/[0.06]",
     texto: "text-[#0B7285]",
