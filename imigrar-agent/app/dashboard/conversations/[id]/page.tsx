@@ -125,13 +125,13 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const arquivoRef = useRef<HTMLInputElement>(null);
 
-  // A caixa cresce com o texto até metade da tela. Com altura fixa de duas linhas, quem
+  // A caixa cresce com o texto até 40% da tela. Com altura fixa de duas linhas, quem
   // escrevia uma resposta longa revisava o texto rolando dentro de uma fresta.
   useEffect(() => {
     const el = replyRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * 0.5))}px`;
+    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * 0.4))}px`;
   }, [replyText]);
   const [iaToggling, setIaToggling] = useState(false);
 
@@ -487,7 +487,7 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         {/* LEFT — live chat */}
-        <Card className="flex h-[calc(100vh-15rem)] min-h-[440px] flex-col overflow-hidden">
+        <Card className="flex h-[calc(100vh-12rem)] min-h-[600px] flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-ib-line px-5 py-4">
             {/* Iniciais só quando há nome. Sem isso o avatar carimbava "SI"/"CA" — as
                 duas primeiras letras de `sim:` e `cand:` — como se fossem as iniciais de
@@ -636,69 +636,68 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
               reais de WhatsApp.
             </div>
           ) : (
-            <div className="border-t border-ib-line bg-white px-4 py-3">
-              {/* Quem está no comando. `status: 'transferred'` só diz que o agente
-                  ENCAMINHOU pro setor — não que alguém assumiu. Quem assumiu de fato
-                  é `assumedBy`; antes os dois estados usavam a mesma faixa, e toda
-                  conversa encaminhada aparecia como "Você assumiu esta conversa". */}
-              <div className="mb-2 flex items-center justify-between gap-2">
-                {assumida ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#9A6212]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-ib-warn" />
-                    {/* O NOME, E NÃO O E-MAIL. Aqui dizia
-                        "sergio.reis@imigrarbrasil.com.br assumiu esta conversa" — e quem
-                        lê são as três ou quatro pessoas do escritório, que se chamam pelo
-                        primeiro nome. O endereço inteiro só empurrava o resto da frase
-                        para fora da linha. `assumedByNome` vem resolvido da rota; o
-                        e-mail fica como último recurso, porque sumir com a informação de
-                        quem assumiu seria pior do que mostrá-la feia. */}
-                    {euAssumi
-                      ? "Você assumiu esta conversa. O agente está pausada."
-                      : `${conversation.assumedByNome ?? conversation.assumedBy} assumiu esta conversa. O agente está pausada.`}
-                  </span>
-                ) : conversation.status === "transferred" ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-ib-slate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-ib-success" />
-                    Encaminhada
-                    {conversation.handedOffTo ? ` para ${conversation.handedOffTo}` : ""} — ninguém
-                    assumiu ainda. O agente está em silêncio até alguém assumir e devolver.
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-ib-slate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-ib-success" />
-                    Agente ativa. Ao responder, você assume a conversa.
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={iaToggling}
-                  onClick={() => toggleIa(assumida)}
-                  className="shrink-0 text-xs font-semibold text-ib-mar transition hover:underline disabled:opacity-50"
-                >
-                  {assumida ? "Devolver pra IA" : "Assumir conversa"}
-                </button>
-              </div>
-              <div className="flex items-end gap-2">
-                <input
-                  ref={arquivoRef}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void enviarDocumento(f);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => arquivoRef.current?.click()}
-                  disabled={enviandoDoc}
-                  title="Enviar documento (PDF, Word, Excel ou imagem, até 4 MB)"
-                  className="inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-xl border border-ib-line bg-white px-3 text-sm font-semibold text-ib-ink transition hover:border-ib-mar hover:text-ib-mar disabled:opacity-50"
-                >
-                  <Icon name="doc" className="h-4 w-4" />
-                  {enviandoDoc ? "Enviando…" : "Documento"}
-                </button>
+            <div className="border-t border-ib-line bg-white">
+              {/* QUEM ESTÁ RESPONDENDO. Antes era um link miúdo no canto, e a conversa
+                  encaminhada nem tinha como voltar para a agente: era preciso assumir para
+                  só então devolver. Agora a faixa diz o estado em uma frase e oferece a
+                  ação que faz sentido nele. `status: 'transferred'` sozinho não é
+                  "alguém assumiu" — quem assumiu de fato é `assumedBy`. */}
+              {(() => {
+                const quem = assumida
+                  ? {
+                      tom: "border-ib-warn/30 bg-ib-warn/10 text-[#7A4D0E]",
+                      ponto: "bg-ib-warn",
+                      // O nome, não o e-mail: quem lê são poucas pessoas que se chamam
+                      // pelo primeiro nome. O e-mail é o último recurso.
+                      texto: euAssumi
+                        ? "Você está respondendo. A agente está pausada nesta conversa."
+                        : `${conversation.assumedByNome ?? conversation.assumedBy} está respondendo. A agente está pausada.`,
+                    }
+                  : conversation.status === "transferred"
+                    ? {
+                        tom: "border-ib-danger/20 bg-ib-danger/5 text-ib-danger",
+                        ponto: "bg-ib-danger",
+                        texto: `Encaminhada${conversation.handedOffTo ? ` para ${conversation.handedOffTo}` : ""} e ninguém assumiu. A agente está em silêncio — o cliente está sem resposta.`,
+                      }
+                    : {
+                        tom: "border-ib-success/25 bg-ib-success/8 text-[#15803D]",
+                        ponto: "bg-ib-success",
+                        texto: "A agente está respondendo. Se você escrever, assume a conversa.",
+                      };
+                const parada = assumida || conversation.status === "transferred";
+                return (
+                  <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5 text-sm ${quem.tom}`}>
+                    <span className="inline-flex min-w-0 items-center gap-2 font-medium">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${quem.ponto}`} />
+                      {quem.texto}
+                    </span>
+                    <div className="flex shrink-0 gap-2">
+                      {parada ? (
+                        <button
+                          type="button"
+                          disabled={iaToggling}
+                          onClick={() => toggleIa(true)}
+                          className="rounded-lg bg-ib-mar px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-ib-carimbo disabled:opacity-50"
+                        >
+                          {iaToggling ? "Devolvendo…" : "Devolver para a agente"}
+                        </button>
+                      ) : null}
+                      {!assumida ? (
+                        <button
+                          type="button"
+                          disabled={iaToggling}
+                          onClick={() => toggleIa(false)}
+                          className="rounded-lg border border-ib-line bg-white px-3 py-1.5 text-xs font-semibold text-ib-ink shadow-sm transition hover:border-ib-mar hover:text-ib-mar disabled:opacity-50"
+                        >
+                          Assumir conversa
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="px-4 py-3">
                 <textarea
                   ref={replyRef}
                   value={replyText}
@@ -710,20 +709,52 @@ export default function ConversationDetailPage({ params }: { params: { id: strin
                     }
                   }}
                   rows={4}
-                  placeholder="Responder como humano… (Enter envia, Shift+Enter quebra linha)"
-                  className="max-h-[50vh] min-h-[104px] flex-1 resize-y overflow-y-auto rounded-xl border border-ib-line bg-ib-papel px-3 py-2.5 text-sm text-ib-ink outline-none transition focus:border-ib-mar focus:bg-white focus:ring-2 focus:ring-ib-mar/20"
+                  placeholder="Escreva a resposta para o cliente…"
+                  className="block max-h-[40vh] min-h-[104px] w-full resize-y overflow-y-auto rounded-xl border border-ib-line bg-ib-papel px-3.5 py-3 text-[15px] leading-relaxed text-ib-ink outline-none transition focus:border-ib-mar focus:bg-white focus:ring-2 focus:ring-ib-mar/20"
                 />
-                <button
-                  type="button"
-                  onClick={sendReply}
-                  disabled={sending || !replyText.trim()}
-                  className="inline-flex h-[42px] items-center gap-1.5 rounded-xl bg-ib-mar px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-ib-carimbo disabled:opacity-50"
-                >
-                  <Icon name="chat" className="h-4 w-4" />
-                  {sending ? "Enviando…" : "Enviar"}
-                </button>
+                <input
+                  ref={arquivoRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void enviarDocumento(f);
+                  }}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => arquivoRef.current?.click()}
+                    disabled={enviandoDoc}
+                    title="PDF, Word, Excel ou imagem, até 4 MB"
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-ib-line bg-white px-3.5 text-sm font-semibold text-ib-ink transition hover:border-ib-mar hover:text-ib-mar disabled:opacity-50"
+                  >
+                    <Icon name="doc" className="h-4 w-4" />
+                    {enviandoDoc ? "Enviando documento…" : "Enviar documento"}
+                  </button>
+                  <span className="hidden text-xs text-ib-slate sm:inline">
+                    Enter envia · Shift+Enter quebra a linha
+                  </span>
+                  <span className="ml-auto font-mono text-xs tabular-nums text-ib-slate">
+                    {replyText.length > 0 ? `${replyText.length.toLocaleString("pt-BR")}/4.000` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={sendReply}
+                    disabled={sending || !replyText.trim() || replyText.length > 4000}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-ib-mar px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-ib-carimbo disabled:opacity-50"
+                  >
+                    <Icon name="chat" className="h-4 w-4" />
+                    {sending ? "Enviando…" : "Enviar"}
+                  </button>
+                </div>
+                {replyError ? (
+                  <p role="alert" className="mt-2 rounded-lg bg-ib-danger/5 px-3 py-2 text-xs text-ib-danger">
+                    {replyError}
+                  </p>
+                ) : null}
               </div>
-              {replyError ? <p className="mt-1.5 text-xs text-ib-danger">{replyError}</p> : null}
             </div>
           )}
         </Card>

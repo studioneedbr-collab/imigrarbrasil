@@ -91,3 +91,26 @@ describe("motor de reserva", () => {
     expect(out.toolCalls.map((t) => t.name)).toContain("transferir_para_humano");
   });
 });
+
+describe("leitura do caso — segunda rodada", () => {
+  it("o nome de um idioma não vira nacionalidade", async () => {
+    const { detectarNacionalidade } = await import("@/lib/agent/triagem");
+    expect(detectarNacionalidade("eu sou Ahmed, desculpa meu português")).toBeUndefined();
+    expect(detectarNacionalidade("Sou Maria, posso falar em espanhol?")).toBeUndefined();
+    expect(detectarNacionalidade("sou venezuelana")).toBe("Venezuela");
+  });
+
+  it("fora do escopo responde sem encaminhar", async () => {
+    const repo = getRepository();
+    const c = await repo.getOrCreateConversation(`55119${Math.floor(Math.random() * 1e8)}`, "Teste");
+    const history = [
+      { role: "user", content: "oi" },
+      { role: "assistant", content: "Olá! Como posso ajudar?" },
+      { role: "user", content: "quero tirar o visto americano" },
+    ] as const;
+    for (const h of history) await repo.addMessage(c.id, h.role, h.content);
+    const out = await runFallback({ history: history as never, conversationId: c.id });
+    expect(out.toolCalls.map((t) => t.name)).not.toContain("transferir_para_humano");
+    expect(out.reply).toMatch(/foge do que a gente cuida/);
+  });
+});

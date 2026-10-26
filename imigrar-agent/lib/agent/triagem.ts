@@ -93,7 +93,21 @@ const NACIONALIDADES: Array<[RegExp, string]> = [
 const DIZ_DE_SI =
   /\b(sou|s[ãa]o eu|eu sou|somos|minha nacionalidade|meu pa[íi]s|nasci|vim d[eoa]|venho d[eoa]|cheguei d[eoa]|sa[íi] d[eoa]|soy|somos de|mi nacionalidad|mi pa[íi]s|nac[íi]|vengo de|sal[íi] de|i am|i'm|im a|my nationality|i come from|i'm from|i am from)\b/i;
 
-export function detectarNacionalidade(texto: string): string | undefined {
+/**
+ * O NOME DE UMA LÍNGUA NÃO É NACIONALIDADE. "Sou o Ahmed, desculpa meu português" virava
+ * Portugal, e "posso falar em espanhol?" virava Espanha — e o campo, preenchido, mandava a
+ * agente não perguntar de novo. Antes de procurar o gentílico, sai o idioma citado como
+ * idioma: depois de "falar", "em", "meu", "hablar", "speak"...
+ */
+const IDIOMA_CITADO =
+  /\b(?:em|no|meu|minha|falar|falo|fala|falando|entendo|escrever|escrevo|hablo|hablar|habla|en|mi|my|in|speak|speaks)\s+(?:o\s+|el\s+)?(?:portugu[êe]s|espanh[oó]l|español|ingl[êe]s|franc[êe]s|italiano|alem[ãa]o|chin[êe]s|japon[êe]s|russo|[áa]rabe|portuguese|spanish|english|french)\b/gi;
+
+export function semIdiomaCitado(texto: string): string {
+  return texto.replace(IDIOMA_CITADO, " ");
+}
+
+export function detectarNacionalidade(bruto: string): string | undefined {
+  const texto = semIdiomaCitado(bruto);
   if (!DIZ_DE_SI.test(texto)) return undefined;
   for (const [re, pais] of NACIONALIDADES) {
     if (re.test(texto)) return pais;
@@ -126,8 +140,9 @@ export function detectarOndeEsta(texto: string): string | undefined {
   // O exterior vem primeiro: "estou fora do Brasil" também contém a palavra "Brasil".
   if (NO_EXTERIOR.test(texto)) {
     // Quando ela diz de onde está falando, o país vale mais do que um "exterior" seco.
+    const semIdioma = semIdiomaCitado(texto);
     for (const [re, pais] of NACIONALIDADES) {
-      if (re.test(texto)) return `Exterior — ${pais}`;
+      if (re.test(semIdioma)) return `Exterior — ${pais}`;
     }
     return "Exterior";
   }
@@ -160,7 +175,8 @@ const CAMINHOS: Array<[RegExp, string]> = [
     /\bregulariza[çc][ãa]o|me regularizar|autoriza[çc][ãa]o de resid[êe]ncia|resid[êe]ncia|\bcrnm\b|rnm|renova[çc][ãa]o do (?:meu )?documento|regularizaci[óo]n|regularizar mi situaci[óo]n|residencia|regularis|regulariz|residence permit|stay in brazil|quedarme en brasil\b/i,
     "Regularização migratória",
   ],
-  [/\bvisto|\bvisa\b|\bvisas\b/i, "Visto"],
+  // "Eu tinha visto no Instagram" e "visto que" são o verbo ver, não o documento.
+  [/(?<!\b(?:tinha|tenho|ter|havia|tinham|foi|sido|j[áa])\s)\bvisto\b(?!\s+que\b)|\bvistos\b|\bvisa\b|\bvisas\b/i, "Visto"],
 ];
 
 /**
@@ -635,7 +651,9 @@ export function extractSlots(raw: string): TriagemSlots {
   // exigência a responder, um documento vencendo) — por isso os sinais são outros.
   const t = texto.toLowerCase();
   if (
-    /urgent|urg[êe]nc|imediat|o quanto antes|hoje|agora|amanh[ãa]|desesperad|socorro|prazo (?:est[áa] )?(?:correndo|vencendo|acabando)|vence (?:hoje|amanh[ãa]|essa semana)/.test(
+    // "Hoje" e "agora" sozinhos não são pressa: "agora estou em Boa Vista" é lugar, e
+    // marcava urgência imediata — o relógio da ficha era respondido por ruído.
+    /urgent|urg[êe]nc|imediat|o quanto antes|\b(?:pra|para|ainda) hoje\b|\bpreciso[^.]{0,30}\b(?:hoje|agora|amanh[ãa])\b|\bat[ée] amanh[ãa]\b|desesperad|socorro|prazo (?:est[áa] )?(?:correndo|vencendo|acabando)|vence (?:hoje|amanh[ãa]|essa semana)/.test(
       t,
     )
   ) {
@@ -644,7 +662,7 @@ export function extractSlots(raw: string): TriagemSlots {
     slots.urgency = "short";
   } else if (/pr[oó]ximo m[eê]s|m[eê]s que vem|em (?:1|2|3) mes|daqui a (?:um|dois|tr[êe]s) mes/.test(t)) {
     slots.urgency = "medium";
-  } else if (/sem pressa|n[ãa]o tenho pressa|ano que vem|mais para frente|estou (?:s[óo] )?(?:planejando|pesquisando)|futuro/.test(t)) {
+  } else if (/sem pressa|n[ãa]o tenho pressa|ano que vem|mais para frente|estou (?:s[óo] )?(?:planejando|pesquisando)|\bno futuro\b/.test(t)) {
     slots.urgency = "long";
   }
 

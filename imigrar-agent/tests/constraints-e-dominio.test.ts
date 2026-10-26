@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { COLUNAS } from "@/lib/fila/kanban";
-import { MOTIVOS_DE_PERDA, CLASSIFICACOES } from "@/lib/domain/types";
+import { MOTIVOS_DE_PERDA, CLASSIFICACOES, TIPOS_EVENTO_OPERACAO } from "@/lib/domain/types";
 import { TIPOS_CONTEUDO_SITE, TIPOS_EVENTO_SITE, DISPOSITIVOS_SITE } from "@/lib/site/conteudo";
 
 /**
@@ -205,4 +205,21 @@ describe("as listas do site batem com o banco", () => {
       expect([...doBanco!].sort()).toEqual([...doCodigo].sort());
     });
   }
+});
+
+/**
+ * OS EVENTOS DE OPERAÇÃO. A coluna se chama só `tipo` — o mesmo nome da de motivos (034) —
+ * então a leitura aqui é pelo NOME da constraint, e não pela coluna.
+ */
+describe("os tipos de evento de operação batem com o banco", () => {
+  it("eventos_operacao_tipo_check tem os mesmos valores do domínio", () => {
+    const defs = Array.from(
+      sqlDeTodasAsMigrations().matchAll(
+        /eventos_operacao_tipo_check\s+check\s*\(\s*tipo\s+in\s*\(([^)]*)\)/gi,
+      ),
+    );
+    expect(defs.length, "o check dos eventos sumiu das migrations").toBeGreaterThan(0);
+    const doBanco = Array.from(defs[defs.length - 1][1].matchAll(/'([^']+)'/g)).map((m) => m[1]);
+    expect(doBanco.sort()).toEqual([...TIPOS_EVENTO_OPERACAO].sort());
+  });
 });

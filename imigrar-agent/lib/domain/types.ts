@@ -578,7 +578,19 @@ export type TipoEventoOperacao =
   // O verificador de saída cortou uma frase em que a Ana qualificava a situação da
   // pessoa ("sua entrada está regular"). O corte salva aquela mensagem; o registro é o
   // que permite descobrir que o PROMPT está deixando isso passar com frequência.
-  | "parecer_barrado";
+  | "parecer_barrado"
+  // A resposta foi gerada e gravada, e a Z-API recusou o envio. No painel a conversa
+  // parece respondida; no WhatsApp do cliente, não chegou nada.
+  | "envio_falhou";
+
+/** A mesma lista, como valor — é ela que o teste compara com o check do banco. */
+export const TIPOS_EVENTO_OPERACAO: TipoEventoOperacao[] = [
+  "transcricao_falhou",
+  "llm_falhou",
+  "documento_falhou",
+  "parecer_barrado",
+  "envio_falhou",
+];
 
 export interface EventoOperacao {
   id: string;

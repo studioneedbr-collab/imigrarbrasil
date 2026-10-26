@@ -499,10 +499,19 @@ export async function POST(req: NextRequest) {
 
       if (decisao.acao === "resposta_fixa") {
         const aviso = mensagemAgenteDesligado(new Date(), instancia?.respostaFixa);
+        // UM AVISO, NÃO UM POR MENSAGEM. Quem manda cinco linhas seguidas recebia cinco
+        // avisos iguais. Já avisado nas últimas 12 horas, fica quieto.
+        const historico = await repo.listMessages(conv.id).catch(() => []);
+        const jaAvisou = historico.some(
+          (m) =>
+            m.role === "assistant" &&
+            m.content === aviso &&
+            Date.now() - new Date(m.createdAt).getTime() < 12 * 3600_000,
+        );
         // Gravada como mensagem da casa porque foi isso que a pessoa recebeu. Quem abrir
         // a conversa no painel precisa ver exatamente o que ela leu.
-        await repo.addMessage(conv.id, "assistant", aviso).catch(() => {});
-        await sendMessage(phone, aviso, canal).catch((e) =>
+        if (!jaAvisou) await repo.addMessage(conv.id, "assistant", aviso).catch(() => {});
+        if (!jaAvisou) await sendMessage(phone, aviso, canal).catch((e) =>
           console.error("[webhook] falha ao enviar o aviso de agente desligado:", e instanceof Error ? e.message : e),
         );
       }
@@ -556,10 +565,31 @@ export async function POST(req: NextRequest) {
     console.log("[webhook:diag] respondendo conversa", conv.id);
     const { reply, toolCalls, buttons } = await respondToConversation(conv.id);
     console.log("[webhook:diag] reply len", reply.length, "tools", toolCalls.length, "botoes", buttons?.length ?? 0);
-    if (buttons && buttons.length) {
-      await sendButtons(phone, reply, buttons, canal);
-    } else {
-      await sendMessage(phone, reply, canal);
+
+    // ALGUÉM ASSUMIU ENQUANTO A AGENTE PENSAVA. Entre a decisão lá em cima e este ponto
+    // passam a espera do lote e a chamada ao modelo — de 5 a 30 segundos. Se um atendente
+    // assumiu nesse intervalo, a resposta não sai: humano e agente falando na mesma
+    // conversa é o defeito mais caro daqui.
+    const agora = await repo.getConversation(conv.id).catch(() => null);
+    if (agora?.assumedBy) {
+      console.log("[webhook:diag] saída: assumida durante a geração, resposta não enviada");
+      return NextResponse.json({ ok: true });
+    }
+
+    try {
+      if (buttons && buttons.length) {
+        await sendButtons(phone, reply, buttons, canal);
+      } else {
+        await sendMessage(phone, reply, canal);
+      }
+    } catch (err) {
+      // A resposta já está no histórico; sem isto, o painel a mostraria como entregue.
+      await repo.registrarEventoOperacao({
+        tipo: "envio_falhou",
+        conversationId: conv.id,
+        detalhe: `A Z-API recusou o envio da resposta: ${err instanceof Error ? err.message.slice(0, 300) : "erro desconhecido"}`,
+      });
+      throw err;
     }
     console.log("[webhook:diag] enviado ok");
 

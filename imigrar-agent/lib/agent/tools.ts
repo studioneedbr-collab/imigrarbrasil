@@ -276,7 +276,10 @@ export async function executeTool(
         const portao = avaliarEncaminhamentoComercial({
           dossieCompleto: falta.completo,
           textoRecente,
-          assuntoExigePessoa: !!detectTransfer(`${textoRecente} ${i.reason}`, regrasDoPainel),
+          // Fora do escopo não é assunto que exige o advogado da casa — é outra porta.
+          assuntoExigePessoa: ((r) => !!r && r.categoria !== "fora_do_escopo")(
+            detectTransfer(`${textoRecente} ${i.reason}`, regrasDoPainel),
+          ),
         });
         if (!portao.liberado) {
           return {

@@ -677,6 +677,10 @@ export async function runFallback({
 
   // ─── 6) Regra de encaminhamento do painel (processo, irregularidade, refúgio…) ───
   const transfer = detectTransfer(lastRaw, training.transferRules);
+  // Fora do escopo NÃO é encaminhamento: a resposta diz que o assunto não é da casa e
+  // oferece passar o contato *se a pessoa quiser*. Encaminhar aqui fazia a mesma mensagem
+  // dizer "foge do que a gente cuida" e "já deixei o seu caso com o time jurídico".
+  if (transfer?.categoria === "fora_do_escopo") return { reply: transfer.resposta, toolCalls };
   if (transfer) return encaminhar(transfer.categoria, transfer.resposta);
 
   // ─── 7) Sinal de caso concreto que as regras editadas possam não cobrir ───

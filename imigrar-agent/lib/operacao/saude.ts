@@ -50,7 +50,7 @@ export interface SaudeDaOperacao {
    */
   silencioNoExpediente: boolean;
   /** Duas contas separadas porque são dois problemas, com duas causas e duas telas. */
-  falhas24h: { transcricao: number; llm: number };
+  falhas24h: { transcricao: number; llm: number; envio?: number };
   /** Mensagens que entraram e não tiveram resposta. Ver lib/operacao/sem-resposta.ts. */
   semResposta: number;
   /** Lembretes cuja data já passou e ninguém tratou. */
@@ -80,7 +80,7 @@ export interface SaudeDaOperacao {
  * frase aqui não acrescenta informação — acrescenta ruído, e ensina a ignorar os dois.
  */
 export interface ItemDeAlarme {
-  chave: "whatsapp" | "transcricao" | "llm" | "sem_resposta" | "silencio" | "followup";
+  chave: "whatsapp" | "transcricao" | "llm" | "envio" | "sem_resposta" | "silencio" | "followup";
   rotulo: string;
   valor: string;
   href?: string;
@@ -116,6 +116,15 @@ export function itensDeAlarme(s: SaudeDaOperacao): ItemDeAlarme[] {
       rotulo: "falhas de LLM",
       valor: String(s.falhas24h.llm),
       href: "/dashboard/falhas-llm",
+    });
+  }
+  if ((s.falhas24h.envio ?? 0) > 0) {
+    // A resposta foi gravada e não saiu: no painel a conversa parece atendida.
+    itens.push({
+      chave: "envio",
+      rotulo: "respostas que não chegaram ao cliente",
+      valor: String(s.falhas24h.envio),
+      href: "/dashboard/conversations",
     });
   }
   if (s.semResposta > 0) {
@@ -187,6 +196,7 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
     recentes,
     falhasTranscricao,
     falhasLlm,
+    falhasEnvio,
     lembretes,
     semResposta,
     followups,
@@ -200,6 +210,7 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
       repo.listRecentUserMessages(1).catch(() => []),
       repo.listEventosOperacao({ tipo: "transcricao_falhou", desde: ontem }).catch(() => []),
       repo.listEventosOperacao({ tipo: "llm_falhou", desde: ontem }).catch(() => []),
+      repo.listEventosOperacao({ tipo: "envio_falhou", desde: ontem }).catch(() => []),
       repo.listLembretes({ apenasPendentes: true }).catch(() => []),
       repo.contarConversasSemResposta(MINUTOS_SEM_RESPOSTA_ALARME, agora).catch(() => 0),
       repo.listToquesPendentes().catch(() => []),
@@ -236,7 +247,7 @@ export async function lerSaudeDaOperacao(agora: Date = new Date()): Promise<Saud
     ia,
     ultimaMensagem: { em: ultimaEm, haMinutos },
     silencioNoExpediente,
-    falhas24h: { transcricao: falhasTranscricao.length, llm: falhasLlm.length },
+    falhas24h: { transcricao: falhasTranscricao.length, llm: falhasLlm.length, envio: falhasEnvio.length },
     semResposta,
     lembretesVencidos: lembretes.filter((l) => l.quando <= hoje).length,
     followupsPendentes: followups.length,
