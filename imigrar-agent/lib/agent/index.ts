@@ -454,6 +454,7 @@ export async function respondToConversation(
     fonte: source,
     jaTransferiu: toolCalls.some((t) => t.name === "transferir_para_humano"),
     faltamNoDossie: faltaNaTriagem.faltam,
+    perguntasAoCliente: faltaNaTriagem.perguntas,
     proximoRetorno: janela.dentroDoExpediente ? undefined : janela.quando,
   });
   if (impasse?.acao === "encaminhar") {

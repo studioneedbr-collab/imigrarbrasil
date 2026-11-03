@@ -155,7 +155,7 @@ const QUEM: Record<LeadSetor, string> = {
 // está olhando naquele instante.
 function msgImpasse(setor: LeadSetor, proximoRetorno?: string): string {
   const quem = QUEM[setor] ?? QUEM.comercial;
-  const abertura = "Deixa eu te dar um retorno certinho em vez de ficar repetindo a mesma coisa. ";
+  const abertura = "Para não repetir a mesma informação, vou encaminhar o seu atendimento. ";
   // A partir do encaminhamento o agente se cala (ver lib/agent/ativacao.ts), então o
   // fecho não pode prometer que ele continua por perto. O que ele diz é o que é verdade:
   // escrever aqui continua funcionando, e quem lê agora é o time.
@@ -185,6 +185,8 @@ export interface ImpasseInput {
   jaTransferiu: boolean;
   /** O que ainda falta na qualificação, em rótulos legíveis. */
   faltamNoDossie?: string[];
+  /** As mesmas pendências como pergunta ao cliente — é isto que vai na mensagem fixa. */
+  perguntasAoCliente?: string[];
   /**
    * Quando o time humano volta ("na segunda-feira a partir das 8h"). Vazio/ausente =
    * estamos dentro do expediente e alguém pega agora.
@@ -230,8 +232,10 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
       setor,
       motivo: `Atendimento travado: ainda falta saber ${faltam.join(", ")}. Nada encaminhado — a conversa continua aqui.`,
       msg:
-        `Acho que me embolei aqui, desculpa. Para eu te ajudar direito, me conta ` +
-        `${faltam.slice(0, 1).join("")}?`,
+        // Texto fixo, que não passa pela persona: o escritório pediu tom formal, sem gíria
+        // e sem pedido de desculpas ("acho que me embolei aqui" foi vetado nominalmente).
+        `Para seguirmos com o seu atendimento, preciso de uma informação: ` +
+        `${i.perguntasAoCliente?.[0] ?? "pode me contar um pouco mais sobre o seu caso"}?`,
       priority: "normal",
     };
   }

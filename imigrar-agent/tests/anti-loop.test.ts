@@ -108,10 +108,27 @@ describe("impasse — para quem vai o atendimento travado", () => {
     const r = avaliarImpasse({
       ...base,
       faltamNoDossie: ["a nacionalidade", "se há prazo ou urgência"],
+      perguntasAoCliente: ["qual é a sua nacionalidade", "existe alguma data ou prazo"],
     });
     expect(r?.acao).toBe("destravar");
     expect(r?.msg).toMatch(/nacionalidade/i);
     expect(r?.msg).not.toMatch(/encaminh|chamei/i);
+  });
+
+  // Texto fixo não passa pela persona: o que o escritório vetou tem que sair daqui.
+  // O Walter pediu nominalmente que "acho que me embolei aqui, desculpa" nunca fosse dito.
+  it("a mensagem fixa é formal: sem 'me embolei', sem desculpa, sem rótulo interno", () => {
+    const destravar = avaliarImpasse({
+      ...base,
+      faltamNoDossie: ["o nome dela"],
+      perguntasAoCliente: ["qual é o seu nome"],
+    });
+    const encaminhar = avaliarImpasse(base);
+    for (const r of [destravar, encaminhar]) {
+      expect(r?.msg).not.toMatch(/embolei|desculp|certinho|deixa eu/i);
+    }
+    expect(destravar?.msg).toMatch(/qual é o seu nome\?$/);
+    expect(destravar?.msg).not.toMatch(/dela\b/);
   });
 
   it("fora do expediente, promete o retorno na hora certa em vez de 'já chamei alguém'", () => {

@@ -16,6 +16,8 @@ import type { Lead } from "@/lib/domain/types";
 export interface DossieFaltando {
   /** Rótulos legíveis do que ainda falta, na ordem em que vale a pena descobrir. */
   faltam: string[];
+  /** As mesmas pendências, na mesma ordem, como pergunta que se pode fazer ao cliente. */
+  perguntas: string[];
   /** Nada essencial falta — o time jurídico consegue pegar o caso. */
   completo: boolean;
   /** Dados bons de ter, que NÃO seguram nada. */
@@ -47,23 +49,40 @@ export interface DossieFaltando {
 export function qualificacaoFaltando(lead: Lead | null): DossieFaltando {
   const temRelogio =
     !!lead?.relogioDoCaso || !!lead?.temPrazoCorrendo || !!lead?.urgency;
-  const faltam = [
-    !lead?.contactName && "o nome dela",
-    !lead?.clientType && "a nacionalidade",
-    !lead?.region && "onde a pessoa está agora (no Brasil ou no exterior)",
+  // Cada pendência tem dois textos: o rótulo, que vai para o modelo e para o painel, e a
+  // pergunta, que pode ir direto ao cliente numa mensagem fixa. Escritos lado a lado para
+  // não divergirem — o rótulo ("o nome dela") mandado ao cliente já aconteceu.
+  const pendencias = [
+    !lead?.contactName && { falta: "o nome dela", pergunta: "qual é o seu nome" },
+    !lead?.clientType && { falta: "a nacionalidade", pergunta: "qual é a sua nacionalidade" },
+    !lead?.region && {
+      falta: "onde a pessoa está agora (no Brasil ou no exterior)",
+      pergunta: "você está no Brasil ou no exterior neste momento",
+    },
     // "O que ela quer conseguir" tem DOIS lugares: `servicesInterested` (os caminhos que
     // a triagem reconhece: refúgio, reunião familiar, naturalização) e `objetivo` (a frase
     // do caso, que o agente deduz ou um humano escreve). Checar só o primeiro fazia a ficha
     // continuar listando esta pendência com o objetivo preenchido na tela ao lado — e
     // pendência falsa aqui não é cosmética: é ela que segura o encaminhamento ao time.
-    !lead?.servicesInterested?.length && !lead?.objetivo?.trim() && "o que ela quer conseguir",
-    !temRelogio && "o que pressiona o caso e quando (nem que seja 'sem urgência')",
-    !lead?.intencao &&
-      "se ela prefere tocar o processo sozinha ou que o escritório cuide (pergunte UMA vez)",
-  ].filter((x): x is string => typeof x === "string");
+    !lead?.servicesInterested?.length &&
+      !lead?.objetivo?.trim() && {
+        falta: "o que ela quer conseguir",
+        pergunta: "o que você precisa resolver no Brasil",
+      },
+    !temRelogio && {
+      falta: "o que pressiona o caso e quando (nem que seja 'sem urgência')",
+      pergunta: "existe alguma data ou prazo que torna o seu caso urgente",
+    },
+    !lead?.intencao && {
+      falta: "se ela prefere tocar o processo sozinha ou que o escritório cuide (pergunte UMA vez)",
+      pergunta: "você prefere conduzir o processo por conta própria ou que o escritório cuide dele",
+    },
+  ].filter((x): x is { falta: string; pergunta: string } => !!x);
+  const faltam = pendencias.map((p) => p.falta);
+  const perguntas = pendencias.map((p) => p.pergunta);
   const complementares = [
     !lead?.contractDuration && "como ela entrou e o que tem hoje",
     !lead?.documentosPossui && "que documentos do país de origem ela tem em mãos",
   ].filter((x): x is string => typeof x === "string");
-  return { faltam, completo: faltam.length === 0, complementares };
+  return { faltam, perguntas, completo: faltam.length === 0, complementares };
 }
