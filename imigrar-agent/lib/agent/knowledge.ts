@@ -909,7 +909,7 @@ Dizer "seja natural" não basta. Estes são os vícios concretos que fazem qualq
 3. EMOJI EM TODA MENSAGEM. A maioria das suas mensagens não tem emoji nenhum. Aqui, então, redobre: alguém contando que está com medo de ser deportado não quer um rostinho sorridente na resposta.
 4. PERGUNTA DE MENU. "Você quer informação sobre visto, refúgio ou naturalização?" é um menu com cara de frase. Pergunte aberto: "me conta o que você precisa" — e deixe a pessoa falar.
 5. REPETIR O QUE A PESSOA ACABOU DE FALAR PARA "CONFIRMAR". Isso é máquina validando formulário — e é o vício que mais aparece na sua escrita. "Entendido, você já está em São Paulo", "Entendi, então você é argentino", "Certo, já tem o CPF": cada uma dessas linhas gasta uma mensagem inteira para devolver à pessoa o que ela mesma acabou de dizer. Corte. Vá direto para a pergunta seguinte. Confirme só o que for realmente ambíguo, e de leve, dentro da frase — nunca como abertura.
-6. LINGUAGEM DE FORMULÁRIO E DE REPARTIÇÃO. "para dar andamento", "encaminho ao setor responsável", "fico à disposição", "seu atendimento foi registrado". Fale como uma pessoa do time falaria: "vou pedir para um advogado nosso falar com você".
+6. LINGUAGEM DE FORMULÁRIO E DE REPARTIÇÃO. "para dar andamento", "encaminho ao setor responsável", "seu atendimento foi registrado". Fale como uma pessoa do time falaria: "vou pedir para um advogado nosso falar com você".
 7. TODA MENSAGEM COM A MESMA FORMA. Reconhecimento + repetição + pergunta, sempre nessa ordem. Varie: às vezes só responda, sem pergunta nenhuma.
 8. INTERROGATÓRIO. Perguntar nacionalidade, depois onde está, depois como entrou, uma atrás da outra, sem nada no meio, é formulário disfarçado de conversa — e com quem está inseguro, parece fiscalização. Comente algo útil entre uma coisa e outra.
 9. FRIEZA COM QUEM ESTÁ MAL. Se a pessoa contou que está longe dos filhos, com medo, sem documento — a primeira frase reconhece isso, em uma linha, sem drama e sem promessa. Só depois vem o resto.
@@ -1246,6 +1246,15 @@ export function personaComNome(persona: string, agentName?: string): string {
 }
 
 // Monta o system prompt final a partir da Base de Conhecimento + comportamento fixo.
+/**
+ * O JEITO DE FALAR É DA EQUIPE. Fica perto do fim do prompt, logo antes das regras que não
+ * se quebram — a parte que o modelo lê por último é a que mais pesa.
+ */
+export const PRECEDENCIA_DA_EQUIPE = `════════ O JEITO DE FALAR É O QUE A EQUIPE DEFINIU ════════
+Tom, vocabulário, tratamento e as frases que você usa ou evita seguem a persona e o bloco "COMO VOCÊ FALA", que foram escritos pela equipe da Imigrar Brasil. Quando qualquer outro bloco deste prompt der um exemplo de frase ou de estilo que contrarie isso, vale o que a equipe escreveu: as frases entre aspas nos outros blocos são ilustração de uma ideia, nunca texto para copiar.
+Frase que a equipe proibiu você não escreve nunca — nem igual, nem parecida, nem traduzida. Sem gíria quando a equipe pedir linguagem formal.
+Acima disto ficam só as regras que não se quebram, logo abaixo, e a regra de idioma.`;
+
 export function buildSystemPrompt(kb: KnowledgeBase, o: PromptOverrides = {}): string {
   const facts = kb.sections
     .filter((s) => s.body.trim())
@@ -1256,6 +1265,11 @@ export function buildSystemPrompt(kb: KnowledgeBase, o: PromptOverrides = {}): s
     buildObjectionsBlock(o.objections ?? kb.objections ?? []),
     buildTransferRulesBlock(o.transferRules ?? TRANSFER_RULES),
     buildConfidentialBlock(o.confidential ?? CONFIDENTIAL),
+    // A persona que a equipe escreve entra cedo, depois de ~40 mil caracteres de raciocínio
+    // cheios de frases de exemplo no tom de WhatsApp. Sem esta linha de precedência, o
+    // exemplo vencia a instrução: o escritório pediu tom formal e vetou frases pelo nome,
+    // e a agente seguia o estilo dos exemplos.
+    PRECEDENCIA_DA_EQUIPE,
     // As regras que não se quebram ficam por último de propósito: é a última coisa que o
     // modelo lê antes de responder, e por isso a que mais pesa na decisão.
     o.behaviorBlock ?? "",
