@@ -14,7 +14,7 @@ function topo(string $titulo, ?array $eu, string $classe = ''): void
     if ($eu) {
         echo '<header class="barra"><div class="barra-in"><a class="marca" href="/admin/"><img src="/marca/simbolo-256.png" alt="" width="28" height="28"><span>Blog <b>Imigrar Brasil</b></span></a>'
             . '<nav><a href="/admin/">Artigos</a><a href="/admin/novo">Novo artigo</a><a href="/" target="_blank" rel="noopener">Ver o site ↗</a></nav>'
-            . '<div class="barra-eu"><a href="/admin/conta" title="Sua conta">' . e($eu['nome'] ?? $eu['usuario']) . '</a><a href="/admin/sair">Sair</a></div></div></header>';
+            . '<div class="barra-eu"><a href="/admin/conta" title="Sua conta">' . e($eu['nome'] ?? $eu['usuario']) . '</a><form method="post" action="/admin/sair" class="form-sair"><input type="hidden" name="csrf" value="' . ea($_SESSION['csrf'] ?? '') . '"><button type="submit">Sair</button></form></div></div></header>';
     }
     echo '<main class="pagina">';
 }

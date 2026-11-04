@@ -214,7 +214,9 @@ function preencher(string $nome, array $c): string
     if (str_starts_with($c['canonical'], '/blog-imigracao-brasil/')) {
         $h = preg_replace('~<li><a href="/blog-imigracao-brasil/">Blog</a></li>~', '<li><a href="/blog-imigracao-brasil/" aria-current="page">Blog</a></li>', $h, 1);
     }
-    if (str_contains($h, '@@')) throw new RuntimeException("Sobrou marca no molde $nome.");
+    // Só as MARCAS do molde (@@TITULO@@, @@CORPO@@…). Procurar "@@" solto travava a
+    // geração do site inteiro quando um artigo tinha "@@" no texto.
+    if (preg_match('/@@[A-Z_]+@@/', $h)) throw new RuntimeException("Sobrou marca no molde $nome.");
     return $h;
 }
 

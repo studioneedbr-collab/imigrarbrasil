@@ -32,8 +32,20 @@ function usuario_atual(): ?array
 {
     $nome = $_SESSION['usuario'] ?? null;
     if (!$nome) return null;
-    foreach (usuarios() as $u) if ($u['usuario'] === $nome) return $u;
+    foreach (usuarios() as $u) {
+        if ($u['usuario'] !== $nome) continue;
+        // A SESSÃO VALE PARA A SENHA COM QUE FOI ABERTA. Trocar a senha (por suspeita de
+        // vazamento, por exemplo) derruba as outras sessões daquela conta — antes, uma
+        // sessão roubada continuava valendo por até 12 horas depois da troca.
+        if (!hash_equals(marca_da_senha($u), (string) ($_SESSION['senha'] ?? ''))) return null;
+        return $u;
+    }
     return null; // removido enquanto estava logado
+}
+
+function marca_da_senha(array $u): string
+{
+    return hash('sha256', (string) ($u['hash'] ?? ''));
 }
 
 /** 8 tentativas erradas por IP a cada 15 minutos. */
@@ -63,6 +75,7 @@ function entrar(string $usuario, string $senha): bool
             if (hash_equals(mb_strtolower($u['usuario']), mb_strtolower(trim($usuario))) && password_verify($senha, $u['hash'])) {
                 session_regenerate_id(true);
                 $_SESSION['usuario'] = $u['usuario'];
+                $_SESSION['senha'] = marca_da_senha($u);
                 return true;
             }
         }

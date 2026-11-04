@@ -41,7 +41,12 @@ try {
         tela_entrar($erro);
         exit;
     }
-    if ($rota === '/sair') { session_destroy(); ir('/entrar'); }
+    // SAIR SÓ POR POST, COM CSRF. Por GET, qualquer página da internet com um
+    // <img src="…/admin/sair"> desconectava quem estivesse no admin.
+    if ($rota === '/sair') {
+        if ($metodo === 'POST') { conferir_csrf(); session_destroy(); }
+        ir($metodo === 'POST' ? '/entrar' : '/');
+    }
 
     $eu = usuario_atual();
     if (!$eu) { if ($metodo === 'POST') json_resposta(['erro' => 'Sua sessão expirou. Entre de novo.'], 401); ir('/entrar'); }
@@ -134,7 +139,7 @@ function acao_conta(array $eu): ?string
             $nova = (string) ($_POST['nova'] ?? '');
             if (!password_verify($atual, $eu['hash'])) return 'A senha atual não confere.';
             if (strlen($nova) < 10) return 'A senha nova precisa de pelo menos 10 caracteres.';
-            foreach ($us as &$u) if ($u['usuario'] === $eu['usuario']) $u['hash'] = password_hash($nova, PASSWORD_DEFAULT);
+            foreach ($us as &$u) if ($u['usuario'] === $eu['usuario']) { $u['hash'] = password_hash($nova, PASSWORD_DEFAULT); $_SESSION['senha'] = marca_da_senha($u); }
             unset($u);
             salvar_usuarios($us);
             return null;

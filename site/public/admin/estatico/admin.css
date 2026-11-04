@@ -25,6 +25,9 @@ img { max-width: 100%; }
 .barra nav a, .barra-eu a { color: #cfe3f7; text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: .92rem; }
 .barra nav a:hover, .barra-eu a:hover { background: rgb(255 255 255 / .1); color: #fff; }
 .barra-eu { display: flex; gap: 4px; }
+.form-sair { margin: 0; }
+.form-sair button { color: #cfe3f7; background: none; border: 0; cursor: pointer; font: inherit; padding: 6px 10px; border-radius: 8px; font-size: .92rem; }
+.form-sair button:hover { background: rgb(255 255 255 / .1); color: #fff; }
 
 .pagina { max-width: 1280px; margin: 0 auto; padding: 28px 20px 80px; }
 .cabeca { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
