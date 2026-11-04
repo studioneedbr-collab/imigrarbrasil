@@ -113,7 +113,7 @@ export interface Identity {
 // obriga a frases como "o assistente virtual da Imigrar Brasil" toda vez que ele se
 // apresenta. Trocar é um campo, sem deploy.
 export const DEFAULT_IDENTITY: Identity = {
-  agentName: "Ana",
+  agentName: "Cláudia",
   companyName: "Imigrar Brasil",
   tone: "profissional_calorosa",
   messageLength: "curtas",

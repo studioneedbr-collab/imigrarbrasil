@@ -246,7 +246,7 @@ describe("dado sensível e pedido de parar", () => {
   it("quem pede para parar recebe despedida, não outra pergunta", async () => {
     const { respostas } = await conversa(["oi", "para de me mandar mensagem por favor"]);
     expect(respostas[1]).not.toMatch(/\?/);
-    expect(respostas[1].toLowerCase()).toMatch(/n[ãa]o te mando mais/);
+    expect(respostas[1].toLowerCase()).toMatch(/n[ãa]o enviaremos mais/);
   });
 });
 

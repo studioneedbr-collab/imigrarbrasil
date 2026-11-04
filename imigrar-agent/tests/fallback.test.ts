@@ -18,7 +18,7 @@ describe("porta de entrada", () => {
     const r = await processMessage({ conversationId: conv.id, userText: "oi" });
     expect(r.reply.toLowerCase()).toMatch(/imigrar brasil/);
     // Regra da ambiguidade: um "oi" não diz o idioma, então a porta de entrada é bilíngue.
-    expect(r.reply.toLowerCase()).toMatch(/soy ana/);
+    expect(r.reply.toLowerCase()).toMatch(/soy cláudia/);
     expect(r.reply.toLowerCase()).toMatch(/cuéntame qué necesitas/);
     // E o espanhol sai escrito em espanhol, com o ponto de abertura.
     expect(r.reply).toMatch(/¡Buen[oa]s/);

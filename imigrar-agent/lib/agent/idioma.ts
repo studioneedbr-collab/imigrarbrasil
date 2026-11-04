@@ -70,7 +70,11 @@ const MARCADORES: { idioma: IdiomaSuportado; peso: number; re: RegExp }[] = [
   { idioma: "es", peso: 2, re: /\b(buenas|buenos)\b/i },
   { idioma: "es", peso: 2, re: /\b(hago|hacer|ayudarme|quisiera|necesitaba|d[óo]nde|alg[úu]n)\b/i },
   { idioma: "es", peso: 3, re: /\b(gracias|usted|ustedes|necesito|quiero|muy|años|anos de|español|espanol)\b/i },
-  { idioma: "es", peso: 2, re: /\b(estoy|soy|dónde|donde está|cómo|qué|también|entonces|aquí|pero|hola|puedo|tengo que)\b/i },
+  // "Estoy", "soy" e "hola" não existem em português ("estou", "sou", "olá"). Valiam 2, e
+  // "Hola, soy de Colombia y estoy en Bogotá" — espanhol sem dúvida — ficava abaixo do
+  // mínimo e era respondida em português.
+  { idioma: "es", peso: 3, re: /\b(estoy|soy|hola)\b/i },
+  { idioma: "es", peso: 2, re: /\b(dónde|donde está|cómo|qué|también|entonces|aquí|pero|puedo|tengo que)\b/i },
   { idioma: "es", peso: 1, re: /\b(el|los|las|una|con|para|mi|su|hay|ser)\b/i },
   // ── inglês
   { idioma: "en", peso: 3, re: /\b(the|and|you|are|is|was|have|has|been|would|could|should)\b/i },

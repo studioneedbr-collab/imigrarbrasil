@@ -330,7 +330,19 @@ export function findObjection(text: string, pool?: Objection[]): Objection | und
   // cobram" não achava a preocupação cadastrada como "quanto vocês cobram".
   const t = sa(text.toLowerCase());
   const lista = pool ?? DEFAULT_KNOWLEDGE.objections ?? [];
-  return lista.find((o) => o.keywords.some((k) => t.includes(sa(k.toLowerCase()))));
+  return lista.find((o) =>
+    o.keywords.some((k) => {
+      const chave = sa(k.toLowerCase());
+      const i = t.indexOf(chave);
+      if (i < 0) return false;
+      // "NÃO TENHO PRAZO" NÃO É PERGUNTA SOBRE PRAZO. A palavra-chave negada logo antes é
+      // a pessoa respondendo, não perguntando — e recebia a resposta da preocupação
+      // ("prazo de análise não está na minha mão…") no lugar da próxima pergunta.
+      return !/\b(?:nao|sem|nenhum|nenhuma|no|sin|ningun|ninguna|not|without)\s+(?:tenho\s+|tengo\s+|have\s+|ha\s+|hay\s+|existe\s+|tem\s+)?(?:nenhum\s+|nenhuma\s+|um\s+|uma\s+|any\s+|a\s+)?$/.test(
+        t.slice(Math.max(0, i - 30), i),
+      );
+    }),
+  );
 }
 
 /** Idem `semAcento` de lib/agent/training.ts — duplicado aqui para não criar ciclo. */

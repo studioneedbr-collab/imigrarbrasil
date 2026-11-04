@@ -68,8 +68,23 @@ const SEM_FOLLOWUP: RegExp[] = [
 ];
 
 /** Despedida única antes do silêncio. Não promete retorno de ninguém — seria o oposto do pedido. */
-export const MENSAGEM_DESPEDIDA =
-  "Entendido, não te mando mais mensagem por aqui. Se um dia precisar da Imigrar Brasil, é só chamar neste mesmo número. 🙏\nEntendido, no te escribo más por aquí. Si algún día necesitas a Imigrar Brasil, solo escribe a este mismo número.";
+const DESPEDIDA_POR_IDIOMA: Record<"pt" | "es" | "en", string> = {
+  pt: "Entendido, não enviaremos mais mensagens por aqui. Se um dia precisar da Imigrar Brasil, é só escrever para este mesmo número.",
+  es: "Entendido, no le enviaremos más mensajes por aquí. Si algún día necesita a Imigrar Brasil, solo escriba a este mismo número.",
+  en: "Understood, we will not send you any more messages here. If you ever need Imigrar Brasil, just write to this same number.",
+};
+
+/**
+ * A despedida sai NO IDIOMA DA PESSOA. Era um texto fixo em português e espanhol juntos:
+ * quem pediu para parar em português recebia duas despedidas, uma numa língua que não
+ * falou — e em inglês não recebia nenhuma que entendesse.
+ */
+export function despedidaDoOptOut(idioma?: string | null): string {
+  return idioma === "es" || idioma === "en" ? DESPEDIDA_POR_IDIOMA[idioma] : DESPEDIDA_POR_IDIOMA.pt;
+}
+
+/** A versão em português, para quem não tem o idioma à mão. */
+export const MENSAGEM_DESPEDIDA = DESPEDIDA_POR_IDIOMA.pt;
 
 export function detectarOptOut(texto: string): OptOut | null {
   const t = (texto || "").toLowerCase().trim();

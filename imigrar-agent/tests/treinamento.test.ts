@@ -33,7 +33,7 @@ describe("padrões vindos do código", () => {
     expect(DEFAULT_TRAINING.objections.length).toBeGreaterThan(5);
     expect(DEFAULT_TRAINING.transferRules.length).toBeGreaterThan(5);
     expect(DEFAULT_TRAINING.guardrails.termos).toContain("honorários");
-    expect(DEFAULT_TRAINING.identity.agentName).toBe("Ana");
+    expect(DEFAULT_TRAINING.identity.agentName).toBe("Cláudia");
     expect(DEFAULT_TRAINING.identity.companyName).toBe("Imigrar Brasil");
   });
 

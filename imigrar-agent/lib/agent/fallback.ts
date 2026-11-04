@@ -29,8 +29,9 @@ import {
   PEDIU_HUMANO,
 } from "@/lib/agent/transfer-gate";
 import { ehFechamentoCordial } from "@/lib/agent/anti-loop";
-import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
+import { detectarOptOut, despedidaDoOptOut } from "@/lib/agent/opt-out";
 import { idiomaDaConversa } from "@/lib/agent/idioma";
+import { classifyRouting } from "@/lib/agent/routing-net";
 import {
   ehRecusa,
   mensagemSemConteudo,
@@ -92,6 +93,26 @@ function saudacao(agora: Date, nome: string): string {
     `qué necesitas resolver.`
   );
 }
+
+// QUEM JÁ CHEGA CONTANDO O CASO. A saudação bilíngue completa é para quem abre com "oi":
+// ali não dá para saber o idioma nem o assunto. Para quem abriu com "sou boliviano, moro em
+// São Paulo há 6 anos", ela respondia como se nada tivesse sido dito — em duas línguas,
+// para alguém que já tinha escolhido uma. Aqui a apresentação é curta, no idioma dela, e a
+// mensagem segue com a próxima pergunta que ainda falta.
+function apresentacao(agora: Date, nome: string, fala: Fala): string {
+  const s = saudacaoAgora(agora);
+  if (fala === "es") return `${s.es}! Soy ${nome}, de Imigrar Brasil.`;
+  if (fala === "en") return `${s.en}! I'm ${nome}, from Imigrar Brasil.`;
+  return `${s.pt}! Aqui é a ${nome}, da Imigrar Brasil.`;
+}
+
+// QUEM PROCURA VAGA NA ASSESSORIA. Recebia a saudação de imigração e a entrevista de
+// nacionalidade; o setor dele é outro (RH), e a primeira coisa a saber é o nome e a área.
+const CANDIDATO_A_VAGA: Record<Fala, string> = {
+  pt: "Obrigada pelo interesse em trabalhar com a Imigrar Brasil. Qual é o seu nome e em que área você atua?",
+  es: "Gracias por su interés en trabajar con Imigrar Brasil. ¿Cuál es su nombre y en qué área trabaja?",
+  en: "Thank you for your interest in working with Imigrar Brasil. What is your name and what is your field?",
+};
 
 /**
  * "O QUE VOCÊS FAZEM?" — a pergunta que este caminho PODE responder.
@@ -656,7 +677,7 @@ export async function runFallback({
   // era gerada aqui — e era mais uma pergunta de cadastro. Se um dia o envio escapar, o
   // que sai tem que ser a despedida, não a insistência que gera a denúncia.
   if (detectarOptOut(lastRaw) === "bloquear") {
-    return { reply: MENSAGEM_DESPEDIDA, toolCalls };
+    return { reply: despedidaDoOptOut(fala), toolCalls };
   }
 
   // ─── 3) RISCO À PESSOA — na frente de tudo, e sem esperar confirmação ───
@@ -686,6 +707,12 @@ export async function runFallback({
   // ─── 7) Sinal de caso concreto que as regras editadas possam não cobrir ───
   if (CASO_JURIDICO.test(lastRaw)) return encaminhar("pedido_de_analise", CASO_CONCRETO[fala]);
 
+  // ─── 7b) Procura vaga na própria assessoria ───
+  if (classifyRouting(lastRaw)?.kind === "candidato") {
+    const jaRespondeu = jaDisseAlgo.some((d) => d.includes(CANDIDATO_A_VAGA[fala].slice(0, 30)));
+    if (!jaRespondeu) return { reply: CANDIDATO_A_VAGA[fala], toolCalls };
+  }
+
   // ─── 8) Preocupação frequente cadastrada no painel ───
   if (!primeiraMensagem) {
     const obj = findObjection(
@@ -696,7 +723,13 @@ export async function runFallback({
   }
 
   // ─── 9) Porta de entrada ───
-  if (primeiraMensagem) return { reply: saudacao(new Date(), training.identity.agentName), toolCalls };
+  if (primeiraMensagem) {
+    if (mensagemSemConteudo(lastRaw)) {
+      return { reply: saudacao(new Date(), training.identity.agentName), toolCalls };
+    }
+    const oi = apresentacao(new Date(), training.identity.agentName, fala);
+    return { reply: `${oi} ${proximaPergunta(caso, fala, jaDisseAlgo)}`, toolCalls };
+  }
 
   // ─── 10) Mandou documento por conta própria ───
   if (DOCUMENTO_ENVIADO.test(lastRaw)) return { reply: NAO_PRECISA_DOCUMENTO[fala], toolCalls };

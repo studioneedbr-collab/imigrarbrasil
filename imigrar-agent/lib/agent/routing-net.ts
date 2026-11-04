@@ -35,6 +35,10 @@ const CANDIDATO_PATTERNS: RegExp[] = [
   /\b(tem|t[êe]m|h[áa]|abriu|abriram|dispon[íi]ve[li]s?)\s+vagas?\s+(a[íi]|na imigrar|no escrit[óo]rio|com voc[êe]s)/i,
   /\b(vaga|emprego)\b[^.]{0,20}\b(a[íi] na imigrar|no escrit[óo]rio de voc[êe]s)/i,
   /\bme\s+candidatar\b/i,
+  // "Vocês têm vaga de emprego?" — a pergunta mais direta de todas, e não casava com
+  // nenhuma das de cima, que pedem "aí", "na Imigrar" ou "no escritório" depois da vaga.
+  /\bvoc[êe]s\s+(?:tem|t[êe]m|est[ãa]o\s+com)\s+vagas?\s+de\s+(?:emprego|trabalho)\b/i,
+  /\bvoc[êe]s\s+est[ãa]o\s+contratando\b/i,
 ];
 
 function matchAny(patterns: RegExp[], text: string): boolean {

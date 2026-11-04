@@ -129,12 +129,43 @@ const NO_EXTERIOR =
   /\b(estou|t[ôo]|moro|morando|vivo|ainda estou|continuo|estoy|sigo|todav[íi]a estoy|a[úu]n estoy|i am|i'm|i live|i'm still|i am still)\b[^.]{0,25}\b(fora|no exterior|fora do brasil|no meu pa[íi]s|afuera|fuera de brasil|en el exterior|en mi pa[íi]s|abroad|outside brazil|overseas|in my country)\b|\b(ainda n[ãa]o (vim|cheguei|fui)|antes de (viajar|embarcar|vir)|todav[íi]a no (vine|llegu[ée])|antes de (viajar|venir)|haven't (come|arrived|travelled|traveled) yet|before (i )?(travel|travelling|coming))\b/i;
 
 const CIDADE_BR =
-  /\b(?:em|no|na|en|in)\s+(s[ãa]o paulo|rio de janeiro|bras[íi]lia|curitiba|porto alegre|belo horizonte|salvador|recife|fortaleza|manaus|bel[ée]m|boa vista|pacaraima|foz do igua[çc]u|corumb[áa]|florian[óo]polis|goi[âa]nia|campinas|guarulhos)\b/i;
+  /\b(?:em|no|na|en|in)\s+(s[ãa]o paulo|rio de janeiro|bras[íi]lia|curitiba|porto alegre|belo horizonte|salvador|recife|fortaleza|manaus|bel[ée]m|boa vista|pacaraima|foz do igua[çc]u|corumb[áa]|florian[óo]polis|goi[âa]nia|campinas|guarulhos)(?![A-Za-zÀ-ÿ])/i;
 
 const perto = (lugar: RegExp) =>
   new RegExp(`${PRESENCA.source}(?:\\s+\\S+){0,2}?\\s*${lugar.source}`, "i");
 const PRESENCA_PERTO_DO_BRASIL = perto(AQUI_NO_BRASIL);
 const PRESENCA_PERTO_DE_CIDADE = perto(CIDADE_BR);
+
+// O EXTERIOR DITO PELO NOME DO LUGAR. "Estoy en Bogotá", "I'm in Lagos", "moro em Luanda":
+// sem esta lista, só "fora do Brasil" escrito por extenso contava como exterior, e quem
+// dizia a cidade de onde escrevia ouvia logo depois "você está no Brasil ou fora?".
+// País e cidades de onde mais chega gente a este atendimento, nas três grafias.
+const LUGAR_DE_FORA: Array<[RegExp, string]> = [
+  [/venezuela|caracas|maracaibo|valencia|barquisimeto|puerto ordaz|ciudad guayana/i, "Venezuela"],
+  [/col[ôo]mbia|colombia|bogot[áa]|medell[íi]n|cali|barranquilla|c[úu]cuta/i, "Colômbia"],
+  [/bol[íi]via|la paz|santa cruz de la sierra|cochabamba|el alto/i, "Bolívia"],
+  [/peru|per[úu]|lima|cusco|arequipa/i, "Peru"],
+  [/haiti|porto pr[íi]ncipe|port-au-prince|puerto pr[íi]ncipe|cap-ha[ïi]tien/i, "Haiti"],
+  [/argentina|buenos aires|c[óo]rdoba|rosario|mendoza/i, "Argentina"],
+  [/paraguai|paraguay|assun[çc][ãa]o|asunci[óo]n|ciudad del este/i, "Paraguai"],
+  [/uruguai|uruguay|montevid[ée]u|montevideo/i, "Uruguai"],
+  [/chile|santiago do chile|santiago de chile/i, "Chile"],
+  [/equador|ecuador|quito|guayaquil/i, "Equador"],
+  [/cuba|havana|la habana/i, "Cuba"],
+  [/nig[ée]ria|nigeria|lagos|abuja/i, "Nigéria"],
+  [/angola|luanda/i, "Angola"],
+  [/senegal|dakar/i, "Senegal"],
+  [/gana|ghana|acra|accra/i, "Gana"],
+  [/congo|kinshasa/i, "Congo"],
+  [/portugal|lisboa|porto(?!\s+(?:alegre|seguro|velho|nacional|feliz))/i, "Portugal"],
+  [/estados unidos|eua|united states|miami|nova york|new york/i, "Estados Unidos"],
+  [/afeganist[ãa]o|afghanistan|cabul|kabul/i, "Afeganistão"],
+  [/s[íi]ria|syria|damasco|damascus/i, "Síria"],
+];
+const EM_LUGAR_DE_FORA = new RegExp(
+  `${PRESENCA.source}(?:\\s+\\S+){0,2}?\\s*\\b(?:em|no|na|en|in)\\s+(?:a\\s+|o\\s+|el\\s+|la\\s+)?(${LUGAR_DE_FORA.map(([re]) => re.source).join("|")})(?![A-Za-zÀ-ÿ])`,
+  "i",
+);
 
 export function detectarOndeEsta(texto: string): string | undefined {
   // O exterior vem primeiro: "estou fora do Brasil" também contém a palavra "Brasil".
@@ -149,6 +180,11 @@ export function detectarOndeEsta(texto: string): string | undefined {
   // O verbo e o lugar têm que estar PERTO. "Estou na Venezuela e quero ir morar no
   // Brasil" tem os dois, longe um do outro — e virava "no Brasil", mandando a conversa
   // inteira para o ramo de quem já está aqui.
+  const fora = texto.match(EM_LUGAR_DE_FORA)?.[2];
+  if (fora) {
+    const pais = LUGAR_DE_FORA.find(([re]) => new RegExp(`^(?:${re.source})$`, "i").test(fora))?.[1];
+    return pais ? `Exterior — ${pais}` : "Exterior";
+  }
   if (PRESENCA_PERTO_DE_CIDADE.test(texto)) {
     const cidade = texto.match(PRESENCA_PERTO_DE_CIDADE)?.[2];
     if (cidade) return `Brasil — ${titleCase(cidade)}`;
@@ -167,7 +203,7 @@ const CAMINHOS: Array<[RegExp, string]> = [
     "Reunião familiar",
   ],
   [
-    /\bnaturaliza[çc][ãa]o|naturalizaci[óo]n|naturalisation|naturalization|virar brasileir|ser brasileir|cidadania brasileira|ciudadan[íi]a brasile|brazilian citizenship\b/i,
+    /\bnaturaliza[çc][ãa]o|\bnaturalizar|naturalizaci[óo]n|naturalisation|naturalization|naturali[sz]ed|virar brasileir|ser brasileir|cidadania brasileira|ciudadan[íi]a brasile|brazilian citizenship\b/i,
     "Naturalização",
   ],
   [/\bmercosul|mercosur\b/i, "Residência pelo Mercosul"],
@@ -650,6 +686,18 @@ export function extractSlots(raw: string): TriagemSlots {
   // Prazo. No atendimento de imigração, prazo quase sempre é prazo de PROCESSO (uma
   // exigência a responder, um documento vencendo) — por isso os sinais são outros.
   const t = texto.toLowerCase();
+  // A NEGAÇÃO VEM PRIMEIRO. "Sem urgência nenhuma" contém "urgência" e era lido como caso
+  // IMEDIATO — o contrário do que a pessoa disse, subindo na fila na frente de quem tem
+  // prazo correndo. "Não tenho prazo" não era lido de jeito nenhum, e o motor de reserva
+  // tomava a resposta como silêncio e encerrava a conversa.
+  if (
+    /\bsem (?:nenhuma )?(?:urg[êe]ncia|pressa|prazo)|n[ãa]o (?:tenho|tem|h[áa]|existe) (?:nenhuma? )?(?:urg[êe]ncia|pressa|prazo)|n[ãa]o [ée] urgente|\bsin (?:prisa|urgencia|plazo)|no (?:tengo|hay) (?:prisa|urgencia|plazo|apuro)|no es urgente|\bno (?:rush|hurry|deadline)|not urgent|\bno urgency/.test(
+      t,
+    )
+  ) {
+    slots.urgency = "long";
+    return slots;
+  }
   if (
     // "Hoje" e "agora" sozinhos não são pressa: "agora estou em Boa Vista" é lugar, e
     // marcava urgência imediata — o relógio da ficha era respondido por ruído.

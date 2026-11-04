@@ -208,7 +208,7 @@ describe("a mesma bateria em PT, ES, EN", () => {
   it("mensagem de uma palavra ('hola') é atendida nos dois idiomas", async () => {
     const { respostas } = await conversa(["hola"]);
     expect(respostas[0]).toMatch(/Imigrar Brasil/);
-    expect(respostas[0]).toMatch(/Soy Ana/); // espanhol junto, pela regra da ambiguidade
+    expect(respostas[0]).toMatch(/Soy Cláudia/); // espanhol junto, pela regra da ambiguidade
   });
 
   it("quem não tem como pagar recebe a DPU em espanhol também", async () => {

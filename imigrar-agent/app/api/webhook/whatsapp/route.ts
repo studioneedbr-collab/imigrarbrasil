@@ -8,8 +8,8 @@ import { getZapiConfig } from "@/lib/whatsapp/config";
 import { sendBrevoEmailWithUrl } from "@/lib/email/brevo";
 import { readDocument, mediaKindFor } from "@/lib/agent/vision";
 import { transcreverAudio, transcricaoConfigurada } from "@/lib/agent/audio";
-import { registrarIdioma } from "@/lib/agent/idioma";
-import { detectarOptOut, MENSAGEM_DESPEDIDA } from "@/lib/agent/opt-out";
+import { idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
+import { detectarOptOut, despedidaDoOptOut } from "@/lib/agent/opt-out";
 import { decidirAtendimento, mensagemAgenteDesligado } from "@/lib/agent/ativacao";
 import { lerChaveGeral, resolverInstancia } from "@/lib/agent/estado";
 import { configDaInstancia } from "@/lib/whatsapp/config";
@@ -441,8 +441,9 @@ export async function POST(req: NextRequest) {
         // Uma despedida e só. Se ele já estava marcado, nem isso — repetir a despedida
         // para quem pediu silêncio é exatamente o comportamento que gera a denúncia.
         if (!conv.optOutAt) {
-          await repo.addMessage(conv.id, "assistant", MENSAGEM_DESPEDIDA);
-          await sendMessage(phone, MENSAGEM_DESPEDIDA, instancia ? configDaInstancia(instancia) : undefined).catch((e) =>
+          const despedida = despedidaDoOptOut(idiomaDaConversa(text, text, conv.idioma));
+          await repo.addMessage(conv.id, "assistant", despedida);
+          await sendMessage(phone, despedida, instancia ? configDaInstancia(instancia) : undefined).catch((e) =>
             console.error("[webhook] falha ao enviar despedida:", e instanceof Error ? e.message : e),
           );
         }
