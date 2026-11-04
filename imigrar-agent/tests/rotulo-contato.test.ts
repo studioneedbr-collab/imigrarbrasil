@@ -11,8 +11,8 @@ import { AINDA_NAO, rotuloContato } from "@/lib/domain/rotulos";
 
 describe("rótulo do contato", () => {
   it("usa o nome quando existe", () => {
-    expect(rotuloContato({ contactName: "Ana Rodríguez", whatsappNumber: "5511999" })).toEqual({
-      texto: "Ana Rodríguez",
+    expect(rotuloContato({ contactName: "Lucía Fernández", whatsappNumber: "5511999" })).toEqual({
+      texto: "Lucía Fernández",
       conhecido: true,
     });
   });

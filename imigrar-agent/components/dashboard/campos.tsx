@@ -59,7 +59,7 @@ const ESPACO = 4;
  * parada no ar, longe do campo que a abriu.
  */
 function usePosicaoFlutuante(
-  ancora: React.RefObject<HTMLElement>,
+  ancora: React.RefObject<HTMLElement | null>,
   aberto: boolean,
   alturaEstimada: number,
   larguraMinima = 0,

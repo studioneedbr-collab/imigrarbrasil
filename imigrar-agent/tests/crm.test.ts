@@ -151,7 +151,7 @@ describe("um funil de onde não se sai", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // A FICHA QUE SE PREENCHE SOZINHA.
 //
-// O caso real: a ficha da Ana Rodríguez guardou a frase inteira em "situação documental"
+// O caso real: a ficha da Lucía Fernández guardou a frase inteira em "situação documental"
 // e deixou "o que a pessoa quer conseguir" em branco — com a resposta na mesma frase.
 // Campo vazio ali não é cosmético: `objetivo` é um dos seis da ficha mínima, e ficha
 // incompleta segura o encaminhamento ao time.

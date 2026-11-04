@@ -23,11 +23,8 @@ export const dynamic = "force-dynamic";
  * negócio em silêncio. A taxa de resgate, alimentada por esta tela, é o único jeito de
  * perceber isso cedo.
  */
-export default async function FiltradasPage({
-  searchParams,
-}: {
-  searchParams?: { p?: string };
-}) {
+export default async function FiltradasPage(props: { searchParams?: Promise<{ p?: string }> }) {
+  const searchParams = await props.searchParams;
   const agora = new Date();
   const { fila, leads, total } = await carregarFila(agora, { limite: TETO_DE_CARGA });
   const corte = avaliarCorte(leads.length, total);

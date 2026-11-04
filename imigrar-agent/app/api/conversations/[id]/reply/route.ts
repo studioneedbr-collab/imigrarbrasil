@@ -10,7 +10,8 @@ const schema = z.object({ message: z.string().min(1).max(4000) });
 
 // Resposta MANUAL do atendente: envia direto pro WhatsApp do cliente (via Z-API),
 // registra no histórico e mantém a conversa com o humano (IA pausada = status 'transferred').
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 

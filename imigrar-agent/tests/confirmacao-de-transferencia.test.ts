@@ -5,7 +5,7 @@ import { anunciaEncaminhamento, revisarTurno } from "@/lib/agent/verificador-de-
 // A CONVERSA QUE ORIGINOU ESTE ARQUIVO.
 //
 // Ana: "espero tu confirmación para pasar el contacto"
-// Pessoa: "me llamo Ana Rodríguez, vivo en Boa Vista desde el año pasado"
+// Pessoa: "me llamo Lucía Fernández, vivo en Boa Vista desde el año pasado"
 // Ana: "ya pasé tu caso al equipo jurídico"
 //
 // Ela não confirmou nada — respondeu outra coisa. O encaminhamento até estava certo
@@ -23,7 +23,7 @@ describe("confirmação de transferência é um sim, e só um sim", () => {
   it("responder outra coisa não é confirmar", () => {
     const r = semUrgencia(
       "¿Puedo pasar tu contacto al equipo jurídico? Espero tu confirmación.",
-      "Me llamo Ana Rodríguez, vivo en Boa Vista desde el año pasado.",
+      "Me llamo Lucía Fernández, vivo en Boa Vista desde el año pasado.",
     );
     expect(r.liberado).toBe(false);
     expect(r.confirmacaoPendente).toBe(true);

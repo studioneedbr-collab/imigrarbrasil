@@ -18,7 +18,8 @@ const schema = z.object({
   nota: z.string().trim().min(3, "Escreva por que voltar a falar com esta pessoa.").max(500),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
@@ -44,7 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   const lembretes = await getRepository().listLembretes({ leadId: params.id }).catch(() => []);

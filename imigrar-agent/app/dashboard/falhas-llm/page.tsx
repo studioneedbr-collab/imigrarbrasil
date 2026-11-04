@@ -21,11 +21,8 @@ export const dynamic = "force-dynamic";
  * linguagem) e dois desfechos diferentes. Uma tela só para os dois ensinava a procurar
  * no lugar errado.
  */
-export default async function FalhasLlmPage({
-  searchParams,
-}: {
-  searchParams: { todos?: string };
-}) {
+export default async function FalhasLlmPage(props: { searchParams: Promise<{ todos?: string }> }) {
+  const searchParams = await props.searchParams;
   const apenasPendentes = searchParams.todos !== "1";
 
   const eventos = await getRepository()

@@ -7,7 +7,8 @@ import { ACAO_CONVERSA, detalheDaMudanca } from "@/lib/agent/estado";
 import { nomesPorEmail, quemFez } from "@/lib/auth/nomes";
 
 // Conversa + mensagens + lead — usado pela visão em tempo real (polling) do dashboard.
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const repo = getRepository();
   const conversation = await repo.getConversation(params.id);
   if (!conversation) {
@@ -46,7 +47,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 // Pausar/retomar a IA nesta conversa. Pausar = ASSUMIR o atendimento (grava quem
 // assumiu; só aí a Shayene fica em silêncio no WhatsApp); retomar = devolver pra ela.
 const patchSchema = z.object({ iaActive: z.boolean() });
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   let iaActive: boolean;
@@ -83,7 +85,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 // Exclui a conversa e todo o histórico (mensagens, lead e tickets caem por cascade).
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
   try {

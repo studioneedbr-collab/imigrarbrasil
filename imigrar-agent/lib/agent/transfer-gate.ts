@@ -109,7 +109,7 @@ export function avaliarEncaminhamentoComercial(
 //
 // O prompt manda avisar, perguntar se a pessoa quer o contato e só transferir depois do
 // sim. Isso funcionou até a conversa em que não funcionou: a Ana escreveu "espero tu
-// confirmación para pasar el contacto", a pessoa respondeu "me llamo Ana Rodríguez, vivo
+// confirmación para pasar el contacto", a pessoa respondeu "me llamo Lucía Fernández, vivo
 // en Boa Vista desde el año pasado", e a Ana respondeu "ya pasé tu caso al equipo
 // jurídico".
 //

@@ -75,7 +75,8 @@ function GraficoPorDia({ dias }: { dias: { dia: string; visitas: number; contato
   );
 }
 
-export default async function SitePage({ searchParams }: { searchParams: { dias?: string } }) {
+export default async function SitePage(props: { searchParams: Promise<{ dias?: string }> }) {
+  const searchParams = await props.searchParams;
   const dias = PERIODOS.includes(Number(searchParams.dias) as 7) ? Number(searchParams.dias) : 30;
   const sessao = await getSession();
   const repo = getRepository();

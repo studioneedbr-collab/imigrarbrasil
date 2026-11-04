@@ -25,7 +25,7 @@ alter table eventos_operacao add constraint eventos_operacao_tipo_check
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. O MESMO TELEFONE É A MESMA PESSOA.
 --
--- Ana Rodríguez apareceu duas vezes na fila e duas vezes no quadro: uma como
+-- Lucía Fernández apareceu duas vezes na fila e duas vezes no quadro: uma como
 -- "Venezuela · Modalidade a definir" em EM ATENDIMENTO, outra como "venezolana · Saber
 -- qué hacer con una multa migratoria" em NOVO. Mesma pessoa, dois registros, duas fichas
 -- pela metade — e o time atendendo cada uma sem saber da outra.

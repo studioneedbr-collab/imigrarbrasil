@@ -53,7 +53,7 @@ export class MemoryRepository implements Repository {
 
     // MESMO TELEFONE, OUTRA GRAFIA. Ver lib/whatsapp/telefone.ts: "+55 95 99123-4567" e
     // "559591234567" são a mesma pessoa, e tratá-los como dois contatos foi o que fez
-    // Ana Rodríguez aparecer duas vezes na fila, com metade da ficha em cada registro.
+    // Lucía Fernández aparecer duas vezes na fila, com metade da ficha em cada registro.
     const variantes = variantesDoTelefone(whatsappNumber);
     if (variantes.length) {
       const candidatas = Array.from(this.conversations.values())

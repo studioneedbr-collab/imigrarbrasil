@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -17,7 +21,6 @@
         "name": "next"
       }
     ],
-
     // SEM `baseUrl`, de propósito. Se ele reaparecer aqui, foi engano — leia antes de repor.
     //
     // Entrada relativa em `paths` resolve contra a pasta DESTE arquivo desde o TS 4.4,
@@ -34,9 +37,19 @@
     // se um `@/` reaparecer. Verificado: com e sem `baseUrl`, o bundle do middleware sai
     // com exatamente o mesmo tamanho.
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    "target": "ES2017"
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

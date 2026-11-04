@@ -10,7 +10,7 @@ import { verifySession, SESSION_COOKIE, type SessionPayload } from "@/lib/auth/s
  */
 
 export async function getSession(): Promise<SessionPayload | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? verifySession(token) : null;
 }
 

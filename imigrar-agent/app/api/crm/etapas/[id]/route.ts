@@ -36,7 +36,8 @@ const patch = z.object({
   arquivada: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();
@@ -73,7 +74,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * A última etapa de um funil não se apaga: um funil sem coluna nenhuma é um quadro que
  * esconde todos os casos de uma vez.
  */
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();

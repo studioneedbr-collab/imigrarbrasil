@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     // Papel legado ('user') vira o mais restrito ao entrar no cookie. Ver lib/auth/papeis.ts.
     const token = await createSession({ sub: user.id, email: user.email, role: normalizarPapel(user.role) });
-    cookies().set(SESSION_COOKIE, token, sessionCookieOptions());
+    (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions());
 
     return NextResponse.json({ ok: true });
   } catch (err) {

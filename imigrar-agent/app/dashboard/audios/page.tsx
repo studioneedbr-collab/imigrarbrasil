@@ -31,11 +31,8 @@ export const dynamic = "force-dynamic";
  */
 const TIPO: TipoEventoOperacao = "transcricao_falhou";
 
-export default async function AudiosPage({
-  searchParams,
-}: {
-  searchParams: { todos?: string };
-}) {
+export default async function AudiosPage(props: { searchParams: Promise<{ todos?: string }> }) {
+  const searchParams = await props.searchParams;
   const tipo = TIPO;
   const apenasPendentes = searchParams.todos !== "1";
 

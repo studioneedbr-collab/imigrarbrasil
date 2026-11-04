@@ -7,7 +7,8 @@ import FormServico from "@/components/site/form-servico";
 
 export const dynamic = "force-dynamic";
 
-export default async function EditarServicoPage({ params }: { params: { slug: string } }) {
+export default async function EditarServicoPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const sessao = await getSession();
   const novo = params.slug === "novo";
   const item = novo ? null : await getRepository().obterConteudoSite("servico", params.slug);

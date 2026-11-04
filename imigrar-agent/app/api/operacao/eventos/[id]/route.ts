@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
  * seguiu o atendimento. Fica registrado quem tratou, porque a pergunta que aparece
  * depois é "esse áudio alguém chegou a ouvir?".
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   try {

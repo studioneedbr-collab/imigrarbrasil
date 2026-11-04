@@ -3,7 +3,7 @@ import { revisarSaida, qualificaSituacao, emFrases } from "@/lib/agent/verificad
 
 // O CASO QUE ORIGINOU ESTE ARQUIVO.
 //
-// Na conversa da Ana Rodríguez, a agente escreveu que ter o passaporte carimbado em
+// Na conversa da Lucía Fernández, a agente escreveu que ter o passaporte carimbado em
 // Pacaraima "es buena señal: significa que tu entrada quedó registrada de forma regular".
 // Isso é análise do caso concreto — proibida em todas as versões do prompt — e, pior,
 // afirma para a pessoa que a entrada dela é REGULAR. Se estiver errado, ela decide a vida

@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 const tipoValido = (t: string): t is TipoConteudoSite => (TIPOS_CONTEUDO_SITE as readonly string[]).includes(t);
 
 /** Lista posts, serviços ou a configuração. Ler é para todo o painel. */
-export async function GET(_req: NextRequest, { params }: { params: { tipo: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ tipo: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!tipoValido(params.tipo)) return NextResponse.json({ error: "Tipo desconhecido." }, { status: 404 });
@@ -18,7 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: { tipo: strin
 }
 
 /** Cria (ou substitui) um item. O slug vem no corpo, junto com os dados. */
-export async function POST(req: NextRequest, { params }: { params: { tipo: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ tipo: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeEditarSite(auth.session.role)) return forbidden();

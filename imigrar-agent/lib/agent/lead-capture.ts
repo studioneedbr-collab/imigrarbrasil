@@ -122,7 +122,7 @@ export function capturarDadosDoLead(
   // ─────────────────────────────────────────────────────────────────────────
   // O QUE ELA QUER CONSEGUIR — o campo que a ficha mostrava vazio com a resposta na tela.
   //
-  // A ficha da Ana Rodríguez tinha "Situação documental: hola, soy venezolana y recibí una
+  // A ficha da Lucía Fernández tinha "Situação documental: hola, soy venezolana y recibí una
   // multa migratoria, no sé qué hacer" e "O que a pessoa quer conseguir:" em branco. A
   // informação estava ali, na mesma frase: quem recebeu multa quer resolver a multa. Só
   // que `objetivo` só era preenchido quando o modelo lembrava de chamar a tool, e o campo

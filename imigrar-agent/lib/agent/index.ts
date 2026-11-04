@@ -301,8 +301,8 @@ export async function respondToConversation(
   });
   // CONFIRMAÇÃO PENDENTE. O outro lado do mesmo portão: aqui não se pergunta se já há
   // caso, e sim se a Ana pediu autorização para passar o contato e ainda não recebeu um
-  // sim. Ver lib/agent/transfer-gate.ts — e a conversa da Ana Rodríguez, em que "me llamo
-  // Ana Rodríguez, vivo en Boa Vista" foi lido como confirmação.
+  // sim. Ver lib/agent/transfer-gate.ts — e a conversa da Lucía Fernández, em que "me llamo
+  // Lucía Fernández, vivo en Boa Vista" foi lido como confirmação.
   const confirmacao = avaliarConfirmacao({
     ultimaRespostaDoAgente,
     ultimaMensagem: lastUserText,

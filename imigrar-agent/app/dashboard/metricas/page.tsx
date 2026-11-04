@@ -216,11 +216,8 @@ function comFiltro(
   return `/dashboard/metricas${s ? `?${s}` : ""}`;
 }
 
-export default async function MetricasPage({
-  searchParams,
-}: {
-  searchParams: { periodo?: string; aba?: string; nacionalidade?: string };
-}) {
+export default async function MetricasPage(props: { searchParams: Promise<{ periodo?: string; aba?: string; nacionalidade?: string }> }) {
+  const searchParams = await props.searchParams;
   const periodo = PERIODOS.find((p) => p.key === searchParams.periodo) ?? PERIODOS[1];
   const aba: AbaKey = (ABAS.find((a) => a.key === searchParams.aba)?.key ?? "visao") as AbaKey;
   const nacionalidade = searchParams.nacionalidade?.trim() || "";

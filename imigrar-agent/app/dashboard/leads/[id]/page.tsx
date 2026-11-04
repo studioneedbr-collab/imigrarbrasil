@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { BRL, Card, Icon, Skeleton, btnGhost, btnPrimary, fmtTime } from "@/components/dashboard/ui";
 import { CampoData, Selecao, paraBr } from "@/components/dashboard/campos";
@@ -54,7 +54,8 @@ type Detalhe = {
   usuarios: { id: string; nome: string }[];
 };
 
-export default function LeadDetailPage({ params }: { params: { id: string } }) {
+export default function LeadDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const { id } = params;
   const [data, setData] = useState<Detalhe | null>(null);
   const [erro, setErro] = useState<string | null>(null);

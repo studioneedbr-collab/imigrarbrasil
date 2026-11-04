@@ -31,7 +31,8 @@ const patchSchema = z.object({
  * /ativacao, que exige uma confirmação separada. Um "salvar" não pode ligar produção
  * de raspão.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 
@@ -117,7 +118,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 

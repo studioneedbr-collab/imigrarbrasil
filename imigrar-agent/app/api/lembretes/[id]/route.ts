@@ -5,7 +5,8 @@ import { requireSession } from "@/lib/auth/guard";
 export const dynamic = "force-dynamic";
 
 /** "Já tratei." O lembrete sai do topo de Meus atendimentos e da saúde da operação. */
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   try {

@@ -21,7 +21,8 @@ const patch = z.object({
   arquivado: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();
@@ -57,7 +58,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  *
  * O funil padrão não se apaga: sem ele os casos novos não teriam onde cair.
  */
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();

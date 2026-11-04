@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  * abre-se a situação migratória de uma pessoa, às vezes irregular, às vezes solicitante
  * de refúgio. Quem abriu precisa ser respondível depois.
  */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
@@ -109,7 +110,8 @@ const fichaSchema = z.object({
   notes: z.string().max(5000).nullish(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 

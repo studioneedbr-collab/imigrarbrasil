@@ -28,7 +28,8 @@ const patch = z.object({
   arquivado: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();
@@ -63,7 +64,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * banco recusa apagar os que o próprio sistema escreve (hoje `sumiu`, da varredura de
  * follow-up). A mensagem que sobe é a do banco, escrita para ser lida por gente.
  */
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
   if (!podeDesenhar(auth.session.role)) return forbidden();

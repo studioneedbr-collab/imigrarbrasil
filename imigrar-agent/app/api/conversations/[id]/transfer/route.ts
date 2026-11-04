@@ -15,7 +15,8 @@ const bodySchema = z.object({
 // Transferência MANUAL do atendimento para um humano: o admin escolhe setor + pessoa,
 // entra uma nota na conversa ("Fulano, do Comercial, entrou na conversa"), a conversa
 // é marcada como transferida e um ticket é aberto (mesmo fluxo da transferência automática).
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 

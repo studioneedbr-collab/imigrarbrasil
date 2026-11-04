@@ -7,7 +7,7 @@ import {
 } from "@/lib/whatsapp/telefone";
 import { MemoryRepository } from "@/lib/data/memory-repository";
 
-// Ana Rodríguez apareceu duas vezes na fila e duas vezes no quadro: uma como
+// Lucía Fernández apareceu duas vezes na fila e duas vezes no quadro: uma como
 // "Venezuela · Modalidade a definir" em EM ATENDIMENTO, outra como "venezolana · Saber
 // qué hacer con una multa migratoria" em NOVO. Mesma pessoa, dois registros — e a multa
 // correndo estava só num deles.
@@ -86,7 +86,7 @@ describe("o repositório não cria o segundo registro da mesma pessoa", () => {
   });
 
   it("as duas grafias caem na mesma conversa", async () => {
-    const a = await repo.getOrCreateConversation("5595991234567", "Ana Rodríguez");
+    const a = await repo.getOrCreateConversation("5595991234567", "Lucía Fernández");
     const b = await repo.getOrCreateConversation("+55 95 99123-4567");
     expect(b.id).toBe(a.id);
   });

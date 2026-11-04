@@ -642,7 +642,7 @@ export async function runFallback({
       //
       // Não é deselegância de texto. Quem lê entende que foi passado adiante sem ter dito
       // sim, e é justamente esse tipo de conversa que faz alguém parar de contar o que
-      // importa (ver o caso da Ana Rodríguez em lib/agent/transfer-gate.ts). Nestes
+      // importa (ver o caso da Lucía Fernández em lib/agent/transfer-gate.ts). Nestes
       // caminhos o encaminhamento é o certo — risco, prazo correndo, pedido explícito —,
       // então o que sai é a substância mais o aviso, sem a pergunta que já não cabe.
       const semPergunta = semAPerguntaDeAutorizacao(texto);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -82,7 +82,8 @@ function LiveTag() {
   );
 }
 
-export default function ConversationDetailPage({ params }: { params: { id: string } }) {
+export default function ConversationDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const { id } = params;
   const router = useRouter();
   const [data, setData] = useState<DetailResponse | null>(null);

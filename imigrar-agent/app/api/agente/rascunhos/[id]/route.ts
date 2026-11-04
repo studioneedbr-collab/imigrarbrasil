@@ -25,7 +25,8 @@ const schema = z.object({
  * guardar só o texto final não ensinaria nada, e é por isso que a edição vai para uma
  * coluna nova em vez de sobrescrever a original.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 

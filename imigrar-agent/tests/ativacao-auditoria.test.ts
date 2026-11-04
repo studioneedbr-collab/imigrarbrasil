@@ -67,13 +67,13 @@ describe("toda mudança de estado vai para o log de auditoria", () => {
     const inst = await repo.criarInstancia({ nome: "Prod", instanceId: `p_${Date.now()}`, token: "t" });
     await repo.atualizarInstancia(inst.id, { ambiente: "producao" });
 
-    const semConfirmar = await putAtivacao(req({ ativo: true }), { params: { id: inst.id } });
+    const semConfirmar = await putAtivacao(req({ ativo: true }), { params: Promise.resolve({ id: inst.id }) });
     expect(semConfirmar.status).toBe(409);
     expect((await repo.getInstancia(inst.id))!.ativo).toBe(false);
 
     const comConfirmar = await putAtivacao(
       req({ ativo: true, confirmarProducao: true }),
-      { params: { id: inst.id } },
+      { params: Promise.resolve({ id: inst.id }) },
     );
     expect(comConfirmar.status).toBe(200);
     expect((await repo.getInstancia(inst.id))!.ativo).toBe(true);
@@ -86,8 +86,8 @@ describe("toda mudança de estado vai para o log de auditoria", () => {
   it("nível 3 — assumir e devolver a conversa", async () => {
     const conv = await repo.getOrCreateConversation(`5521${Date.now()}`, "Auditoria");
 
-    await patchConversa(req({ iaActive: false }), { params: { id: conv.id } });
-    await patchConversa(req({ iaActive: true }), { params: { id: conv.id } });
+    await patchConversa(req({ iaActive: false }), { params: Promise.resolve({ id: conv.id }) });
+    await patchConversa(req({ iaActive: true }), { params: Promise.resolve({ id: conv.id }) });
 
     const linhas = (await acessosDesde(marca)).filter((a) => a.acao === "agente.conversa");
     expect(linhas).toHaveLength(2);

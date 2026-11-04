@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
  * empresa, o que derruba e reergue a linha por alguns segundos. Não é o tipo de coisa
  * que o prefetch de um navegador deve poder disparar sozinho.
  */
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
 

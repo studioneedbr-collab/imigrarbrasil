@@ -7,7 +7,8 @@ import FormPost from "@/components/site/form-post";
 
 export const dynamic = "force-dynamic";
 
-export default async function EditarPostPage({ params }: { params: { slug: string } }) {
+export default async function EditarPostPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const sessao = await getSession();
   const novo = params.slug === "novo";
   const item = novo ? null : await getRepository().obterConteudoSite("post", params.slug);

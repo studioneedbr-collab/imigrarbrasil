@@ -6,7 +6,7 @@
 // grafia abre uma conversa nova, e a pessoa aparece duas vezes na fila e duas vezes no
 // quadro, com metade da ficha em cada uma.
 //
-// Foi assim que Ana Rodríguez apareceu como "Venezuela · Modalidade a definir" em EM
+// Foi assim que Lucía Fernández apareceu como "Venezuela · Modalidade a definir" em EM
 // ATENDIMENTO e, ao lado, como "venezolana · Saber qué hacer con una multa migratoria"
 // em NOVO — a segunda com uma multa correndo que ninguém ligou à primeira.
 //
@@ -41,7 +41,7 @@ export function normalizarTelefone(bruto: string | null | undefined): string {
  * escritório, o webhook não vai encontrar o caso — vai abrir um card novo, e o lead que a
  * captação trouxe fica órfão ao lado dele.
  *
- * É o defeito da Ana Rodríguez aparecendo duas vezes no quadro, com a diferença de que
+ * É o defeito da Lucía Fernández aparecendo duas vezes no quadro, com a diferença de que
  * aqui ele aconteceria em TODO lead do site, e justamente no caminho que existe para
  * juntar as duas pontas.
  *

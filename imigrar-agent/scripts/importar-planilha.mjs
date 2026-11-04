@@ -202,7 +202,7 @@ function normalizarTelefone(bruto) {
  * guarda o número na forma que o WhatsApp entrega, que SEMPRE traz o DDI. Importar sem
  * ele significa que, no dia em que essa mesma pessoa escrever para o escritório, o
  * webhook não vai encontrar o caso importado — vai abrir um card novo, e o histórico que
- * esta carga existe para preservar fica órfão ao lado dele. É o defeito da Ana Rodríguez
+ * esta carga existe para preservar fica órfão ao lado dele. É o defeito da Lucía Fernández
  * aparecendo duas vezes no quadro, só que multiplicado por 52.
  *
  * A regra segue o que a planilha realmente contém:

@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 // O ATENDENTE MANDA UM ARQUIVO AO CLIENTE (orçamento, proposta). Mesmo efeito da resposta
 // manual: envia pelo WhatsApp, entra no histórico e a conversa fica com quem mandou.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 

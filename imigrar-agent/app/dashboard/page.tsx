@@ -226,11 +226,8 @@ function MesaDeControle({
   );
 }
 
-export default async function FilaPage({
-  searchParams,
-}: {
-  searchParams?: { p?: string };
-}) {
+export default async function FilaPage(props: { searchParams?: Promise<{ p?: string }> }) {
+  const searchParams = await props.searchParams;
   const agora = new Date();
   // SÓ O BLOCO 3 PAGINA, E A PAGINAÇÃO É DE VERDADE — o banco devolve os leads com prazo
   // TODOS, sem teto, e uma página do resto. Antes isto era um teto de carga com um aviso
