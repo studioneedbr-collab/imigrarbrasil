@@ -117,9 +117,11 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[admin] ' . $e);
-    if (str_starts_with($rota, '/salvar') || str_starts_with($rota, '/imagem')) json_resposta(['erro' => 'Erro no servidor: ' . $e->getMessage()], 500);
+    // O detalhe vai para o log do servidor, não para a tela: a mensagem da exceção traz
+    // caminho de arquivo do servidor.
+    if (str_starts_with($rota, '/salvar') || str_starts_with($rota, '/imagem')) json_resposta(['erro' => 'Erro no servidor. Tente de novo; se continuar, avise o suporte.'], 500);
     http_response_code(500);
-    tela_simples('Algo deu errado', '<p>' . e($e->getMessage()) . '</p><p><a class="btn" href="/admin/">Voltar</a></p>', null);
+    tela_simples('Algo deu errado', '<p>Não foi possível concluir. Tente de novo; se continuar, avise o suporte.</p><p><a class="btn" href="/admin/">Voltar</a></p>', null);
 }
 
 /** Trocar a senha, criar e remover usuário. Devolve a mensagem de erro, ou null. */

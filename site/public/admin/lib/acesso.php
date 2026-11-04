@@ -54,16 +54,29 @@ function registrar_erro(string $ip): void
 function entrar(string $usuario, string $senha): bool
 {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '?';
-    if (bloqueado($ip)) return false;
-    foreach (usuarios() as $u) {
-        if (hash_equals(mb_strtolower($u['usuario']), mb_strtolower(trim($usuario))) && password_verify($senha, $u['hash'])) {
-            session_regenerate_id(true);
-            $_SESSION['usuario'] = $u['usuario'];
-            return true;
+    // UMA TENTATIVA POR VEZ. Sem a trava, 200 POSTs simultâneos liam a contagem antes de
+    // qualquer erro ser gravado e todos ganhavam a sua chance de senha. O contador global
+    // ('*') pega quem troca de IP a cada tentativa.
+    return com_trava(function () use ($ip, $usuario, $senha) {
+        if (bloqueado($ip) || bloqueado_geral()) return false;
+        foreach (usuarios() as $u) {
+            if (hash_equals(mb_strtolower($u['usuario']), mb_strtolower(trim($usuario))) && password_verify($senha, $u['hash'])) {
+                session_regenerate_id(true);
+                $_SESSION['usuario'] = $u['usuario'];
+                return true;
+            }
         }
-    }
-    registrar_erro($ip);
-    return false;
+        registrar_erro($ip);
+        registrar_erro('*');
+        return false;
+    });
+}
+
+/** 60 erros de qualquer origem em 15 minutos: alguém está tentando de vários IPs. */
+function bloqueado_geral(): bool
+{
+    $t = array_filter(ler_json(DADOS . '/tentativas.json', [])['*'] ?? [], fn($x) => $x > time() - 900);
+    return count($t) >= 60;
 }
 
 function conferir_csrf(): void

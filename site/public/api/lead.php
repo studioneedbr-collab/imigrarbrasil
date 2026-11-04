@@ -34,6 +34,21 @@ if (!is_array($config) || empty($config['url']) || empty($config['token'])) {
     exit('{"ok":false,"error":"nao_configurado"}');
 }
 
+// LIMITE POR IP: 10 envios a cada 15 minutos. A rota é pública e carrega o token de
+// verdade até o CRM; sem limite, um script enchia o funil de leads falsos.
+$ip = $_SERVER['REMOTE_ADDR'] ?? '?';
+$arqLimite = sys_get_temp_dir() . '/imigrar-lead-limite.json';
+$h = @fopen($arqLimite, 'c+');
+if ($h && flock($h, LOCK_EX)) {
+    $todos = json_decode(stream_get_contents($h) ?: '{}', true) ?: [];
+    foreach ($todos as $k => $v) { $todos[$k] = array_values(array_filter($v, fn($x) => $x > time() - 900)); if (!$todos[$k]) unset($todos[$k]); }
+    $excedeu = count($todos[$ip] ?? []) >= 10;
+    if (!$excedeu) $todos[$ip][] = time();
+    ftruncate($h, 0); rewind($h); fwrite($h, json_encode($todos));
+    flock($h, LOCK_UN); fclose($h);
+    if ($excedeu) { http_response_code(429); exit('{"ok":false,"error":"muitas_tentativas"}'); }
+}
+
 $bruto = file_get_contents('php://input', false, null, 0, 20000);
 $dados = json_decode($bruto ?: '', true);
 if (!is_array($dados)) {

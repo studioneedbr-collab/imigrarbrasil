@@ -82,7 +82,9 @@ function salvar_post(array $d, ?string $original, string $quem): array
         'title' => $titulo,
         'seoTitle' => trim((string) ($d['seoTitle'] ?? '')) ?: $titulo,
         'description' => trim((string) ($d['description'] ?? '')),
-        'image' => trim((string) ($d['image'] ?? '')) ?: null,
+        // Só caminho do próprio site ("/uploads/…"): "//outro.site/x.png" carregaria a capa
+        // de um terceiro, que passaria a ver cada visitante do artigo.
+        'image' => preg_match('#^/(?!/)[^\s"<>]*$#', $img = trim((string) ($d['image'] ?? ''))) ? $img : null,
         'published' => $publicado,
         // "Atualizado em" só aparece se a edição for em outro dia (como no build).
         'modified' => $anterior ? $agora : null,

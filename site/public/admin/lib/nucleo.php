@@ -81,8 +81,15 @@ function enc_uri(string $s): string
 {
     return strtr(rawurlencode($s), ['%21' => '!', '%27' => "'", '%28' => '(', '%29' => ')', '%2A' => '*', '%7E' => '~']);
 }
-/** JSON igual ao JSON.stringify: sem escapar barra nem acento. */
+/**
+ * JSON igual ao JSON.stringify: sem escapar barra nem acento.
+ *
+ * MENOS "</". Este JSON vai cru para dentro de <script type="application/ld+json"> e do
+ * índice do blog, e um título com "</script><script>…" fecharia o bloco e rodaria no
+ * navegador de todo visitante — por cima do limpar_html(), que só cuida do corpo. "<\/" é
+ * o mesmo texto para qualquer leitor de JSON e não fecha tag nenhuma.
+ */
 function js($v): string
 {
-    return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    return str_replace('</', '<\\/', json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 }
