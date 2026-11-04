@@ -37,6 +37,7 @@ import {
   type MotivoEspera,
 } from "@/lib/followup/motivos";
 import { despedidaDaSequencia, escolherModelo, textoDoToque } from "@/lib/followup/modelos";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export interface ResultadoDaVarredura {
   examinados: number;
@@ -133,7 +134,7 @@ export async function varrerEspera(
         // pior do que despedida nenhuma: é a confirmação, na última mensagem, de que o
         // escritório nunca soube com quem estava falando.
         if (despedida && conv.whatsappNumber && !ehEnsaio(conv.whatsappNumber) && rodada.podeMais()) {
-          await sendMessage(conv.whatsappNumber, despedida);
+          await sendMessage(conv.whatsappNumber, despedida, await canalDaConversa(repo, conv));
           await repo.addMessage(conv.id, "assistant", despedida);
           await rodada.registrarEnvio();
         }
@@ -207,7 +208,7 @@ export async function varrerEspera(
         continue;
       }
       if (!conv.whatsappNumber) continue;
-      await sendMessage(conv.whatsappNumber, texto);
+      await sendMessage(conv.whatsappNumber, texto, await canalDaConversa(repo, conv));
       await repo.addMessage(conv.id, "assistant", texto);
       await repo.registrarToque({
         leadId: lead.id,

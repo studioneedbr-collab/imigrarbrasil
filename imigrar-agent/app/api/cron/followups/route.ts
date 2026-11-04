@@ -6,6 +6,7 @@ import { timingSafeEq } from "@/lib/auth/secret-compare";
 import { novaRodada, podeDispararAgora } from "@/lib/whatsapp/janela";
 import { lerChaveGeral } from "@/lib/agent/estado";
 import { varrerEspera } from "@/lib/followup/varredura";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
         restantes++;
         continue;
       }
-      await sendMessage(conv.whatsappNumber, f.message);
+      await sendMessage(conv.whatsappNumber, f.message, await canalDaConversa(repo, conv));
       await repo.addMessage(f.conversationId, "assistant", f.message);
       await repo.updateFollowupStatus(f.id, "sent");
       sent++;

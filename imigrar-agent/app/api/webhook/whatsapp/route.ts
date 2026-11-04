@@ -51,6 +51,8 @@ interface ZApiWebhookBody {
   chatName?: string;
   isFromMe?: boolean;
   fromMe?: boolean;
+  // A mensagem "minha" saiu pela API (a agente, o painel) ou foi digitada no celular?
+  fromApi?: boolean;
   // DE ONDE VEIO. Grupo, lista de transmissão, status e canal chegam por este mesmo
   // webhook e NÃO são atendimento — ver lib/whatsapp/remetente.ts.
   isGroup?: boolean;
@@ -148,6 +150,42 @@ export async function GET(req: NextRequest) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+/**
+ * ALGUÉM DO TIME RESPONDEU PELO CELULAR.
+ *
+ * O WhatsApp do escritório também é usado direto no aparelho. Essa resposta chegava aqui
+ * como "minha" e era descartada: o painel não sabia que uma pessoa tinha entrado, e na
+ * mensagem seguinte do cliente a agente respondia por cima do atendente.
+ *
+ * Só conta o que a Z-API marca como NÃO enviado pela API (`fromApi === false`) — o que a
+ * agente e o painel mandam volta com `fromApi: true`. Sem o campo, nada muda.
+ *
+ * A saudação e a mensagem de ausência automáticas do WhatsApp Business também saem como
+ * "não API", e segundos depois da mensagem do cliente. Uma pessoa leva mais do que isso
+ * para ler e digitar: o que sai em menos de 20 segundos não assume a conversa.
+ */
+async function registrarRespostaDoCelular(body: ZApiWebhookBody): Promise<void> {
+  if (body.fromApi !== false) return;
+  if (origemDaMensagem(body) !== "individual") return;
+  const phone = (body.phone ?? "").trim();
+  const text = extractText(body);
+  if (!phone || !text) return;
+
+  const repo = getRepository();
+  if (body.messageId && (await repo.hasWhatsappMessage(body.messageId))) return;
+  const conv = await repo.getOrCreateConversation(phone, body.chatName);
+  if (conv.assumedBy) return;
+
+  const mensagens = await repo.listMessages(conv.id);
+  const ultimaDoCliente = [...mensagens].reverse().find((m) => m.role === "user");
+  if (ultimaDoCliente && Date.now() - new Date(ultimaDoCliente.createdAt).getTime() < 20_000) return;
+
+  await repo.addMessage(conv.id, "assistant", text);
+  await repo.assumeConversation(conv.id, "celular do escritório");
+  await repo.updateLastMessageAt(conv.id).catch(() => {});
+  console.log("[webhook] resposta digitada no celular — a agente fica em silêncio nesta conversa");
+}
+
 export async function POST(req: NextRequest) {
   // Autenticação do webhook. Quando há um segredo configurado (WEBHOOK_VERIFY_TOKEN),
   // a requisição PRECISA provar que é legítima, senão qualquer terceiro que conheça a
@@ -224,8 +262,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Ignora mensagens enviadas pela própria conta (evita loop de resposta).
+  // Mensagem da própria conta. Nunca é respondida (evita loop) — mas quando foi alguém do
+  // time escrevendo NO CELULAR, a conversa passa a ser dele.
   if (body.isFromMe || body.fromMe) {
+    await registrarRespostaDoCelular(body).catch((e) =>
+      console.error("[webhook] resposta pelo celular não registrada:", e instanceof Error ? e.message : e),
+    );
     console.log("[webhook:diag] saída: fromMe");
     return NextResponse.json({ ok: true });
   }

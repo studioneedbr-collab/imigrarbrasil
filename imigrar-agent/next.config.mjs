@@ -15,9 +15,11 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // 'unsafe-inline'/'unsafe-eval' são exigidos pelo runtime do Next 14 no
-      // App Router; sem nonce por request ainda não dá para removê-los.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // 'unsafe-inline' segue exigido pelo App Router sem nonce por request.
+      // 'unsafe-eval' só em desenvolvimento: o recarregamento do `next dev` usa eval, o
+      // build de produção não (conferido nos chunks de .next/static). Deixá-lo em produção
+      // era abrir mão de uma barreira contra injeção de script sem ganhar nada.
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       // data:/blob: são necessários para os PDFs de proposta.
       // As prévias da aba Site mostram as imagens do site (imigrarbrasil.com) e as que o

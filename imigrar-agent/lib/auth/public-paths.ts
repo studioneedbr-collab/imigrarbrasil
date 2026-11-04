@@ -44,6 +44,10 @@ const PUBLIC_PATHS = new Set([
   "/api/health",
   "/api/cron/followups",
   "/api/cron/followup",
+  // A varredura da espera, para disparo à mão ou por cron externo. Nasceu fora desta lista
+  // e por isso nunca respondeu: o middleware devolvia 401 antes do handler, que se
+  // autentica sozinho com o CRON_SECRET e recusa (503) quando ele não está configurado.
+  "/api/cron/espera",
 ]);
 
 /**

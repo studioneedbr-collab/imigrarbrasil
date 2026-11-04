@@ -183,8 +183,8 @@ export default function IntegracoesPage() {
       setFeedback({ kind: "error", text: "Informe o Instance ID." });
       return;
     }
-    if (!token.trim()) {
-      setFeedback({ kind: "error", text: "Informe o Token (necessário sempre que salvar)." });
+    if (!token.trim() && !config?.tokenSet) {
+      setFeedback({ kind: "error", text: "Informe o Token." });
       return;
     }
     setSaving(true);
@@ -194,7 +194,7 @@ export default function IntegracoesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           instanceId: instanceId.trim(),
-          token: token.trim(),
+          token: token.trim() || undefined,
           clientToken: clientToken.trim() ? clientToken.trim() : undefined,
           baseUrl: baseUrl.trim() || DEFAULT_BASE_URL,
         }),

@@ -3,6 +3,7 @@ import { getRepository } from "@/lib/data";
 import { requireSession } from "@/lib/auth/guard";
 import { sendDocument } from "@/lib/whatsapp/send";
 import { DOCUMENTO_MAX_BYTES, guardarDocumentoEnviado } from "@/lib/whatsapp/documento-enviado";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   if (!guardado.ok) return NextResponse.json({ error: guardado.erro }, { status: 400 });
 
   try {
-    await sendDocument(conv.whatsappNumber, guardado.url, guardado.nome);
+    await sendDocument(conv.whatsappNumber, guardado.url, guardado.nome, await canalDaConversa(repo, conv));
     const saved = await repo.addMessage(params.id, "assistant", `📎 ${guardado.nome}`, undefined, {
       url: guardado.url,
       kind: guardado.kind,

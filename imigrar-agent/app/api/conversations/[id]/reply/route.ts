@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRepository } from "@/lib/data";
 import { requireSession } from "@/lib/auth/guard";
 import { sendMessage } from "@/lib/whatsapp/send";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   }
 
   try {
-    await sendMessage(conv.whatsappNumber, message);
+    await sendMessage(conv.whatsappNumber, message, await canalDaConversa(repo, conv));
     const saved = await repo.addMessage(params.id, "assistant", message);
     // ASSUMIR A CONVERSA: registra QUEM assumiu (antes só marcava o status 'transferred',
     // o mesmo que a Shayene grava ao encaminhar pro setor — por isso toda conversa

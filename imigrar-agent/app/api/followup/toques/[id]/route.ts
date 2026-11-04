@@ -7,6 +7,7 @@ import { sendMessage } from "@/lib/whatsapp/send";
 import { ehEnsaio } from "@/lib/domain/ambiente";
 import { decidir } from "@/lib/followup/regras";
 import { proximoToqueSugerido, type MotivoEspera } from "@/lib/followup/motivos";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +147,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const texto = input.texto?.trim() || toque.texto;
   try {
-    await sendMessage(conv.whatsappNumber, texto);
+    await sendMessage(conv.whatsappNumber, texto, await canalDaConversa(repo, conv));
   } catch (err) {
     console.error("[followup/toque] falha ao enviar", toque.id, err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Não consegui enviar. Nada foi alterado." }, { status: 502 });

@@ -28,6 +28,7 @@ describe("allowlist de rotas públicas", () => {
         "/api/health",
         "/api/cron/followups",
         "/api/cron/followup",
+        "/api/cron/espera",
       ].sort(),
     );
   });

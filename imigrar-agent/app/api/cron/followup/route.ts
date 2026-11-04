@@ -7,6 +7,7 @@ import { generateFollowupMessage } from "@/lib/agent/followup";
 import { getTrainingConfig } from "@/lib/agent/system-prompt";
 import { novaRodada, podeDispararAgora } from "@/lib/whatsapp/janela";
 import { lerChaveGeral } from "@/lib/agent/estado";
+import { canalDaConversa } from "@/lib/whatsapp/canal-da-conversa";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
     try {
       const messages = await repo.listMessages(conv.id);
       const msg = await generateFollowupMessage(conv, messages, agentName);
-      await sendMessage(conv.whatsappNumber, msg);
+      await sendMessage(conv.whatsappNumber, msg, await canalDaConversa(repo, conv));
       await repo.addMessage(conv.id, "assistant", msg);
       await repo.markFollowupSent(conv.id); // status permanece 'waiting'
       followedUp++;
