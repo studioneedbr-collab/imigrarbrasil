@@ -27,7 +27,7 @@ export interface CargaDaFila {
  * métrica seria transformar "quantos casos entraram" numa resposta errada e silenciosa.
  */
 export async function carregarCargaDaFila(
-  opcoes: { limite?: number } = {},
+  opcoes: { limite?: number; funilIds?: string[] } = {},
 ): Promise<CargaDaFila> {
   const repo = getRepository();
   // As conversas e as instâncias entram aqui por causa da ativação do agente: é a
@@ -36,7 +36,7 @@ export async function carregarCargaDaFila(
   // diz qual é o SLA desse relógio. Duas listas inteiras, e não uma consulta por lead —
   // esta é a tela inicial, e ela já teve a versão com um SELECT dentro de um for.
   const [leads, usuarios, total, conversas, instancias] = await Promise.all([
-    repo.listLeads(opcoes.limite ? { limite: opcoes.limite } : undefined),
+    repo.listLeads(opcoes.limite ? { limite: opcoes.limite, funilIds: opcoes.funilIds } : undefined),
     repo.listUsers().catch(() => []),
     opcoes.limite ? repo.contarLeads().catch(() => 0) : Promise.resolve(0),
     repo.listConversations().catch(() => []),

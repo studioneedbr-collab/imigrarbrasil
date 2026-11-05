@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   FUNIL_PADRAO,
   etapasPadrao,
+  destinosAoFechar,
+  etapaAoTrocarDeFunil,
   faltamDesfechos,
   funilPadrao,
   montarQuadro,
@@ -179,5 +181,52 @@ describe("o objetivo se deduz do que a pessoa já disse", () => {
   it("sem prazo e sem caminho reconhecido, continua vazio em vez de chutar", () => {
     const p = capturarDadosDoLead("bom dia, tudo bem?", null);
     expect(p?.objetivo).toBeUndefined();
+  });
+});
+
+// O Walter fecha um contrato e quer acompanhar o processo num funil próprio, fase a fase.
+describe("passar um contrato fechado para o funil de acompanhamento", () => {
+  const gestao: FunilCrm = { ...juridico, id: "f-gestao", nome: "Gestão jurídica" };
+  const fases: EtapaCrm[] = [
+    { id: "g-prot", funilId: "f-gestao", nome: "Protocolo", status: "fechado", ordem: 1, arquivada: false },
+    { id: "g-doc", funilId: "f-gestao", nome: "Documentos", status: "fechado", ordem: 0, arquivada: false },
+  ];
+
+  it("o caso fechado vai para a primeira fase, pela ordem, e continua fechado", () => {
+    expect(etapaAoTrocarDeFunil("fechado", "f-gestao", fases)?.id).toBe("g-doc");
+  });
+
+  it("caso encerrado NÃO é reaberto quando o destino não tem etapa de desfecho", () => {
+    const soAbertas = etapasJuridico.filter((e) => e.status !== "fechado");
+    expect(etapaAoTrocarDeFunil("fechado", "f-jur", soAbertas)).toBeNull();
+    expect(etapaAoTrocarDeFunil("perdido", "f-jur", soAbertas)).toBeNull();
+  });
+
+  it("caso aberto continua podendo cair na primeira coluna", () => {
+    expect(etapaAoTrocarDeFunil("agendado", "f-jur", etapasJuridico)?.id).toBe("e-novo");
+  });
+
+  it("ao fechar, oferece os outros funis com etapa de fechado", () => {
+    const d = destinosAoFechar("f-jur", [juridico, gestao], [...etapasJuridico, ...fases]);
+    expect(d.map((x) => [x.funil.id, x.etapa.id])).toEqual([["f-gestao", "g-doc"]]);
+  });
+
+  it("não oferece funil arquivado nem funil sem etapa de fechado", () => {
+    expect(destinosAoFechar("f-jur", [juridico, { ...gestao, arquivado: true }], [...etapasJuridico, ...fases])).toEqual([]);
+    expect(destinosAoFechar("f-gestao", [gestao, juridico], fases)).toEqual([]);
+  });
+
+  it("o caso aparece na fase em que foi posto, e não pelo status", () => {
+    const q = montarQuadro(
+      [lead({ id: "c", funilId: "f-gestao", etapaId: "g-prot", atendimentoStatus: "fechado" })],
+      gestao,
+      fases,
+      AGORA,
+    );
+    expect(q.find((c) => c.etapa.id === "g-prot")!.leads.map((l) => l.id)).toEqual(["c"]);
+  });
+
+  it("funil só de casos contratados não recebe o aviso de que falta desfecho", () => {
+    expect(faltamDesfechos(fases)).toEqual([]);
   });
 });

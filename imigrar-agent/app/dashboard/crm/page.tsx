@@ -33,9 +33,12 @@ export const dynamic = "force-dynamic";
 export default async function CrmPage() {
   const agora = new Date();
   const repo = getRepository();
-  const [{ leads, total }, funis, etapas, sessao] = await Promise.all([
-    carregarCargaDaFila({ limite: TETO_DE_CARGA }),
-    repo.listFunis().catch(() => []),
+  const funis = await repo.listFunis().catch(() => []);
+  const [{ leads, total }, etapas, sessao] = await Promise.all([
+    carregarCargaDaFila({
+      limite: TETO_DE_CARGA,
+      funilIds: funis.filter((f) => !f.padrao).map((f) => f.id),
+    }),
     repo.listEtapas().catch(() => []),
     getSession(),
   ]);

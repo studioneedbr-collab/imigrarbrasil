@@ -87,7 +87,12 @@ export interface Repository {
    * `order by`), então o teto é o que segura o custo sem reescrever a regra em SQL.
    * Quem corta AVISA na tela — ver lib/fila/paginacao.ts.
    */
-  listLeads(opcoes?: { limite?: number }): Promise<Lead[]>;
+  /**
+   * `funilIds` entra além do `limite`: quem está nesses funis vem sempre. O teto corta os
+   * mais antigos, e num funil de acompanhamento de processo são justamente os que seguem
+   * em andamento.
+   */
+  listLeads(opcoes?: { limite?: number; funilIds?: string[] }): Promise<Lead[]>;
   /** Quantos leads existem ao todo. */
   contarLeads(): Promise<number>;
 

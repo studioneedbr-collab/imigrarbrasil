@@ -35,6 +35,8 @@ export interface CorpoDoMovimento {
   semValor?: boolean;
   motivo?: string;
   motivoPerdaCategoria?: MotivoPerda;
+  /** Só para `fechar`: a etapa de outro funil onde o caso segue. Não vai para a API. */
+  destinoEtapaId?: string;
 }
 
 const TITULO: Record<TipoDeMovimento, string> = {
@@ -54,11 +56,14 @@ export function valorEmReais(texto: string): number | null {
 export function DialogoDeMovimento({
   tipo,
   nomeDoContato,
+  destinos = [],
   aoConfirmar,
   aoCancelar,
 }: {
   tipo: TipoDeMovimento;
   nomeDoContato: string;
+  /** Só para `fechar`: os outros funis que recebem caso fechado. */
+  destinos?: { etapaId: string; rotulo: string }[];
   aoConfirmar: (corpo: CorpoDoMovimento) => void;
   aoCancelar: () => void;
 }) {
@@ -66,6 +71,7 @@ export function DialogoDeMovimento({
   const [validade, setValidade] = useState<string | null>(null);
   const [valor, setValor] = useState("");
   const [semValor, setSemValor] = useState(false);
+  const [destino, setDestino] = useState("");
   const [motivo, setMotivo] = useState("");
   const [categoria, setCategoria] = useState<MotivoPerda | null>(null);
 
@@ -116,7 +122,11 @@ export function DialogoDeMovimento({
       return;
     }
     if (tipo === "fechar") {
-      aoConfirmar(semValor ? { semValor: true } : { valorContratado: numero! });
+      aoConfirmar(
+        semValor
+          ? { semValor: true }
+          : { valorContratado: numero!, ...(destino ? { destinoEtapaId: destino } : {}) },
+      );
       return;
     }
     aoConfirmar({ motivo: motivo.trim(), motivoPerdaCategoria: categoria! });
@@ -190,6 +200,21 @@ export function DialogoDeMovimento({
                 assunto se resolveu ou a pessoa foi encaminhada.
               </span>
             </label>
+            {/* O CONTRATO SEGUE PARA ONDE O PROCESSO ANDA. Sem isto, passar o caso para o
+                funil de acompanhamento era um segundo gesto, depois de fechar, que só
+                existia para quem sabia abrir o card e procurar. */}
+            {destinos.length && !semValor ? (
+              <Selecao
+                label="Depois de fechar, enviar para"
+                valor={destino}
+                onChange={setDestino}
+                opcoes={[
+                  { valor: "", rotulo: "Continua neste funil" },
+                  ...destinos.map((d) => ({ valor: d.etapaId, rotulo: d.rotulo })),
+                ]}
+                ajuda="O caso continua contando como fechado; só muda o quadro em que aparece."
+              />
+            ) : null}
           </div>
         ) : null}
 

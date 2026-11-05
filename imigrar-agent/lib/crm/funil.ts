@@ -138,6 +138,51 @@ export const AJUDA_MAX = 120;
  * existir. A tela avisa em vez de proibir — o funil pode estar sendo montado ainda.
  */
 export function faltamDesfechos(etapas: EtapaCrm[]): AtendimentoStatus[] {
-  const tem = new Set(etapas.filter((e) => !e.arquivada).map((e) => e.status));
+  const vivas = etapas.filter((e) => !e.arquivada);
+  // PIPELINE DE CASOS JÁ CONTRATADOS. Todas as fases contam como "fechado": o caso já
+  // saiu da fila e o valor já foi contado, e o que anda aqui é o processo. Dizer que "o
+  // caso entra e não sai" seria reclamar do que ela existe para fazer.
+  if (vivas.length && vivas.every((e) => e.status === "fechado")) return [];
+  const tem = new Set(vivas.map((e) => e.status));
   return (["fechado", "perdido"] as AtendimentoStatus[]).filter((s) => !tem.has(s));
+}
+
+function etapasDoFunil(funilId: string, etapas: EtapaCrm[]): EtapaCrm[] {
+  return etapas.filter((e) => e.funilId === funilId && !e.arquivada).sort((a, b) => a.ordem - b.ordem);
+}
+
+/**
+ * PARA QUAL ETAPA O CASO VAI AO TROCAR DE FUNIL.
+ *
+ * A primeira que descreve o status dele: mudar de quadro não pode mudar, de carona, se o
+ * atendimento está aberto ou encerrado.
+ *
+ * `null` quando o caso está ENCERRADO e o destino não tem etapa com esse status. Cair na
+ * primeira coluna, como era, significava REABRIR em silêncio: um contrato fechado passado
+ * para um funil de acompanhamento voltava para a fila como caso novo e saía da conta de
+ * fechados, sem ninguém ter pedido nada disso.
+ */
+export function etapaAoTrocarDeFunil(
+  status: AtendimentoStatus,
+  funilId: string,
+  etapas: EtapaCrm[],
+): EtapaCrm | null {
+  const doFunil = etapasDoFunil(funilId, etapas);
+  const mesma = doFunil.find((e) => e.status === status);
+  if (mesma) return mesma;
+  return status === "fechado" || status === "perdido" ? null : doFunil[0] ?? null;
+}
+
+/** Para onde um caso pode seguir ao fechar: a primeira etapa "fechado" dos outros funis. */
+export function destinosAoFechar(
+  funilAtualId: string,
+  funis: FunilCrm[],
+  etapas: EtapaCrm[],
+): { funil: FunilCrm; etapa: EtapaCrm }[] {
+  return funis
+    .filter((f) => !f.arquivado && f.id !== funilAtualId)
+    .flatMap((funil) => {
+      const etapa = etapasDoFunil(funil.id, etapas).find((e) => e.status === "fechado");
+      return etapa ? [{ funil, etapa }] : [];
+    });
 }

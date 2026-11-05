@@ -969,11 +969,21 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
     return data ? this.mapLead(data) : null;
   }
-  async listLeads(opcoes: { limite?: number } = {}) {
+  async listLeads(opcoes: { limite?: number; funilIds?: string[] } = {}) {
     let q = this.db.from("leads").select("*").order("created_at", { ascending: false });
     if (opcoes.limite && opcoes.limite > 0) q = q.limit(opcoes.limite);
     const { data } = await q;
-    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapLead(r));
+    const linhas = (data as Record<string, any>[] | null) ?? [];
+    if (!opcoes.limite || !opcoes.funilIds?.length) return linhas.map((r) => this.mapLead(r));
+
+    const { data: dosFunis } = await this.db
+      .from("leads")
+      .select("*")
+      .in("funil_id", opcoes.funilIds)
+      .order("created_at", { ascending: false });
+    const vistos = new Set(linhas.map((r) => r.id));
+    const alem = ((dosFunis as Record<string, any>[] | null) ?? []).filter((r) => !vistos.has(r.id));
+    return [...linhas, ...alem].map((r) => this.mapLead(r));
   }
   async contarLeads() {
     const { count } = await this.db.from("leads").select("id", { count: "exact", head: true });

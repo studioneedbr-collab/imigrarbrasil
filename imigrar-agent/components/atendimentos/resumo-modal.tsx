@@ -28,6 +28,7 @@ import {
   temPrazo,
   type LeadDaFila,
 } from "@/lib/fila/ordenacao";
+import { etapaAoTrocarDeFunil } from "@/lib/crm/funil";
 import type { EtapaCrm, FunilCrm } from "@/lib/domain/types";
 
 /**
@@ -84,6 +85,8 @@ export function ResumoDoLead({
   // "Agendar follow-up" abre dentro do próprio resumo. Mandar para outra tela para dizer
   // "estamos esperando o consulado" é o tipo de ida e volta que faz o campo ficar vazio.
   const [agendando, setAgendando] = useState(false);
+  /** Por que o caso não foi para o funil escolhido. Mora aqui: o erro do quadro fica atrás do modal. */
+  const [semEtapa, setSemEtapa] = useState<string | null>(null);
   const contato = rotuloContato(lead);
   const prazo = lead.prazoDataLimite ? diasRestantes(lead.prazoDataLimite, agora) : null;
   const relogio = relogioApertado(lead, agora) ? diasDoRelogio(lead, agora) : null;
@@ -280,13 +283,12 @@ export function ResumoDoLead({
                   compacto
                   valor={funilAtual?.id ?? ""}
                   onChange={(id) => {
-                    // Trocar de funil leva o caso para a primeira etapa do funil novo que
-                    // descreva o status em que ele está: mudar de quadro não pode mudar,
-                    // de carona, se o atendimento está aberto ou fechado.
-                    const destino =
-                      (etapas ?? []).find(
-                        (e) => e.funilId === id && !e.arquivada && e.status === statusAtual,
-                      ) ?? (etapas ?? []).find((e) => e.funilId === id && !e.arquivada);
+                    const destino = etapaAoTrocarDeFunil(statusAtual, id, etapas ?? []);
+                    setSemEtapa(
+                      destino
+                        ? null
+                        : `O funil ${funis?.find((f) => f.id === id)?.nome ?? "escolhido"} não tem etapa que conte como “${statusAtual === "fechado" ? "Fechado" : "Perdido"}”. Em “Editar pipeline”, ajuste o “conta como” de uma etapa e tente de novo: assim o caso não é reaberto.`,
+                    );
                     if (destino) onMover?.(lead, destino);
                   }}
                   opcoes={(funis ?? [])
@@ -309,6 +311,11 @@ export function ResumoDoLead({
                   }))}
                 />
               </div>
+              {semEtapa ? (
+                <p role="alert" className="mt-2 text-[12px] leading-snug text-ib-danger">
+                  {semEtapa}
+                </p>
+              ) : null}
               <p className="mt-1.5 text-[11px] leading-snug text-ib-slate">
                 Mover aqui é a mesma ação de arrastar o card: uma etapa de desfecho encerra
                 o caso, e “perdido” continua pedindo o motivo.

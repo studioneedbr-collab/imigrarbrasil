@@ -12,7 +12,7 @@ import {
 } from "@/components/crm/movimento";
 import { Selecao } from "@/components/dashboard/campos";
 import { Icon, btnBarra, btnBarraAtivo, btnPrimary } from "@/components/dashboard/ui";
-import { montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
+import { destinosAoFechar, montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
 
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
@@ -735,11 +735,15 @@ export default function QuadroCrm({
         <DialogoDeMovimento
           tipo={perguntando.tipo}
           nomeDoContato={perguntando.lead.contactName ?? "esta pessoa"}
+          destinos={destinosAoFechar(perguntando.etapa.funilId, vivos, etapas).map((d) => ({
+            etapaId: d.etapa.id,
+            rotulo: `${d.funil.nome} · ${d.etapa.nome}`,
+          }))}
           aoCancelar={() => setPerguntando(null)}
-          aoConfirmar={(corpo) => {
+          aoConfirmar={({ destinoEtapaId, ...corpo }) => {
             const { lead, etapa } = perguntando;
             setPerguntando(null);
-            void mover(lead, etapa, corpo);
+            void mover(lead, etapas.find((e) => e.id === destinoEtapaId) ?? etapa, corpo);
           }}
         />
       ) : null}

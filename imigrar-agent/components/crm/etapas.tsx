@@ -341,6 +341,11 @@ export function GerenciarEtapas({
         amarração que faz a fila continuar ordenando por prazo e o desfecho continuar sendo
         contado, por mais colunas que o funil ganhe.
       </p>
+      <p className="text-[11px] leading-relaxed text-ib-slate">
+        <strong className="font-semibold text-ib-ink">Funil de casos já contratados</strong> (o
+        andamento do processo): marque todas as fases como “Fechado”. O caso continua contado
+        como contrato, fora da fila, e pode andar de fase em fase.
+      </p>
 
       {/* ─── As etapas ─── */}
       {/* ARRASTAR PARA REORDENAR. O quadro ao lado já se organiza arrastando, e chegar
