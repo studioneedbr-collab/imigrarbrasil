@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, SectionTitle, Icon, fmtDate } from "@/components/dashboard/ui";
+import EscolhaLlm from "@/components/integracoes/escolha-llm";
 
 /**
  * OS PROVEDORES DE IA — o que a tela de Integrações não mostrava.
@@ -31,6 +32,7 @@ interface Provedor {
   nome: string;
   categoria: Categoria;
   credencial: "configurada" | "nao_configurada";
+  papel?: "ativo" | "reserva";
   modelo: string;
   usos: string[];
   usosEsperados: string[];
@@ -47,6 +49,7 @@ const ROTULO_USO: Record<string, string> = {
   classificacao: "classificação",
   transcricao: "transcrição",
   embedding: "embedding",
+  traducao: "tradução",
 };
 
 function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
@@ -73,7 +76,10 @@ function CartaoProvedor({
   // SAUDÁVEL É CREDENCIAL POSTA **E** ÚLTIMA CHAMADA BEM-SUCEDIDA. Chave presente não é
   // chave funcionando, e a distância entre as duas é invisível de fora — foi assim que
   // um `Insufficient Balance` passou por dois atendimentos parecendo normal.
-  const saudavel = configurada && Boolean(p.ultimaOk) && p.falhas24h === 0;
+  // A RESERVA É SAUDÁVEL PARADA: nunca ter sido chamada é o esperado enquanto o
+  // escolhido funciona. Só falha de verdade a pinta de vermelho.
+  const reserva = p.papel === "reserva";
+  const saudavel = configurada && p.falhas24h === 0 && (reserva || Boolean(p.ultimaOk));
 
   return (
     <div className="rounded-2xl border border-ib-line bg-white p-4">
@@ -97,6 +103,11 @@ function CartaoProvedor({
               />
               {configurada ? "credencial configurada" : "credencial não configurada"}
             </span>
+            {p.papel ? (
+              <span className="rounded-full bg-ib-bruma px-2 py-0.5 text-[11px] font-medium text-ib-mar">
+                {p.papel === "ativo" ? "respondendo" : "reserva"}
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 font-mono text-xs text-ib-slate">{p.modelo}</p>
         </div>
@@ -116,6 +127,8 @@ function CartaoProvedor({
         <Linha rotulo="Última chamada bem-sucedida">
           {p.ultimaOk ? (
             fmtDate(p.ultimaOk)
+          ) : reserva ? (
+            <span className="text-ib-slate">ainda não foi necessária</span>
           ) : (
             <span className="text-ib-danger">nunca</span>
           )}
@@ -124,6 +137,8 @@ function CartaoProvedor({
         <Linha rotulo="Usado hoje para">
           {p.usos.length ? (
             p.usos.map((u) => ROTULO_USO[u] ?? u).join(", ")
+          ) : reserva ? (
+            <span className="text-ib-slate">nada — fica de reserva enquanto o escolhido responde</span>
           ) : configurada ? (
             // O SINTOMA SILENCIOSO. Nada quebrou, nada aparece em log, e o provedor
             // simplesmente parou de ser chamado — quase sempre porque o roteamento mudou.
@@ -224,13 +239,14 @@ export default function Provedores() {
     }
   }
 
-  const secao = (titulo: string, descricao: string, quais: Categoria[]) => {
+  const secao = (titulo: string, descricao: string, quais: Categoria[], topo?: React.ReactNode) => {
     const itens = lista.filter((p) => quais.includes(p.categoria));
     return (
       <Card>
         <SectionTitle>{titulo}</SectionTitle>
         <div className="space-y-4 p-5 sm:p-6">
           <p className="text-sm leading-relaxed text-ib-slate">{descricao}</p>
+          {topo}
           {carregando ? (
             <p className="text-sm text-ib-slate">Carregando…</p>
           ) : (
@@ -255,6 +271,7 @@ export default function Provedores() {
         "Provedores de LLM",
         "Quem escreve as respostas da agente e lê os documentos que chegam. A chave nunca aparece aqui, nem mascarada — o que se decide olhando meia chave se decide igual olhando “configurada” e a data da última chamada que funcionou.",
         ["llm"],
+        <EscolhaLlm onMudou={carregar} />,
       )}
       {secao(
         "Transcrição e embeddings",

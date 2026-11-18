@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { useSupabase, useDeepseek, useSmartAgent } from "@/lib/env";
+import { useSupabase } from "@/lib/env";
+import { llmsDisponiveis } from "@/lib/agent/llm";
 import { getZapiConfig } from "@/lib/whatsapp/config";
 import { ragConfigurado } from "@/lib/agent/rag";
 import { transcricaoConfigurada } from "@/lib/agent/audio";
@@ -16,6 +17,7 @@ export async function GET() {
   } catch {
     // ignora — reporta zapi=false
   }
+  const llms = await llmsDisponiveis().catch(() => []);
   // `rag` é o que decide se a Ana consegue RESPONDER sobre imigração ou se só encaminha:
   // sem ele o prompt manda dizer "não tenho essa informação" para tudo. Fica no health
   // porque é o tipo de coisa que quebra em silêncio — sem erro nenhum, só um atendimento
@@ -27,11 +29,13 @@ export async function GET() {
     // "fallback" é o caminho determinístico de lib/agent/fallback.ts — acolhe e encaminha,
     // mas não informa nada sobre imigração. O nome antigo era "engine", da máquina de
     // estados comercial que não existe mais.
-    agent: useSmartAgent ? "deepseek" : "fallback",
+    // O primeiro da lista é o escolhido no painel; se ele não tem credencial, a reserva.
+    agent: llms[0]?.provedor ?? "fallback",
     integrations: {
       supabase: useSupabase,
       zapi,
-      deepseek: useDeepseek,
+      deepseek: llms.some((l) => l.provedor === "deepseek"),
+      openaiChat: llms.some((l) => l.provedor === "openai"),
       rag: ragConfigurado(),
       audio: transcricaoConfigurada(),
     },

@@ -14,7 +14,7 @@ import { PERGUNTOU_O_NOME } from "@/lib/agent/triagem";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
 import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
-import { useDeepseek } from "@/lib/env";
+import { llmEmUso } from "@/lib/agent/llm";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
@@ -283,7 +283,7 @@ export async function respondToConversation(
     lastUserText,
     allUserText,
     convBefore?.idioma,
-    { conversationId, habilitado: useDeepseek },
+    { conversationId, habilitado: Boolean(await llmEmUso()) },
   );
   systemPrompt += buildIdiomaBlock(idiomaDetectado ?? convBefore?.idioma);
   if (idiomaDetectado) await registrarIdioma(conversationId, idiomaDetectado);

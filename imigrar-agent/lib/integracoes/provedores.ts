@@ -16,7 +16,8 @@
 // última chamada bem-sucedida — que é o que esta tela mostra.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { env, embeddingsConfig, useDeepseek } from "@/lib/env";
+import { env, embeddingsConfig } from "@/lib/env";
+import { chamarChat, todosOsLlms, type Llm, type ProvedorLlm } from "@/lib/agent/llm";
 import { getRepository } from "@/lib/data";
 import { saudeDoProvedor } from "@/lib/custos/resumo";
 import type { TipoChamadaLlm } from "@/lib/domain/types";
@@ -25,11 +26,16 @@ export type CategoriaProvedor = "llm" | "transcricao" | "embedding";
 
 export interface ProvedorNoPainel {
   /** Identificador estável, usado pelo botão "Testar conexão". */
-  chave: "deepseek" | "openai-transcricao" | "openai-embedding";
+  chave: "deepseek" | "openai-chat" | "openai-transcricao" | "openai-embedding";
   nome: string;
   categoria: CategoriaProvedor;
   /** "configurada" ou "não configurada". O valor da credencial NUNCA vem junto. */
   credencial: "configurada" | "nao_configurada";
+  /**
+   * Só nos provedores de LLM: "ativo" é o escolhido no painel para escrever as respostas;
+   * "reserva" é o outro, que assume sozinho se o ativo falhar.
+   */
+  papel?: "ativo" | "reserva";
   modelo: string;
   /** Para que este provedor está sendo usado HOJE — deduzido das chamadas de fato. */
   usos: TipoChamadaLlm[];
@@ -42,6 +48,7 @@ export interface ProvedorNoPainel {
   /**
    * Configurado e sem nenhuma chamada em 24h. É o sintoma silencioso: a credencial está
    * lá, a tela diz "configurada", e o roteamento passou a não usar mais o provedor.
+   * A RESERVA NÃO É OCIOSA: ficar parada enquanto o ativo funciona é o trabalho dela.
    */
   ocioso: boolean;
 }
@@ -63,14 +70,15 @@ export function rotuloDoUso(t: TipoChamadaLlm): string {
  * O que cada provedor deveria estar fazendo, lido da configuração — não do que
  * aconteceu. Comparar as duas listas é o que revela roteamento parado.
  */
-function usosEsperados(chave: ProvedorNoPainel["chave"]): TipoChamadaLlm[] {
+function usosEsperados(chave: ProvedorNoPainel["chave"], ativo: ProvedorLlm): TipoChamadaLlm[] {
   if (chave === "deepseek") {
-    const usos: TipoChamadaLlm[] = ["redacao"];
+    const usos: TipoChamadaLlm[] = ativo === "deepseek" ? ["redacao"] : [];
     // A leitura de documento só acontece com um modelo de visão apontado; sem ele o
     // anexo é guardado e a Ana pergunta à pessoa o que está escrito.
     if (process.env.DEEPSEEK_VISION_MODEL) usos.push("extracao");
     return usos;
   }
+  if (chave === "openai-chat") return ativo === "openai" ? ["redacao"] : [];
   if (chave === "openai-transcricao") return ["transcricao"];
   return ["embedding"];
 }
@@ -85,6 +93,9 @@ export async function lerProvedores(agora: Date = new Date()): Promise<ProvedorN
   // e embeddings), porque são duas perguntas diferentes de quem opera. O recorte por
   // tipo de chamada é o que permite as duas leituras sem duplicar a credencial.
   const daOpenai = chamadas.filter((c) => c.provedor === "openai");
+  const { ativo, llms } = await todosOsLlms();
+  const llm = (qual: ProvedorLlm) => llms.find((l) => l.provedor === qual) as Llm;
+  const papel = (qual: ProvedorLlm) => (ativo === qual ? ("ativo" as const) : ("reserva" as const));
 
   const montar = (
     chave: ProvedorNoPainel["chave"],
@@ -94,21 +105,24 @@ export async function lerProvedores(agora: Date = new Date()): Promise<ProvedorN
     modelo: string,
     recorte: typeof chamadas,
     provedor: string,
+    papelNoAgente?: "ativo" | "reserva",
   ): ProvedorNoPainel => {
     const s = saudeDoProvedor(recorte, provedor, desde);
+    const esperados = usosEsperados(chave, ativo);
     return {
       chave,
       nome,
       categoria,
       credencial: configurada ? "configurada" : "nao_configurada",
+      ...(papelNoAgente ? { papel: papelNoAgente } : {}),
       modelo,
       usos: s.usos,
-      usosEsperados: usosEsperados(chave),
+      usosEsperados: esperados,
       chamadas24h: s.chamadas24h,
       falhas24h: s.falhas24h,
       ultimaOk: s.ultimaOk,
       ultimaFalha: s.ultimaFalha,
-      ocioso: configurada && s.chamadas24h === 0,
+      ocioso: configurada && s.chamadas24h === 0 && papelNoAgente !== "reserva",
     };
   };
 
@@ -117,12 +131,24 @@ export async function lerProvedores(agora: Date = new Date()): Promise<ProvedorN
       "deepseek",
       "DeepSeek",
       "llm",
-      // `useDeepseek` é falso dentro de teste de propósito (ver lib/env.ts). Aqui a
-      // pergunta é sobre a credencial do ambiente, então vale a chave crua.
-      Boolean(env.deepseekKey) || useDeepseek,
-      env.deepseekModel,
+      // A pergunta é sobre a credencial, então vale a chave crua — e não a lista de
+      // `llmsDisponiveis`, que é vazia dentro de teste de propósito.
+      llm("deepseek").configurado,
+      llm("deepseek").modelo,
       chamadas.filter((c) => c.provedor === "deepseek"),
       "deepseek",
+      papel("deepseek"),
+    ),
+    montar(
+      "openai-chat",
+      "ChatGPT (OpenAI)",
+      "llm",
+      llm("openai").configurado,
+      llm("openai").modelo,
+      // Da conta da OpenAI, só o que é conversa: transcrição e embedding têm cartão próprio.
+      daOpenai.filter((c) => c.tipo !== "transcricao" && c.tipo !== "embedding"),
+      "openai",
+      papel("openai"),
     ),
     montar(
       "openai-transcricao",
@@ -155,6 +181,52 @@ export interface ResultadoDoTeste {
 }
 
 /**
+ * O ping de um provedor de LLM: uma mensagem, o mínimo de tokens. Serve tanto ao botão
+ * "Testar conexão" quanto à troca de provedor no painel, que só é aceita se isto passar.
+ */
+export async function testarLlm(llm: Llm): Promise<ResultadoDoTeste> {
+  const { registrarChamada } = await import("@/lib/custos/registro");
+  if (!llm.configurado) return { ok: false, latenciaMs: 0, detalhe: "Credencial não configurada." };
+  const inicio = Date.now();
+  try {
+    // 16 e não 1: a OpenAI recusa limite de saída abaixo disso em alguns modelos.
+    const res = await chamarChat(llm, {
+      messages: [{ role: "user", content: "ping" }],
+      maxTokens: 16,
+      temperature: 0,
+    });
+    const latenciaMs = Date.now() - inicio;
+    const corpo = (await res.json().catch(() => ({}))) as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      error?: { message?: string };
+    };
+    await registrarChamada({
+      provedor: llm.provedor, modelo: llm.modelo, tipo: "redacao",
+      tokensEntrada: corpo.usage?.prompt_tokens ?? 0,
+      tokensSaida: corpo.usage?.completion_tokens ?? 0,
+      duracaoMs: latenciaMs, ok: res.ok, erro: res.ok ? null : `HTTP ${res.status}`,
+    });
+    return {
+      ok: res.ok,
+      latenciaMs,
+      detalhe: res.ok
+        ? "O modelo respondeu."
+        : res.status === 401
+          ? "A credencial é inválida ou expirou."
+          : res.status === 404
+            ? `O modelo "${llm.modelo}" não existe para esta conta.`
+            : corpo.error?.message?.slice(0, 160) ?? `O provedor respondeu ${res.status}.`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      latenciaMs: Date.now() - inicio,
+      detalhe: err instanceof Error ? err.message.slice(0, 160) : "Não foi possível falar com o provedor.",
+    };
+  }
+}
+
+/**
  * A CHAMADA MÍNIMA QUE PROVA QUE FUNCIONA.
  *
  * Mínima de propósito: um "ping" de um token custa frações de centavo e prova a mesma
@@ -167,38 +239,10 @@ export async function testarProvedor(chave: ProvedorNoPainel["chave"]): Promise<
   const inicio = Date.now();
 
   try {
-    if (chave === "deepseek") {
-      if (!env.deepseekKey) return { ok: false, latenciaMs: 0, detalhe: "Credencial não configurada." };
-      const res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.deepseekKey}` },
-        body: JSON.stringify({
-          model: env.deepseekModel,
-          messages: [{ role: "user", content: "ping" }],
-          max_tokens: 1,
-        }),
-        cache: "no-store",
-      });
-      const latenciaMs = Date.now() - inicio;
-      const corpo = (await res.json().catch(() => ({}))) as {
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-        error?: { message?: string };
-      };
-      await registrarChamada({
-        provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
-        tokensEntrada: corpo.usage?.prompt_tokens ?? 0,
-        tokensSaida: corpo.usage?.completion_tokens ?? 0,
-        duracaoMs: latenciaMs, ok: res.ok, erro: res.ok ? null : `HTTP ${res.status}`,
-      });
-      return {
-        ok: res.ok,
-        latenciaMs,
-        detalhe: res.ok
-          ? "O modelo respondeu."
-          : res.status === 401
-            ? "A credencial é inválida ou expirou."
-            : corpo.error?.message?.slice(0, 160) ?? `O provedor respondeu ${res.status}.`,
-      };
+    if (chave === "deepseek" || chave === "openai-chat") {
+      const { llms } = await todosOsLlms();
+      const llm = llms.find((l) => l.provedor === (chave === "deepseek" ? "deepseek" : "openai")) as Llm;
+      return await testarLlm(llm);
     }
 
     if (chave === "openai-embedding" && embeddingsConfig.provider === "tei") {

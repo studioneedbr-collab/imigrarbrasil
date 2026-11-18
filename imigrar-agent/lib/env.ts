@@ -10,7 +10,8 @@ function devOnlyDefault(value: string, devFallback: string): string {
 }
 
 export const env = {
-  // DeepSeek (OpenAI-compatible) — ÚNICO provedor de LLM do agente.
+  // DeepSeek (OpenAI-compatible) — o provedor de LLM de origem do agente. Quem responde
+  // de fato é escolhido no painel (Integrações): ver lib/agent/llm.ts.
   deepseekKey: process.env.DEEPSEEK_API_KEY ?? "",
   deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
   deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
@@ -31,8 +32,8 @@ export const env = {
   brevoSenderName: process.env.BREVO_SENDER_NAME ?? "Imigrar Brasil",
   // E-mail que recebe currículos/documentos de candidato encaminhados pelo webhook.
   rhEmail: process.env.RH_EMAIL ?? "",
-  // OpenAI — NÃO é o provedor do agente (isso é o DeepSeek). Serve a duas coisas que o
-  // DeepSeek não faz: o embedding da consulta ao RAG e a transcrição de áudio.
+  // OpenAI — o embedding da consulta ao RAG e a transcrição de áudio, sempre. E também o
+  // ChatGPT como provedor do agente, quando escolhido no painel (lib/agent/llm.ts).
   openaiKey: process.env.OPENAI_API_KEY ?? "",
   // Segredo do cron de follow-up (Vercel manda como Authorization: Bearer; cron externo usa ?secret=).
   cronSecret: process.env.CRON_SECRET ?? "",
@@ -94,7 +95,7 @@ export const embeddingsConfig = {
 // config (vitest.rag.config.ts), não pelo ambiente de quem roda — assim ninguém liga sem
 // querer, e ninguém precisa lembrar de exportar variável nenhuma.
 const testeComServicosReais = Boolean(process.env.SERVICOS_REAIS_NO_TESTE);
-const emTeste =
+export const emTeste =
   (Boolean(process.env.VITEST) || process.env.NODE_ENV === "test") && !testeComServicosReais;
 
 export const useSupabase = !emTeste && Boolean(env.supabaseUrl && env.supabaseServiceKey);
@@ -103,8 +104,9 @@ export const useSupabase = !emTeste && Boolean(env.supabaseUrl && env.supabaseSe
 // topo de tests/fallback.test.ts) E passa a fazer chamadas pagas de verdade a cada
 // execução. As duas coisas em silêncio.
 export const useDeepseek = !emTeste && Boolean(env.deepseekKey);
-// O agente "conduz" (LLM real com tools) quando o DeepSeek está configurado; senão
-// roda o engine determinístico. Não há outro provedor.
+// ATENÇÃO: isto responde só "o DeepSeek tem chave no ambiente?". Quem quer saber se HÁ
+// um modelo respondendo (DeepSeek ou ChatGPT, com chave do ambiente ou do painel)
+// pergunta a `llmEmUso()` em lib/agent/llm.ts.
 export const useSmartAgent = useDeepseek;
 export const whatsappConfigured = Boolean(env.whatsappToken && env.phoneNumberId);
 // WhatsApp via Z-API: exige instância + token. O Client-Token é opcional conforme a conta.

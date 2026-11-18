@@ -1,4 +1,4 @@
-import { env, useDeepseek } from "@/lib/env";
+import { chamarChat, llmEmUso } from "@/lib/agent/llm";
 import { NOME_DO_IDIOMA } from "@/lib/agent/idioma";
 import { DEFAULT_IDENTITY } from "@/lib/agent/training";
 import type { Conversation, Message } from "@/lib/domain/types";
@@ -41,7 +41,8 @@ export async function generateFollowupMessage(
   agentName = DEFAULT_IDENTITY.agentName,
 ): Promise<string> {
   const FALLBACK = followupFallback(conversation.idioma);
-  if (!useDeepseek) return FALLBACK;
+  const llm = await llmEmUso();
+  if (!llm) return FALLBACK;
 
   const nome = conversation.contactName ? `Nome do lead: ${conversation.contactName}.` : "";
   // O idioma gravado é mais confiável do que o modelo reinferir pelo histórico: as últimas
@@ -56,25 +57,17 @@ export async function generateFollowupMessage(
 
   const inicio = Date.now();
   try {
-    const res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.deepseekKey}`,
-      },
-      body: JSON.stringify({
-        model: env.deepseekModel,
+    const res = await chamarChat(llm, {
         messages: [
           { role: "system", content: `${followupSystem(agentName)}\n${nome}${idioma}` },
           { role: "user", content: `Histórico da conversa:\n${history}\n\nGere a mensagem de follow-up.` },
         ],
-        max_tokens: 160,
+        maxTokens: 160,
         temperature: 0.5,
-      }),
     });
     if (!res.ok) {
       await registrarChamada({
-        provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+        provedor: llm.provedor, modelo: llm.modelo, tipo: "redacao",
         conversationId: conversation.id, duracaoMs: Date.now() - inicio,
         ok: false, erro: `HTTP ${res.status}`,
       });
@@ -89,14 +82,14 @@ export async function generateFollowupMessage(
     // por chamada e some da conta se não for medido — e é exatamente esse tipo de gasto
     // que vira surpresa no fim do mês.
     await registrarChamada({
-      provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+      provedor: llm.provedor, modelo: llm.modelo, tipo: "redacao",
       conversationId: conversation.id, tokensEntrada: entrada, tokensSaida: saida,
       duracaoMs: Date.now() - inicio, ok: true,
     });
     return (data.choices?.[0]?.message?.content ?? "").trim() || FALLBACK;
   } catch (err) {
     await registrarChamada({
-      provedor: "deepseek", modelo: env.deepseekModel, tipo: "redacao",
+      provedor: llm.provedor, modelo: llm.modelo, tipo: "redacao",
       conversationId: conversation.id, duracaoMs: Date.now() - inicio,
       ok: false, erro: err instanceof Error ? err.message : "rede",
     });

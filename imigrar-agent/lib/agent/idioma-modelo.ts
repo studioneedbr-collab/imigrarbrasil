@@ -25,7 +25,7 @@
 // língua errada. Por isso a resposta do modelo só é aceita quando vem exatamente como foi
 // pedida: duas letras, e nada mais. "parece espanhol" é uma dúvida, não uma resposta.
 
-import { env } from "@/lib/env";
+import { chamarChat, llmEscolhido } from "@/lib/agent/llm";
 import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 import { idiomaDaConversa } from "@/lib/agent/idioma";
 
@@ -60,7 +60,7 @@ export function interpretarCodigoDeIdioma(bruto: string | null | undefined): str
  * Pergunta o idioma ao modelo. NUNCA lança: falhar aqui pode custar um follow-up na língua
  * errada, e não pode custar a conversa.
  *
- * O chamador é quem decide se o provedor está disponível (`useDeepseek`) — a checagem não
+ * O chamador é quem decide se há provedor disponível (`llmEmUso`) — a checagem não
  * mora aqui para que a suíte consiga exercitar o caminho inteiro.
  */
 export async function detectarIdiomaComModelo(
@@ -70,12 +70,13 @@ export async function detectarIdiomaComModelo(
   const t = (texto ?? "").trim();
   if (t.length < MINIMO_DE_TEXTO) return undefined;
 
+  const llm = await llmEscolhido();
   const inicio = Date.now();
   const contabilizar = (uso: UsoDeTokens | undefined, ok: boolean, erro?: string) => {
     const { entrada, saida } = tokensDe(uso);
     void registrarChamada({
-      provedor: "deepseek",
-      modelo: env.deepseekModel,
+      provedor: llm.provedor,
+      modelo: llm.modelo,
       tipo: "classificacao",
       conversationId,
       tokensEntrada: entrada,
@@ -87,23 +88,15 @@ export async function detectarIdiomaComModelo(
   };
 
   try {
-    const res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.deepseekKey}`,
-      },
-      body: JSON.stringify({
-        model: env.deepseekModel,
+    const res = await chamarChat(llm, {
         messages: [
           { role: "system", content: INSTRUCAO },
           // Só o fim do texto: a conversa inteira pode ser longa, e para dizer a língua
           // bastam as últimas frases. Isto é uma chamada paga por conversa, não por token.
           { role: "user", content: t.slice(-600) },
         ],
-        max_tokens: 4,
+        maxTokens: 4,
         temperature: 0,
-      }),
     });
     if (!res.ok) {
       contabilizar(undefined, false, `HTTP ${res.status}`);
@@ -131,9 +124,9 @@ export async function detectarIdiomaComModelo(
  * chamada. Como o resultado é gravado logo em seguida (`registrarIdioma`), o caminho pago
  * se fecha sozinho depois da primeira vez.
  *
- * `habilitado` é o `useDeepseek` do chamador. Ele entra por parâmetro em vez de ser lido
- * aqui porque `useDeepseek` é constante de import: lida aqui dentro, a suíte jamais
- * conseguiria exercitar o caminho do modelo (em teste ela é sempre falsa, de propósito).
+ * `habilitado` é o "há modelo em uso?" do chamador (`llmEmUso`). Ele entra por parâmetro
+ * em vez de ser lido aqui porque em teste a resposta é sempre não, de propósito: lida
+ * aqui dentro, a suíte jamais conseguiria exercitar o caminho do modelo.
  */
 export async function idiomaDaConversaOuModelo(
   ultimaMensagem: string,

@@ -30,6 +30,7 @@ describe("a tela de integrações", () => {
       const provedores = await lerProvedores();
       expect(provedores.map((p) => p.chave)).toEqual([
         "deepseek",
+        "openai-chat",
         "openai-transcricao",
         "openai-embedding",
       ]);
@@ -79,5 +80,69 @@ describe("a tela de integrações", () => {
     expect(provedores.find((p) => p.chave === "deepseek")?.usosEsperados).toContain("redacao");
     expect(provedores.find((p) => p.chave === "openai-transcricao")?.usosEsperados).toEqual(["transcricao"]);
     expect(provedores.find((p) => p.chave === "openai-embedding")?.usosEsperados).toEqual(["embedding"]);
+  });
+});
+
+// A ESCOLHA DO PROVEDOR É DADO, não código: o painel grava, e quem chama pergunta.
+describe("a escolha de quem responde (DeepSeek ou ChatGPT)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.DEEPSEEK_API_KEY = CHAVE_DEEPSEEK;
+    process.env.OPENAI_API_KEY = CHAVE_OPENAI;
+  });
+
+  afterEach(() => {
+    delete process.env.DEEPSEEK_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    vi.resetModules();
+  });
+
+  it("sem nada gravado, o DeepSeek responde e o ChatGPT fica de reserva", async () => {
+    const { todosOsLlms } = await import("@/lib/agent/llm");
+    const { ativo, llms } = await todosOsLlms();
+    expect(ativo).toBe("deepseek");
+    expect(llms.map((l) => l.provedor)).toEqual(["deepseek", "openai"]);
+
+    const { lerProvedores } = await import("@/lib/integracoes/provedores");
+    const provedores = await lerProvedores();
+    expect(provedores.find((p) => p.chave === "deepseek")?.papel).toBe("ativo");
+    const chat = provedores.find((p) => p.chave === "openai-chat");
+    expect(chat?.papel).toBe("reserva");
+    // Reserva parada não é provedor ocioso: ficar parada é o trabalho dela.
+    expect(chat?.ocioso).toBe(false);
+  });
+
+  it("gravar a escolha no painel inverte a ordem, e a chave do painel vence a do ambiente", async () => {
+    const { gravarLlm, todosOsLlms } = await import("@/lib/agent/llm");
+    await gravarLlm({ ativo: "openai", openaiApiKey: "sk-DO-PAINEL-9999", openaiModel: "gpt-4.1" });
+    const { ativo, llms } = await todosOsLlms();
+    expect(ativo).toBe("openai");
+    expect(llms[0]).toMatchObject({ provedor: "openai", modelo: "gpt-4.1", key: "sk-DO-PAINEL-9999", origemDaChave: "painel" });
+    expect(llms[1].provedor).toBe("deepseek");
+
+    const { lerProvedores } = await import("@/lib/integracoes/provedores");
+    const provedores = await lerProvedores();
+    expect(provedores.find((p) => p.chave === "openai-chat")?.usosEsperados).toEqual(["redacao"]);
+    expect(provedores.find((p) => p.chave === "deepseek")?.papel).toBe("reserva");
+    // A chave colada no painel também não sai — nem em pedaço.
+    expect(JSON.stringify(provedores)).not.toContain("9999");
+  });
+
+  it("dentro de teste nenhum provedor é chamado de verdade, com ou sem chave", async () => {
+    const { llmsDisponiveis } = await import("@/lib/agent/llm");
+    expect(await llmsDisponiveis()).toEqual([]);
+  });
+
+  it("monta o corpo no dialeto de cada provedor", async () => {
+    const { corpoDoChat } = await import("@/lib/agent/llm");
+    const p = { messages: [], maxTokens: 100, temperature: 0.4 };
+    expect(corpoDoChat({ provedor: "deepseek", modelo: "deepseek-chat" }, p)).toMatchObject({ max_tokens: 100, temperature: 0.4 });
+    const gpt = corpoDoChat({ provedor: "openai", modelo: "gpt-4.1-mini" }, p);
+    expect(gpt).toMatchObject({ max_completion_tokens: 100, temperature: 0.4 });
+    expect(gpt).not.toHaveProperty("max_tokens");
+    // Modelo de raciocínio recusa temperature e precisa de folga para pensar.
+    const raciocinio = corpoDoChat({ provedor: "openai", modelo: "gpt-5-mini" }, p);
+    expect(raciocinio).not.toHaveProperty("temperature");
+    expect(raciocinio.max_completion_tokens).toBeGreaterThan(100);
   });
 });

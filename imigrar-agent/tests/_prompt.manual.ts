@@ -19,7 +19,7 @@ import { DEFAULT_KNOWLEDGE, buildSystemPrompt } from "@/lib/agent/knowledge";
 import { DEFAULT_TRAINING } from "@/lib/agent/training";
 import { trainingToOverrides } from "@/lib/agent/system-prompt";
 import { buildAgoraBlock } from "@/lib/agent";
-import { ABSOLUTE_RULE } from "@/lib/agent/deepseek";
+import { ABSOLUTE_RULE } from "@/lib/agent/conducao";
 
 /**
  * O que muda entre o chat e a produção — e que precisa ser dito ao modelo, senão o teste

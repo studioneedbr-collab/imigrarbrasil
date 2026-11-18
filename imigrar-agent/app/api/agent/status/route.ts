@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRepository } from "@/lib/data";
-import { env, useDeepseek } from "@/lib/env";
+import { env } from "@/lib/env";
+import { llmEmUso } from "@/lib/agent/llm";
 import { atividadeDaConversa, inicioDoDiaEmBrasilia } from "@/lib/dashboard/periodo";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +9,10 @@ export const dynamic = "force-dynamic";
 // Signal panel data for the "Agente ao vivo" module (sidebar rail + overview hero).
 export async function GET() {
   const repo = getRepository();
-  const [conversations, leads] = await Promise.all([
+  const [conversations, leads, llm] = await Promise.all([
     repo.listConversations(),
     repo.listLeads(),
+    llmEmUso(),
   ]);
 
   // "Hoje" é o dia de calendário de BRASÍLIA, e conta quem foi ATENDIDO hoje — não quem
@@ -30,8 +32,9 @@ export async function GET() {
     conversations.length > 0 ? Math.round((qualified / conversations.length) * 100) : 0;
 
   return NextResponse.json({
-    model: env.deepseekModel,
-    mode: useDeepseek ? "real" : "simulação",
+    // O modelo que está respondendo AGORA — o escolhido no painel, ou a reserva dele.
+    model: llm?.modelo ?? env.deepseekModel,
+    mode: llm ? "real" : "simulação",
     conversations: conversations.length,
     conversationsToday,
     leads: leads.length,

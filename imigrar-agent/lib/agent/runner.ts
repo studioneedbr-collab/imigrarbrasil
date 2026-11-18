@@ -1,4 +1,3 @@
-import { useDeepseek } from "@/lib/env";
 import { runFallback } from "@/lib/agent/fallback";
 
 export interface AgentTurn {
@@ -15,7 +14,7 @@ export interface AgentRunResult {
   toolCalls: ToolCallTrace[];
   /** Quem escreveu a resposta. O caminho sem LLM tem um repertório curto e repete de
    *  propósito, então a rede anti-repetição só vale para o modelo. */
-  source?: "deepseek" | "fallback";
+  source?: "deepseek" | "openai" | "fallback";
 }
 
 /**
@@ -24,9 +23,10 @@ export interface AgentRunResult {
  * e decide o que responder chamando as tools reais (registrar contato, buscar no
  * material oficial, encaminhar ao time jurídico, follow-up).
  *
- * Provedor ÚNICO: DeepSeek (DEEPSEEK_API_KEY). Sem chave — ou se a chamada ao LLM
- * falhar — cai no caminho determinístico de lib/agent/fallback.ts, que acolhe e
- * encaminha sem nunca afirmar informação migratória.
+ * O provedor é o escolhido no painel (Integrações → lib/agent/llm.ts): DeepSeek ou
+ * ChatGPT. Se ele falhar e o outro tiver credencial, o outro assume. Sem nenhum — ou se
+ * os dois falharem — cai no caminho determinístico de lib/agent/fallback.ts, que acolhe
+ * e encaminha sem nunca afirmar informação migratória.
  */
 export async function runAgent(params: {
   systemPrompt: string;
@@ -42,31 +42,47 @@ export async function runAgent(params: {
    */
   sombra?: boolean;
 }): Promise<AgentRunResult> {
-  if (useDeepseek) {
+  // Imports dinâmicos evitam ciclo (conducao.ts importa tipos daqui).
+  const { llmsDisponiveis } = await import("@/lib/agent/llm");
+  const llms = await llmsDisponiveis();
+
+  for (const [posicao, llm] of llms.entries()) {
     try {
-      // Import dinâmico evita ciclo (deepseek.ts importa tipos daqui).
-      const { runDeepseek } = await import("@/lib/agent/deepseek");
-      return { ...(await runDeepseek(params)), source: "deepseek" as const };
+      const { conduzirComLlm } = await import("@/lib/agent/conducao");
+      return { ...(await conduzirComLlm({ ...params, llm })), source: llm.provedor };
     } catch (err) {
       const motivo = err instanceof Error ? err.message : "erro desconhecido";
-      console.error("[deepseek] falhou — caindo no atendimento determinístico:", motivo);
+      const proximo = llms[posicao + 1];
+      // SÓ PASSA PARA A RESERVA SE NADA ACONTECEU AINDA. Uma condução que já executou
+      // uma tool (encaminhou, agendou follow-up) e caiu depois não pode recomeçar do zero
+      // em outro provedor: ele encaminharia de novo. Aí o caminho é o determinístico.
+      const toolsExecutadas =
+        typeof (err as { toolsExecutadas?: unknown }).toolsExecutadas === "number"
+          ? (err as { toolsExecutadas: number }).toolsExecutadas
+          : 0;
+      const vaiParaReserva = Boolean(proximo) && toolsExecutadas === 0;
+      console.error(
+        `[${llm.provedor}] falhou — ${vaiParaReserva ? `tentando ${proximo.provedor}` : "caindo no atendimento determinístico"}:`,
+        motivo,
+      );
       // A QUEDA É ELEGANTE, E É JUSTAMENTE POR ISSO QUE PRECISA APARECER.
       //
-      // Cair no motor determinístico salva o atendimento daquela mensagem, mas rebaixa
-      // a Ana a um menu — o "chatbot" que este projeto existe para não ser. De fora não
-      // dá para notar: a pessoa recebe resposta, o painel mostra a conversa andando.
-      // Registrado, isso vira um número na saúde da operação em vez de uma degradação
-      // silenciosa que ninguém liga com "o agente está estranho hoje".
+      // Cair na reserva — ou no motor determinístico — salva o atendimento daquela
+      // mensagem, mas de fora não dá para notar: a pessoa recebe resposta, o painel
+      // mostra a conversa andando. Registrado, isso vira um número na saúde da operação
+      // em vez de uma degradação silenciosa que ninguém liga com "o agente está estranho
+      // hoje". A falha do ESCOLHIDO é registrada mesmo quando a reserva salva.
       try {
         const { getRepository } = await import("@/lib/data");
         await getRepository().registrarEventoOperacao({
           tipo: "llm_falhou",
           conversationId: params.conversationId,
-          detalhe: motivo.slice(0, 500),
+          detalhe: `${llm.nome}${vaiParaReserva ? ` (assumiu: ${proximo.nome})` : ""}: ${motivo}`.slice(0, 500),
         });
       } catch {
         // Registrar a falha não pode virar uma segunda falha.
       }
+      if (!vaiParaReserva) break;
     }
   }
   return {

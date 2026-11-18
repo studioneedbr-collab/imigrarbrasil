@@ -34,6 +34,15 @@ const TABELA: Record<string, Preco> = {
   // DeepSeek — escreve a conversa e lê os documentos.
   "deepseek-chat": { entradaPorMilhao: 0.27, saidaPorMilhao: 1.1 },
   "deepseek-reasoner": { entradaPorMilhao: 0.55, saidaPorMilhao: 2.19 },
+  // OpenAI — o ChatGPT como provedor do agente (escolhido no painel de Integrações).
+  // ATENÇÃO: estes cinco NÃO foram reconferidos na página de preços na data acima —
+  // entraram com o valor de tabela conhecido quando o provedor foi acrescentado.
+  // Confira antes de fechar preço com base neles, ou sobrescreva por PRECOS_LLM.
+  "gpt-4.1-mini": { entradaPorMilhao: 0.4, saidaPorMilhao: 1.6 },
+  "gpt-4.1": { entradaPorMilhao: 2, saidaPorMilhao: 8 },
+  "gpt-4o-mini": { entradaPorMilhao: 0.15, saidaPorMilhao: 0.6 },
+  "gpt-4o": { entradaPorMilhao: 2.5, saidaPorMilhao: 10 },
+  "gpt-5-mini": { entradaPorMilhao: 0.25, saidaPorMilhao: 2 },
   // OpenAI — transcrição de áudio e vetor da busca no material oficial.
   "whisper-1": { porMinuto: 0.006 },
   "gpt-4o-mini-transcribe": { porMinuto: 0.003 },

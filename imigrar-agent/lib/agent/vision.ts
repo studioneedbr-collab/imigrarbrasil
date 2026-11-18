@@ -8,7 +8,7 @@ import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/regis
 // deepseek-reasoner) são SÓ TEXTO: não enxergam imagem nem PDF. Por isso a leitura
 // fica DESLIGADA por padrão — é preciso apontar DEEPSEEK_VISION_MODEL para um modelo
 // de visão no endpoint compatível (a chamada segue o formato OpenAI, o mesmo de
-// lib/agent/deepseek.ts, então basta a variável quando houver um modelo disponível).
+// lib/agent/conducao.ts, então basta a variável quando houver um modelo disponível).
 //
 // Com a leitura desligada o anexo continua sendo GUARDADO, exibido no painel e
 // baixável; a Ana apenas não sabe o que está escrito e pergunta à pessoa.

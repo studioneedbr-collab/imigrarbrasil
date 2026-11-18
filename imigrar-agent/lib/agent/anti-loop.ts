@@ -180,7 +180,7 @@ export interface ImpasseInput {
    * determinístico era um menu, que repete a tela de propósito quando não entende a
    * opção. Sem menu, repetição ali é o mesmo defeito que no modelo — e a rede cobre os dois.
    */
-  fonte?: "deepseek" | "fallback";
+  fonte?: "deepseek" | "openai" | "fallback";
   /** A conversa já foi encaminhada neste turno? */
   jaTransferiu: boolean;
   /** O que ainda falta na qualificação, em rótulos legíveis. */

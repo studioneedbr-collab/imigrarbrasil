@@ -8,7 +8,7 @@
 // Foi o que aconteceu no primeiro teste em produção: `Insufficient Balance`, HTTP 402.
 // As duas respostas pareceram do modelo e nenhuma era.
 
-import { env, useDeepseek } from "@/lib/env";
+import { llmEmUso, type Llm } from "@/lib/agent/llm";
 
 export interface EstadoDaIa {
   configurado: boolean;
@@ -18,18 +18,45 @@ export interface EstadoDaIa {
   detalhe: string;
 }
 
+const PENSANDO = "A agente está pensando — as respostas estão saindo do modelo.";
+
+/**
+ * A OpenAI não expõe saldo por chave de API. O que dá para conferir de graça é o que
+ * mais quebra: a chave ainda vale e o modelo escolhido existe para esta conta.
+ */
+async function estadoDaOpenai(llm: Llm): Promise<EstadoDaIa> {
+  const res = await fetch(`${llm.baseUrl}/models/${encodeURIComponent(llm.modelo)}`, {
+    headers: { Authorization: `Bearer ${llm.key}` },
+    cache: "no-store",
+  });
+  if (res.ok) return { configurado: true, funcionando: true, saldo: null, detalhe: PENSANDO };
+  return {
+    configurado: true,
+    funcionando: false,
+    saldo: null,
+    detalhe:
+      res.status === 401
+        ? "A chave da OpenAI é inválida ou expirou."
+        : res.status === 404
+          ? `O modelo "${llm.modelo}" não existe para esta conta da OpenAI.`
+          : `A conta da OpenAI respondeu ${res.status}.`,
+  };
+}
+
 export async function estadoDaIa(): Promise<EstadoDaIa> {
-  if (!useDeepseek) {
+  const llm = await llmEmUso();
+  if (!llm) {
     return {
       configurado: false,
       funcionando: false,
       saldo: null,
-      detalhe: "Sem chave do DeepSeek: o atendimento roda no motor determinístico.",
+      detalhe: "Sem chave de modelo (DeepSeek ou OpenAI): o atendimento roda no motor determinístico.",
     };
   }
   try {
-    const res = await fetch(`${env.deepseekBaseUrl}/user/balance`, {
-      headers: { Authorization: `Bearer ${env.deepseekKey}` },
+    if (llm.provedor === "openai") return await estadoDaOpenai(llm);
+    const res = await fetch(`${llm.baseUrl}/user/balance`, {
+      headers: { Authorization: `Bearer ${llm.key}` },
       cache: "no-store",
     });
     if (!res.ok) {
@@ -58,7 +85,7 @@ export async function estadoDaIa(): Promise<EstadoDaIa> {
       // a captação parou, não se a conta precisa de recarga. O valor continua exposto no
       // campo `saldo`, que só a tela de Integrações lê.
       detalhe: data.is_available
-        ? "A agente está pensando — as respostas estão saindo do modelo."
+        ? PENSANDO
         : "A conta do DeepSeek está sem saldo — a agente está respondendo pelo motor determinístico.",
     };
   } catch {
@@ -66,7 +93,7 @@ export async function estadoDaIa(): Promise<EstadoDaIa> {
       configurado: true,
       funcionando: false,
       saldo: null,
-      detalhe: "Não foi possível falar com o DeepSeek para conferir a conta.",
+      detalhe: `Não foi possível falar com ${llm.nome} para conferir a conta.`,
     };
   }
 }

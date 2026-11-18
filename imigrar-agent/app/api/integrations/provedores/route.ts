@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 const testeSchema = z.object({
-  provedor: z.enum(["deepseek", "openai-transcricao", "openai-embedding"]),
+  provedor: z.enum(["deepseek", "openai-chat", "openai-transcricao", "openai-embedding"]),
 });
 
 /**

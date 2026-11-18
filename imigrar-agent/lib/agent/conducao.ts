@@ -1,9 +1,24 @@
-import { env } from "@/lib/env";
+import { chamarChat, type Llm } from "@/lib/agent/llm";
 import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
 import { AGENT_TOOLS, executeTool } from "@/lib/agent/tools";
 import type { AgentTurn, AgentRunResult, ToolCallTrace } from "@/lib/agent/runner";
 
 const MAX_TOOL_ITERATIONS = 6;
+
+/**
+ * A falha de uma condução, com o que o chamador precisa para decidir se pode tentar de
+ * novo em outro provedor: se alguma tool JÁ RODOU, repetir a conversa do zero repetiria
+ * o efeito dela (um encaminhamento, um follow-up agendado).
+ */
+export class FalhaDoLlm extends Error {
+  constructor(
+    mensagem: string,
+    readonly toolsExecutadas: number,
+  ) {
+    super(mensagem);
+    this.name = "FalhaDoLlm";
+  }
+}
 
 // Vai como PRIMEIRA linha do system prompt: mata o vazamento de raciocínio interno na
 // resposta ao cliente (ex.: "já calculei", "vou apresentar o valor", "seguindo o fluxo").
@@ -13,8 +28,8 @@ export const ABSOLUTE_RULE =
   "REGRA ABSOLUTA 1 — IDIOMA: responda SEMPRE no idioma em que a pessoa escreveu, e mantenha esse idioma até o fim da conversa, mesmo que o material de apoio esteja em português. Nunca comente o idioma dela nem diga que está traduzindo.\n" +
   "REGRA ABSOLUTA 2: nunca exponha seu raciocínio interno na resposta. Nunca escreva o que você 'vai fazer' ou 'já fez'. Simplesmente faça e responda de forma natural. Frases como 'vou verificar', 'já tenho os dados', 'seguindo o fluxo' NUNCA devem aparecer na mensagem enviada. A resposta é SÓ o que a pessoa leria no WhatsApp.";
 
-// AGENT_TOOLS está no formato name/description/input_schema. O DeepSeek
-// usa o formato OpenAI (type:"function" + function.parameters). Convertido uma vez.
+// AGENT_TOOLS está no formato name/description/input_schema. Os dois provedores usam o
+// formato OpenAI (type:"function" + function.parameters). Convertido uma vez.
 const OPENAI_TOOLS = AGENT_TOOLS.map((t) => ({
   type: "function" as const,
   function: { name: t.name, description: t.description, parameters: t.input_schema },
@@ -33,6 +48,7 @@ interface OpenAIMessage {
 }
 
 async function chatCompletion(
+  llm: Llm,
   messages: OpenAIMessage[],
   tools: typeof OPENAI_TOOLS = OPENAI_TOOLS,
   conversationId?: string,
@@ -44,8 +60,8 @@ async function chatCompletion(
   const contabilizar = (uso: UsoDeTokens | undefined, ok: boolean, erro?: string) => {
     const { entrada, saida } = tokensDe(uso);
     void registrarChamada({
-      provedor: "deepseek",
-      modelo: env.deepseekModel,
+      provedor: llm.provedor,
+      modelo: llm.modelo,
       tipo: "redacao",
       conversationId,
       tokensEntrada: entrada,
@@ -58,21 +74,7 @@ async function chatCompletion(
 
   let res: Response;
   try {
-    res = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.deepseekKey}`,
-      },
-      body: JSON.stringify({
-        model: env.deepseekModel,
-        messages,
-        tools,
-        tool_choice: "auto",
-        max_tokens: 1024,
-        temperature: 0.4,
-      }),
-    });
+    res = await chamarChat(llm, { messages, tools, maxTokens: 1024, temperature: 0.4 });
   } catch (err) {
     contabilizar(undefined, false, err instanceof Error ? err.message : "rede");
     throw err;
@@ -80,7 +82,7 @@ async function chatCompletion(
   if (!res.ok) {
     const corpo = await res.text();
     contabilizar(undefined, false, `HTTP ${res.status}`);
-    throw new Error(`DeepSeek chat failed: ${res.status} ${corpo}`);
+    throw new Error(`${llm.nome} chat failed: ${res.status} ${corpo}`);
   }
   const data = (await res.json()) as {
     choices?: { message?: OpenAIMessage }[];
@@ -88,23 +90,27 @@ async function chatCompletion(
   };
   const msg = data.choices?.[0]?.message;
   contabilizar(data.usage, Boolean(msg), msg ? undefined : "resposta sem choices/message");
-  if (!msg) throw new Error("DeepSeek: resposta sem choices/message");
+  if (!msg) throw new Error(`${llm.nome}: resposta sem choices/message`);
   return msg;
 }
 
 /**
- * DeepSeek conduz a conversa: recebe o system prompt completo (persona + base de
+ * O modelo conduz a conversa: recebe o system prompt completo (persona + base de
  * conhecimento + regras) e o histórico, e decide o que responder chamando as tools
- * reais (preço, proposta, registrar lead, transferir, follow-up). Mesmo contrato do
- * Único provedor de LLM. Se falhar, o chamador cai no engine determinístico.
+ * reais (registrar lead, transferir, follow-up). O provedor vem de fora (`llm`) — este
+ * arquivo não sabe qual é, e é por isso que trocar no painel não muda nada aqui.
+ *
+ * Se falhar, lança `FalhaDoLlm`; o chamador decide entre a reserva e o determinístico.
  */
-export async function runDeepseek({
+export async function conduzirComLlm({
+  llm,
   systemPrompt,
   history,
   conversationId,
   blockTools,
   sombra,
 }: {
+  llm: Llm;
   systemPrompt: string;
   history: AgentTurn[];
   conversationId: string;
@@ -122,7 +128,12 @@ export async function runDeepseek({
   ];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const msg = await chatCompletion(messages, tools, conversationId);
+    let msg: OpenAIMessage;
+    try {
+      msg = await chatCompletion(llm, messages, tools, conversationId);
+    } catch (err) {
+      throw new FalhaDoLlm(err instanceof Error ? err.message : String(err), toolCalls.length);
+    }
 
     const calls = msg.tool_calls ?? [];
     if (calls.length === 0) {
