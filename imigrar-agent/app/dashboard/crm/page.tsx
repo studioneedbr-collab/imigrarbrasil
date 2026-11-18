@@ -34,14 +34,21 @@ export default async function CrmPage() {
   const agora = new Date();
   const repo = getRepository();
   const funis = await repo.listFunis().catch(() => []);
-  const [{ leads, total }, etapas, sessao] = await Promise.all([
+  const [{ leads, total }, etapas, sessao, usuarios] = await Promise.all([
     carregarCargaDaFila({
       limite: TETO_DE_CARGA,
       funilIds: funis.filter((f) => !f.padrao).map((f) => f.id),
     }),
     repo.listEtapas().catch(() => []),
     getSession(),
+    repo.listUsers().catch(() => []),
   ]);
+  // O TIME, para trocar o responsável direto no card. Só id e nome: é o que um seletor
+  // precisa, e a lista de usuários é dado de funcionário.
+  const time = usuarios
+    .filter((u) => u.active !== false)
+    .map((u) => ({ id: u.id, nome: u.name?.trim() || u.email }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   const corte = avaliarCorte(leads.length, total);
 
   const temDesenho = funis.length > 0 && etapas.length > 0;
@@ -64,6 +71,7 @@ export default async function CrmPage() {
       <QuadroCrm
         leads={leads}
         agoraISO={agora.toISOString()}
+        time={time}
         funis={temDesenho ? funis : [FUNIL_PADRAO]}
         etapas={temDesenho ? etapas : etapasPadrao()}
         podeDesenhar={temDesenho && (papel === "admin" || papel === "advogado")}

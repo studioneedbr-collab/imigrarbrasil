@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -51,6 +51,16 @@ const VERDICT_CHIP: Record<LeadVerdict, string> = {
 };
 
 const PAGE_SIZE = 10;
+
+/** O que GET /api/conversations/[id]/encaminhar devolve para os dois diálogos. */
+interface OpcoesDeEncaminhar {
+  pessoas: { id: string; nome: string; eu: boolean }[];
+  funis: { id: string; nome: string; padrao: boolean }[];
+  lead: { id: string; responsavelId: string | null; funilId: string | null } | null;
+}
+
+const botaoDeLinha =
+  "inline-flex items-center justify-center rounded-lg border border-ib-line bg-white px-2 py-1.5 text-ib-slate transition hover:border-ib-mar/40 hover:bg-ib-bruma hover:text-ib-mar";
 
 // Tempo decorrido desde um instante ISO, curtinho ("agora", "há 3h", "há 2d").
 function sinceLabel(iso?: string | null): string {
@@ -106,6 +116,83 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
    * mesma promessa quebrada que a lixeira fazia antes de existir a checagem de papel.
    */
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  /*
+   * TRANSFERIR E ENVIAR AO CRM, NA LINHA.
+   *
+   * Os dois gestos existiam só de dentro do caso. Quem tria a lista quer resolver ali
+   * mesmo — "este é do Sérgio", "este vai para o comercial" — sem abrir a conversa e
+   * perder o lugar. São de qualquer pessoa logada (a rota não exige admin), então os
+   * botões aparecem para todo mundo, ao contrário da lixeira.
+   */
+  const [encaminhando, setEncaminhando] = useState<{ tipo: "transferir" | "crm"; conversa: ConversaNaLista } | null>(null);
+  const [opcoes, setOpcoes] = useState<OpcoesDeEncaminhar | null>(null);
+  const [escolha, setEscolha] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erroNoDialogo, setErroNoDialogo] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<{ texto: string; crm: boolean } | null>(null);
+
+  // Referência estável: o diálogo devolve o foco ao botão de confirmar sempre que o
+  // `onCancel` muda, e uma função nova a cada render tiraria o foco do seletor a cada
+  // opção escolhida.
+  const fecharEncaminhar = useCallback(() => setEncaminhando(null), []);
+
+  async function abrirEncaminhar(tipo: "transferir" | "crm", conversa: ConversaNaLista) {
+    setEncaminhando({ tipo, conversa });
+    setOpcoes(null);
+    setEscolha("");
+    setErroNoDialogo(null);
+    try {
+      const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, { cache: "no-store" });
+      if (!res.ok) throw new Error();
+      const d = (await res.json()) as OpcoesDeEncaminhar;
+      setOpcoes(d);
+      // O QUE JÁ VEM MARCADO. Transferir: o dono atual, senão quem está clicando. CRM: o
+      // funil em que o contato já está, senão o comercial, senão o padrão.
+      setEscolha(
+        tipo === "transferir"
+          ? (d.lead?.responsavelId && d.pessoas.some((p) => p.id === d.lead?.responsavelId)
+              ? d.lead.responsavelId
+              : d.pessoas[0]?.id) ?? ""
+          : (d.funis.find((f) => f.id === d.lead?.funilId) ??
+              d.funis.find((f) => /comercial/i.test(f.nome)) ??
+              d.funis.find((f) => f.padrao) ??
+              d.funis[0])?.id ?? "",
+      );
+    } catch {
+      setErroNoDialogo("Não foi possível carregar as opções. Feche e tente de novo.");
+    }
+  }
+
+  async function confirmarEncaminhar() {
+    if (!encaminhando || !escolha) return;
+    setEnviando(true);
+    setErroNoDialogo(null);
+    const { tipo, conversa } = encaminhando;
+    try {
+      const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tipo === "transferir" ? { acao: tipo, usuarioId: escolha } : { acao: tipo, funilId: escolha }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { mensagem?: string; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Não foi possível concluir.");
+      setAviso({ texto: d.mensagem ?? "Feito.", crm: tipo === "crm" });
+      // Transferir muda o status da conversa na hora; a lista não espera os 20s do ciclo.
+      if (tipo === "transferir") {
+        setConversations((prev) =>
+          prev ? prev.map((x) => (x.id === conversa.id ? { ...x, status: "transferred" } : x)) : prev,
+        );
+      }
+      setEncaminhando(null);
+    } catch (err) {
+      // O erro fica DENTRO do diálogo: ele quase sempre pede outra escolha (outro funil,
+      // outra pessoa), e fechar obrigaria a recomeçar.
+      setErroNoDialogo(err instanceof Error ? err.message : "Não foi possível concluir.");
+    } finally {
+      setEnviando(false);
+    }
+  }
   const [pendingBulk, setPendingBulk] = useState(false);
 
   function toggleOne(id: string) {
@@ -358,6 +445,31 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
         </div>
       ) : null}
 
+      {/* O recado de que deu certo — com o atalho para ver o card onde ele foi parar. */}
+      {aviso ? (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-xl border border-ib-success/25 bg-ib-success/8 px-4 py-3 text-sm text-[#15803D]"
+        >
+          <span>
+            {aviso.texto}{" "}
+            {aviso.crm ? (
+              <Link href="/dashboard/crm" className="font-semibold underline underline-offset-2">
+                Abrir o CRM
+              </Link>
+            ) : null}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAviso(null)}
+            aria-label="Fechar aviso"
+            className="shrink-0 rounded px-1 opacity-70 transition hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-xl border border-ib-danger/20 bg-ib-danger/5 px-4 py-3 text-sm text-ib-danger">
           Não foi possível carregar as conversas: {error}
@@ -558,7 +670,28 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums text-ib-slate">
                       {fmtDateShort(c.createdAt)} · {fmtTime(c.createdAt)}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className="whitespace-nowrap px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <span className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => abrirEncaminhar("transferir", c)}
+                        aria-label="Transferir conversa para alguém do time"
+                        title="Transferir para alguém do time"
+                        className={botaoDeLinha}
+                      >
+                        <Icon name="users" className="h-3.5 w-3.5" />
+                      </button>
+                      {ambiente === "producao" ? (
+                        <button
+                          type="button"
+                          onClick={() => abrirEncaminhar("crm", c)}
+                          aria-label="Criar lead e enviar para um funil do CRM"
+                          title="Criar lead e enviar para um funil do CRM"
+                          className={botaoDeLinha}
+                        >
+                          <Icon name="plus" className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                       {/* Enquanto o papel não chegou, nada aparece: um botão que pisca e
                           some é pior do que um que demora um instante. */}
                       {ehAdmin ? (
@@ -575,6 +708,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                           <Icon name="trash" className="h-3.5 w-3.5" />
                         </button>
                       ) : null}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -593,6 +727,83 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={encaminhando !== null}
+        tone="primary"
+        loading={enviando}
+        title={encaminhando?.tipo === "crm" ? "Enviar ao CRM" : "Transferir conversa"}
+        confirmLabel={encaminhando?.tipo === "crm" ? "Enviar ao funil" : "Transferir"}
+        loadingLabel="Enviando…"
+        onConfirm={confirmarEncaminhar}
+        onCancel={fecharEncaminhar}
+        message={
+          encaminhando ? (
+            <div className="space-y-3">
+              <p>
+                {encaminhando.tipo === "crm" ? (
+                  <>
+                    <span className="font-semibold text-ib-ink">
+                      {encaminhando.conversa.contactName ?? encaminhando.conversa.whatsappNumber}
+                    </span>{" "}
+                    vira um lead no CRM (se ainda não for) e entra no funil escolhido.
+                  </>
+                ) : (
+                  <>
+                    Quem recebe passa a ser o responsável por{" "}
+                    <span className="font-semibold text-ib-ink">
+                      {encaminhando.conversa.contactName ?? encaminhando.conversa.whatsappNumber}
+                    </span>
+                    , e a agente para de responder nesta conversa.
+                  </>
+                )}
+              </p>
+              {opcoes ? (
+                (encaminhando.tipo === "crm" ? opcoes.funis.length : opcoes.pessoas.length) === 0 ? (
+                  <p className="text-ib-danger">
+                    {encaminhando.tipo === "crm"
+                      ? "Ainda não há funil criado no CRM."
+                      : "Não há ninguém cadastrado no time."}
+                  </p>
+                ) : (
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-ib-slate">
+                      {encaminhando.tipo === "crm" ? "Funil" : "Para quem"}
+                    </span>
+                    <select
+                      value={escolha}
+                      onChange={(e) => setEscolha(e.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"
+                    >
+                      {encaminhando.tipo === "crm"
+                        ? opcoes.funis.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.nome}
+                              {f.id === opcoes.lead?.funilId ? " (já está aqui)" : ""}
+                            </option>
+                          ))
+                        : opcoes.pessoas.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nome}
+                              {p.eu ? " (eu)" : ""}
+                              {p.id === opcoes.lead?.responsavelId ? " — responsável atual" : ""}
+                            </option>
+                          ))}
+                    </select>
+                  </label>
+                )
+              ) : erroNoDialogo ? null : (
+                <p>Carregando…</p>
+              )}
+              {erroNoDialogo ? (
+                <p role="alert" className="rounded-lg border border-ib-danger/20 bg-ib-danger/5 px-3 py-2 text-ib-danger">
+                  {erroNoDialogo}
+                </p>
+              ) : null}
+            </div>
+          ) : null
+        }
+      />
 
       <ConfirmDialog
         open={pendingBulk}

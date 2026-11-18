@@ -85,9 +85,12 @@ export default function QuadroCrm({
   etapas: etapasIniciais,
   podeDesenhar,
   podeExportar,
+  time = [],
 }: {
   leads: LeadDaFila[];
   agoraISO: string;
+  /** Quem pode ser responsável por um caso. Vazio = o seletor não aparece no card. */
+  time?: { id: string; nome: string }[];
   funis: FunilCrm[];
   etapas: EtapaCrm[];
   /** Advogado e administrador desenham o quadro. Atendente usa o quadro desenhado. */
@@ -221,6 +224,62 @@ export default function QuadroCrm({
     if (destino) await mover(lead, destino);
     setAssumindo(false);
     setAberto(null);
+  }
+
+  /**
+   * TROCAR O RESPONSÁVEL, DO PRÓPRIO CARD.
+   *
+   * Existia só dentro da ficha do caso — três cliques e uma troca de tela para dizer
+   * "este é do Walter". Usa a MESMA ação da ficha (`responsaveis`), então vale tudo o que
+   * vale lá: caso "novo" que ganha dono vira "em atendimento", a agente passa a se calar
+   * para quem recebeu, e a troca fica no log de acesso.
+   *
+   * O APOIO VAI JUNTO, intacto. A ação grava dono e apoio de uma vez; mandar só o dono
+   * apagaria quem estava ajudando no caso sem ninguém ter pedido.
+   */
+  async function trocarResponsavel(lead: LeadDaFila, usuarioId: string) {
+    if (usuarioId === (lead.responsavelId ?? "")) return;
+    const novo = time.find((p) => p.id === usuarioId);
+    if (!novo) return;
+
+    setErro(null);
+    const antes = leads;
+    setLeads((atual) =>
+      atual.map((l) =>
+        l.id === lead.id ? { ...l, responsavelId: novo.id, responsavelNome: novo.nome } : l,
+      ),
+    );
+
+    const r = await fetch(`/api/leads/${lead.id}/atendimento`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        acao: "responsaveis",
+        responsavelId: novo.id,
+        apoioIds: (lead.apoioIds ?? []).filter((id) => id !== novo.id),
+      }),
+    }).catch(() => null);
+
+    if (!r?.ok) {
+      setLeads(antes);
+      setErro(
+        (await r?.json().catch(() => null))?.error ??
+          "Não foi possível trocar o responsável. Nada foi alterado.",
+      );
+      return;
+    }
+    // O SERVIDOR PODE TER MUDADO O STATUS: caso "novo" que ganha dono vira "em
+    // atendimento". O card troca de coluna com o que ele respondeu, e não com o que a
+    // tela supôs — senão ficaria na coluna de novos até alguém recarregar a página.
+    const salvo = (await r.json().catch(() => null))?.lead as
+      | { atendimentoStatus?: LeadDaFila["atendimentoStatus"] }
+      | undefined;
+    if (salvo?.atendimentoStatus) {
+      setLeads((atual) =>
+        atual.map((l) => (l.id === lead.id ? { ...l, atendimentoStatus: salvo.atendimentoStatus } : l)),
+      );
+    }
+    router.refresh();
   }
 
   /**
@@ -681,6 +740,20 @@ export default function QuadroCrm({
                           }))}
                         />
                       </div>
+                      {/* Sempre à vista, ao contrário do "mover para": etapa se troca
+                          arrastando, responsável não tem outro gesto no quadro. */}
+                      {time.length ? (
+                        <div className="mt-1 px-1">
+                          <Selecao
+                            compacto
+                            label="responsável"
+                            placeholder="sem responsável — escolher"
+                            valor={lead.responsavelId ?? null}
+                            onChange={(id) => void trocarResponsavel(lead, id)}
+                            opcoes={time.map((p) => ({ valor: p.id, rotulo: p.nome }))}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
 
