@@ -75,7 +75,11 @@ export default function Topbar() {
     // O lugar mais valioso da tela passa a servir para alguma coisa: era o motivo de
     // passaporte, decorativo, e virou busca. O motivo continua na sidebar, pequeno, onde
     // marca é marca e não ocupa espaço de ferramenta.
-    <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-ib-line bg-white/70 px-4 py-2.5 backdrop-blur-sm">
+    // `relative z-30` NA BARRA, e não só nos menus: o desfoque de fundo faz da barra uma
+    // camada própria, e o z-index do sino e da busca só vale dentro dela. Sem altura na
+    // barra, qualquer coisa posicionada na página abaixo (o campo de busca de Conversas)
+    // era pintada por cima do menu aberto.
+    <div className="relative z-30 mb-6 flex items-center justify-between gap-3 rounded-xl border border-ib-line bg-white/70 px-4 py-2.5 backdrop-blur-sm">
       <BuscaGlobal />
 
       <div className="flex shrink-0 items-center gap-3">
