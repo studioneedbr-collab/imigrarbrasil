@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  const user = await getRepository().getUserByEmail(session.email);
+  // O banco fora do ar não derruba a barra lateral: a sessão já diz quem é e o papel.
+  const user = await getRepository().getUserByEmail(session.email).catch(() => null);
   return NextResponse.json({
     email: session.email,
     // O NOME importa na barra lateral: "Cassio" identifica a conta mais rápido do que um

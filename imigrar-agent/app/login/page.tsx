@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { caminhoInterno } from "@/lib/auth/caminho-interno";
 import { Marca, FaixaMrz } from "@/components/marca";
 import { Guilloche } from "@/components/guilloche";
 
@@ -16,10 +17,10 @@ export default function LoginPage() {
 function LoginView() {
   const router = useRouter();
   const params = useSearchParams();
-  // Só aceita caminho interno: "//site.com" e "https://site.com" viram /dashboard,
-  // senão bastaria mandar um link ?next=… para redirigir alguém logado para fora.
-  const raw = params.get("next") || "";
-  const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
+  // Só aceita caminho interno — senão bastaria mandar um link ?next=… para redirigir
+  // alguém recém-logado para fora. A regra (e os truques que ela barra) está em
+  // lib/auth/caminho-interno.ts.
+  const next = caminhoInterno(params.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

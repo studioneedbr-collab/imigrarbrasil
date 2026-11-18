@@ -1429,7 +1429,10 @@ export class SupabaseRepository implements Repository {
     // eq() e não ilike(): em ilike, '%' e '_' do input são curingas, então um
     // e-mail como "a%@x.com" casaria com contas de terceiros. E-mails são
     // sempre gravados em minúsculas, então a comparação exata basta.
-    const { data } = await this.db.from("users").select("*").eq("email", email.toLowerCase().trim()).maybeSingle();
+    const { data, error } = await this.db.from("users").select("*").eq("email", email.toLowerCase().trim()).maybeSingle();
+    // Propaga em vez de devolver null: falha de banco lida como "esta conta não existe"
+    // fazia o login responder "senha inválida" a quem digitou a senha certa.
+    if (error) throw error;
     return data ? mapUser(data) : null;
   }
   async createUser(data: { email: string; passwordHash: string; name?: string; role?: User["role"]; setor?: string | null }) {

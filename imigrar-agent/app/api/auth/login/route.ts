@@ -17,6 +17,21 @@ const loginSchema = z.object({
 const INVALID = () =>
   NextResponse.json({ error: "E-mail ou senha inválidos." }, { status: 401 });
 
+/**
+ * FALHA NOSSA NÃO É SENHA ERRADA.
+ *
+ * Todo erro inesperado respondia "E-mail ou senha inválidos": banco fora do ar,
+ * AUTH_SECRET ausente no deploy, qualquer exceção. Quem digitou a senha certa era
+ * mandado conferir a senha — e o próximo passo natural é redefinir uma senha que nunca
+ * esteve errada. Um 503 diz a verdade sem contar nada sobre contas: ele acontece igual
+ * para e-mail que existe e para e-mail que não existe.
+ */
+const UNAVAILABLE = () =>
+  NextResponse.json(
+    { error: "Não foi possível entrar agora. É um problema do sistema, não da sua senha — tente de novo em instantes." },
+    { status: 503 },
+  );
+
 const tooMany = (retryAfterSeconds: number) =>
   NextResponse.json(
     { error: "Muitas tentativas. Tente novamente em alguns minutos." },
@@ -69,6 +84,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     // Nunca logar o payload: ele contém a senha em claro e iria para os logs da Vercel.
     console.error("[auth:login] erro inesperado:", err instanceof Error ? err.message : "desconhecido");
-    return INVALID();
+    return UNAVAILABLE();
   }
 }
