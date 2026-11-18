@@ -572,6 +572,17 @@ export class MemoryRepository implements Repository {
     const dentro = new Set(todos.slice(0, opcoes.limite).map((l) => l.id));
     return todos.filter((l) => dentro.has(l.id) || (!!l.funilId && opcoes.funilIds?.includes(l.funilId)));
   }
+  async listarLeadsPorOrigem(
+    origem: NonNullable<Lead["origem"]>,
+    opcoes: { pagina?: number; porPagina?: number } = {},
+  ) {
+    const todos = Array.from(this.leads.values())
+      .filter((l) => l.origem === origem)
+      .sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+    if (!opcoes.porPagina) return { leads: todos, total: todos.length };
+    const de = (Math.max(1, opcoes.pagina ?? 1) - 1) * opcoes.porPagina;
+    return { leads: todos.slice(de, de + opcoes.porPagina), total: todos.length };
+  }
   async contarLeads() { return this.leads.size; }
 
   async listConversationsByIds(ids: string[]) {

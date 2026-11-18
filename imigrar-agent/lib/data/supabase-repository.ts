@@ -985,6 +985,39 @@ export class SupabaseRepository implements Repository {
     const alem = ((dosFunis as Record<string, any>[] | null) ?? []).filter((r) => !vistos.has(r.id));
     return [...linhas, ...alem].map((r) => this.mapLead(r));
   }
+  async listarLeadsPorOrigem(
+    origem: NonNullable<Lead["origem"]>,
+    opcoes: { pagina?: number; porPagina?: number } = {},
+  ) {
+    const base = () =>
+      this.db.from("leads").select("*", { count: "exact" }).eq("origem", origem)
+        // `id` desempata: sem ele, dois leads criados no mesmo instante poderiam trocar
+        // de página entre um pedido e outro — um repetido, o outro sumido.
+        .order("created_at", { ascending: false }).order("id", { ascending: false });
+
+    if (opcoes.porPagina) {
+      const de = (Math.max(1, opcoes.pagina ?? 1) - 1) * opcoes.porPagina;
+      const { data, count, error } = await base().range(de, de + opcoes.porPagina - 1);
+      // Página além do fim: o PostgREST responde erro de faixa, e a tela trata como vazia.
+      if (error && !/range/i.test(error.message ?? "")) throw error;
+      const linhas = (data as Record<string, any>[] | null) ?? [];
+      return { leads: linhas.map((r) => this.mapLead(r)), total: count ?? linhas.length };
+    }
+
+    // Todos: o PostgREST devolve no máximo 1000 linhas por pedido, então vai em lotes.
+    const LOTE = 1000;
+    const leads: Lead[] = [];
+    let total = 0;
+    for (let de = 0; de < 100_000; de += LOTE) {
+      const { data, count, error } = await base().range(de, de + LOTE - 1);
+      if (error) throw error;
+      const lote = (data as Record<string, any>[] | null) ?? [];
+      for (const r of lote) leads.push(this.mapLead(r));
+      total = count ?? leads.length;
+      if (lote.length < LOTE) break;
+    }
+    return { leads, total: Math.max(total, leads.length) };
+  }
   async contarLeads() {
     const { count } = await this.db.from("leads").select("id", { count: "exact", head: true });
     return count ?? 0;

@@ -93,6 +93,16 @@ export interface Repository {
    * em andamento.
    */
   listLeads(opcoes?: { limite?: number; funilIds?: string[] }): Promise<Lead[]>;
+  /**
+   * Leads de UMA origem, do mais novo para o mais antigo. `pagina` começa em 1; sem
+   * `porPagina` vêm todos (é o que a exportação pede). `total` é sempre o da origem
+   * inteira. Existe porque filtrar em memória sobre `listLeads` corta quem ficou além do
+   * teto — e os formulários do site antigos são justamente os que sumiriam.
+   */
+  listarLeadsPorOrigem(
+    origem: NonNullable<Lead["origem"]>,
+    opcoes?: { pagina?: number; porPagina?: number },
+  ): Promise<{ leads: Lead[]; total: number }>;
   /** Quantos leads existem ao todo. */
   contarLeads(): Promise<number>;
 
