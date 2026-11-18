@@ -146,3 +146,13 @@ describe("a escolha de quem responde (DeepSeek ou ChatGPT)", () => {
     expect(raciocinio.max_completion_tokens).toBeGreaterThan(100);
   });
 });
+
+describe("de quem é a conta da OpenAI", () => {
+  it("mostra a organização que a OpenAI devolve no cabeçalho, e nada quando não vem", async () => {
+    const { contaDaOpenai } = await import("@/lib/integracoes/provedores");
+    const com = new Response("{}", { headers: { "openai-organization": "empresa-exemplo" } });
+    expect(contaDaOpenai(com)).toBe(" Conta (organização na OpenAI): empresa-exemplo.");
+    expect(contaDaOpenai(new Response("{}"))).toBe("");
+    expect(contaDaOpenai({})).toBe("");
+  });
+});

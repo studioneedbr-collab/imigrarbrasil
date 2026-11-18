@@ -181,6 +181,18 @@ export interface ResultadoDoTeste {
 }
 
 /**
+ * DE QUEM É A CONTA. A chave não diz, e não pode ser mostrada; mas a OpenAI devolve, em
+ * toda resposta, o identificador da organização dona da chave (cabeçalho
+ * `openai-organization`). É o que a tela exibe para responder "em qual conta isto está
+ * cobrando?" sem ninguém precisar abrir a Vercel. Não é segredo: sozinho não dá acesso
+ * a nada. Outros provedores não mandam o cabeçalho, e aí não aparece nada.
+ */
+export function contaDaOpenai(res: { headers?: { get(nome: string): string | null } }): string {
+  const org = res.headers?.get("openai-organization")?.trim().slice(0, 80);
+  return org ? ` Conta (organização na OpenAI): ${org}.` : "";
+}
+
+/**
  * O ping de um provedor de LLM: uma mensagem, o mínimo de tokens. Serve tanto ao botão
  * "Testar conexão" quanto à troca de provedor no painel, que só é aceita se isto passar.
  */
@@ -210,7 +222,7 @@ export async function testarLlm(llm: Llm): Promise<ResultadoDoTeste> {
       ok: res.ok,
       latenciaMs,
       detalhe: res.ok
-        ? "O modelo respondeu."
+        ? `O modelo respondeu.${contaDaOpenai(res)}`
         : res.status === 401
           ? "A credencial é inválida ou expirou."
           : res.status === 404
@@ -288,8 +300,8 @@ export async function testarProvedor(chave: ProvedorNoPainel["chave"]): Promise<
       latenciaMs,
       detalhe: res.ok
         ? chave === "openai-transcricao"
-          ? "A conta respondeu. A credencial da transcrição é a mesma."
-          : "O modelo de embedding respondeu."
+          ? `A conta respondeu. A credencial da transcrição é a mesma.${contaDaOpenai(res)}`
+          : `O modelo de embedding respondeu.${contaDaOpenai(res)}`
         : res.status === 401
           ? "A credencial é inválida ou expirou."
           : corpo.error?.message?.slice(0, 160) ?? `O provedor respondeu ${res.status}.`,
