@@ -677,7 +677,10 @@ export default function QuadroCrm({
                 }}
                 onDragLeave={() => setSobre((s) => (s === coluna.etapa.id ? null : s))}
                 onDrop={() => soltar(coluna.etapa)}
-                className={`flex min-h-[8rem] w-[17rem] shrink-0 snap-start flex-col rounded-xl border bg-ib-papel/50 transition ${
+                // A COLUNA CABE NA TELA E ROLA POR DENTRO. Sem teto, uma etapa com muitos casos
+                // esticava a página inteira, e para ver o fim dela as outras colunas — e os
+                // cabeçalhos — saíam de vista. O piso de 24rem é para janela baixa.
+                className={`flex max-h-[max(24rem,calc(100dvh-7rem))] min-h-[8rem] w-[17rem] shrink-0 snap-start flex-col rounded-xl border bg-ib-papel/50 transition ${
                   sobre === coluna.etapa.id ? "border-ib-mar bg-ib-bruma" : "border-ib-line"
                 }`}
               >
@@ -704,7 +707,7 @@ export default function QuadroCrm({
                   ) : null}
                 </header>
 
-                <div className="flex flex-1 flex-col gap-2 p-2">
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2">
                   {mostrando.length === 0 ? (
                     <p className="px-1 py-4 text-[11px] leading-relaxed text-ib-slate">Nada aqui.</p>
                   ) : null}
