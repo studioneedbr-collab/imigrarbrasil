@@ -36,6 +36,8 @@ import type { LeadVerdict } from "@/lib/agent/lead-score";
 type ConversaNaLista = Conversation & {
   /** Com quem a conversa está: o responsável do caso, ou para onde foi encaminhada. */
   comQuem?: string;
+  /** O nome do responsável do caso, quando há uma PESSOA atendendo (e não só um setor). */
+  responsavelNome?: string;
   verdict?: LeadVerdict;
   verdictLabel?: string;
   verdictReason?: string;
@@ -225,7 +227,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
         setConversations((prev) =>
           prev
             ? prev.map((x) =>
-                x.id === conversa.id ? { ...x, status: "transferred", ...(para ? { comQuem: para } : {}) } : x,
+                x.id === conversa.id ? { ...x, status: "transferred", ...(para ? { comQuem: para, responsavelNome: para } : {}) } : x,
               )
             : prev,
         );
@@ -649,6 +651,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                   <th className="px-5 py-3 font-semibold">Contato</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 font-semibold">Lead score</th>
+                  <th className="px-5 py-3 font-semibold">Responsável</th>
                   <th className="px-5 py-3 text-right font-semibold">Criada em</th>
                   <th className="px-5 py-3 text-right font-semibold">Ações</th>
                 </tr>
@@ -686,15 +689,6 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <StatusBadge kind="conversation" status={c.status} />
-                        {c.comQuem ? (
-                          <span
-                            className="max-w-[11rem] truncate text-xs font-medium text-ib-ink"
-                            title={`${c.status === "transferred" ? "Transferida para" : "Responsável:"} ${c.comQuem}`}
-                          >
-                            <span className="text-ib-slate">{c.status === "transferred" ? "para " : "com "}</span>
-                            {c.comQuem}
-                          </span>
-                        ) : null}
                         {c.status === "waiting" && c.lastMessageAt ? (
                           <span
                             className={`inline-flex items-center gap-1 text-[11px] tabular-nums ${
@@ -720,6 +714,22 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                         </span>
                       ) : (
                         <ScoreBar score={c.leadScore} />
+                      )}
+                    </td>
+                    {/* QUEM ESTÁ ATENDENDO, numa coluna própria: é a pergunta de quem abre
+                        a lista, e escondida ao lado do status ela não era lida. Nome de
+                        pessoa em destaque; setor (encaminhada, ninguém pegou) apagado. */}
+                    <td className="max-w-[12rem] px-5 py-3.5">
+                      {c.responsavelNome ? (
+                        <span className="block truncate text-sm font-medium text-ib-ink" title={`Responsável: ${c.responsavelNome}`}>
+                          {c.responsavelNome}
+                        </span>
+                      ) : c.comQuem ? (
+                        <span className="block truncate text-xs text-ib-slate" title="Encaminhada, ainda sem uma pessoa responsável">
+                          {c.comQuem} · sem responsável
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ib-slate">—</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-right font-mono text-xs tabular-nums text-ib-slate">

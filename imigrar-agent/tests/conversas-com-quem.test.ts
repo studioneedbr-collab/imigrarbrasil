@@ -11,6 +11,7 @@ const lista = async () =>
   ((await (await GET(new Request("http://painel.local/api/conversations"))).json()).conversations ?? []) as {
     id: string;
     comQuem?: string;
+    responsavelNome?: string;
   }[];
 
 describe("com quem está a conversa", () => {
@@ -20,7 +21,7 @@ describe("com quem está a conversa", () => {
     const lead = await repo.upsertLead(c.id, {});
     await repo.updateConversation(c.id, { handedOffTo: "Jurídico" });
     await repo.assumirLead(lead.id, walter.id, "quem@exemplo.com");
-    expect((await lista()).find((x) => x.id === c.id)?.comQuem).toBe("Walter Gama");
+    expect((await lista()).find((x) => x.id === c.id)).toMatchObject({ comQuem: "Walter Gama", responsavelNome: "Walter Gama" });
   });
 
   it("sem responsável, vale o destino da transferência; sem transferência, nada", async () => {
@@ -29,6 +30,8 @@ describe("com quem está a conversa", () => {
     const livre = await repo.getOrCreateConversation("5511977770003", "Contato Três");
     const todas = await lista();
     expect(todas.find((x) => x.id === t.id)?.comQuem).toBe("Jurídico");
+    // Setor não é pessoa: a coluna Responsável não o apresenta como quem está atendendo.
+    expect(todas.find((x) => x.id === t.id)?.responsavelNome).toBeUndefined();
     expect(todas.find((x) => x.id === livre.id)?.comQuem).toBeUndefined();
   });
 });

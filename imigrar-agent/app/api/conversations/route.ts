@@ -48,12 +48,14 @@ export async function GET(req: Request) {
      * só o que ficou escrito na última transferência (às vezes um setor, quando foi a
      * agente que encaminhou), e vale quando o caso ainda não tem dono.
      */
-    const comQuem =
-      (lead?.responsavelId ? nomeDe.get(lead.responsavelId) : null) ??
-      (c.status === "transferred" ? c.handedOffTo?.trim() || null : null);
+    const responsavelNome = (lead?.responsavelId ? nomeDe.get(lead.responsavelId) : null) ?? null;
+    const comQuem = responsavelNome ?? (c.status === "transferred" ? c.handedOffTo?.trim() || null : null);
     return {
       ...c,
       ...(comQuem ? { comQuem } : {}),
+      // Separado de `comQuem`: a coluna Responsável distingue "tem uma pessoa atendendo"
+      // de "foi encaminhada a um setor e ninguém pegou ainda".
+      ...(responsavelNome ? { responsavelNome } : {}),
       ...(v ? { verdict: v.verdict, verdictLabel: v.label, verdictReason: v.signals[0]?.text } : {}),
     };
   });
