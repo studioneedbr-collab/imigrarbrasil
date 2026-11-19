@@ -155,6 +155,81 @@ describe("criar o lead e mandar para um funil do CRM", () => {
     expect((await res.json()).error).toContain("Filtradas");
   });
 
+  // ─── ETAPA E RESPONSÁVEL ESCOLHIDOS NO MESMO GESTO ───
+
+  it("com responsável e etapa: o caso ganha dono, vai para a etapa pedida e a agente se cala", async () => {
+    const eu = await pessoa("Quem Clica");
+    const sergio = await pessoa("Sérgio Reis");
+    await entrar(eu);
+    const { funil } = await funilComercial();
+    const negociando = (await repo.listEtapas()).find((e) => e.funilId === funil.id && e.status === "em_atendimento")!;
+    const c = await conversa();
+
+    const res = await pedir(c.id, { acao: "crm", funilId: funil.id, etapaId: negociando.id, responsavelId: sergio.id });
+    expect(res.status).toBe(200);
+    const corpo = await res.json();
+    expect(corpo).toMatchObject({ criado: true, responsavelNome: "Sérgio Reis" });
+    expect(corpo.mensagem).toContain("Negociando");
+
+    expect(await repo.getLeadByConversation(c.id)).toMatchObject({
+      funilId: funil.id,
+      etapaId: negociando.id,
+      responsavelId: sergio.id,
+      atendimentoStatus: "em_atendimento",
+    });
+    expect(await repo.getConversation(c.id)).toMatchObject({
+      assumedBy: sergio.email,
+      handedOffTo: "Sérgio Reis",
+      status: "transferred",
+    });
+  });
+
+  it("etapa de caso já pego, sem responsável: recusa e NÃO cria o lead", async () => {
+    await entrar(await pessoa("Quem Clica"));
+    const { funil } = await funilComercial();
+    const negociando = (await repo.listEtapas()).find((e) => e.funilId === funil.id && e.status === "em_atendimento")!;
+    const c = await conversa();
+    const res = await pedir(c.id, { acao: "crm", funilId: funil.id, etapaId: negociando.id });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("Escolha o responsável");
+    expect(await repo.getLeadByConversation(c.id)).toBeNull();
+  });
+
+  it("etapa de caso novo com responsável: recusa sem dar dono a ninguém", async () => {
+    await entrar(await pessoa("Quem Clica"));
+    const sergio = await pessoa("Sérgio Reis");
+    const { funil, nova } = await funilComercial();
+    const c = await conversa();
+    await repo.upsertLead(c.id, {});
+    const res = await pedir(c.id, { acao: "crm", funilId: funil.id, etapaId: nova.id, responsavelId: sergio.id });
+    expect(res.status).toBe(400);
+    expect((await repo.getLeadByConversation(c.id))?.responsavelId ?? null).toBeNull();
+    expect((await repo.getConversation(c.id))?.assumedBy ?? null).toBeNull();
+  });
+
+  it("etapa que pede dados (fechado) e etapa de outro funil são recusadas", async () => {
+    await entrar(await pessoa("Quem Clica"));
+    const { funil } = await funilComercial();
+    const fechado = await repo.criarEtapa({ funilId: funil.id, nome: "Contrato", status: "fechado", ordem: 2 });
+    const outro = await funilComercial();
+    const c = await conversa();
+    const r1 = await pedir(c.id, { acao: "crm", funilId: funil.id, etapaId: fechado.id });
+    expect(r1.status).toBe(409);
+    expect((await r1.json()).error).toContain("quadro do CRM");
+    expect((await pedir(c.id, { acao: "crm", funilId: funil.id, etapaId: outro.nova.id })).status).toBe(400);
+    expect(await repo.getLeadByConversation(c.id)).toBeNull();
+  });
+
+  it("o diálogo recebe as etapas e a situação do caso", async () => {
+    await entrar(await pessoa("Quem Clica"));
+    const { funil, nova } = await funilComercial();
+    const c = await conversa();
+    await pedir(c.id, { acao: "crm", funilId: funil.id });
+    const d = await (await GET(new NextRequest(`http://painel.local/api/conversations/${c.id}/encaminhar`), ctx(c.id))).json();
+    expect(d.etapas).toEqual(expect.arrayContaining([{ id: nova.id, funilId: funil.id, nome: "Entrada", status: "novo" }]));
+    expect(d.lead).toMatchObject({ funilId: funil.id, etapaId: nova.id, status: "novo" });
+  });
+
   it("ensaio e funil inexistente são recusados", async () => {
     const { funil } = await funilComercial();
     const ensaio = await repo.getOrCreateConversation("sim:teste-encaminhar", "Ensaio");

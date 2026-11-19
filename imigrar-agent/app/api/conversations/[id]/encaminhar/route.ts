@@ -8,7 +8,8 @@ import { sendMessage } from "@/lib/whatsapp/send";
 import { etapaAoTrocarDeFunil } from "@/lib/crm/funil";
 import { ambienteDaConversa, contaComoOperacaoReal } from "@/lib/domain/ambiente";
 import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
-import { eFiltrada } from "@/lib/domain/types";
+import { eFiltrada, type AtendimentoStatus, type EtapaCrm } from "@/lib/domain/types";
+import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import { primeiroNome } from "@/lib/auth/nomes";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +37,10 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   if (!auth.ok) return auth.response;
 
   const repo = getRepository();
-  const [usuarios, funis, lead] = await Promise.all([
+  const [usuarios, funis, etapas, lead] = await Promise.all([
     repo.listUsers().catch(() => []),
     repo.listFunis().catch(() => []),
+    repo.listEtapas().catch(() => []),
     repo.getLeadByConversation(params.id).catch(() => null),
   ]);
 
@@ -53,15 +55,34 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
       .filter((f) => !f.arquivado)
       .sort((a, b) => a.ordem - b.ordem)
       .map((f) => ({ id: f.id, nome: f.nome, padrao: f.padrao })),
+    // As etapas de todos os funis: o diálogo mostra as do funil escolhido. O `status` vai
+    // junto porque é ele que diz quais etapas dá para escolher daqui (ver o POST).
+    etapas: etapas
+      .filter((e) => !e.arquivada)
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((e) => ({ id: e.id, funilId: e.funilId, nome: e.nome, status: e.status })),
     lead: lead
-      ? { id: lead.id, responsavelId: lead.responsavelId ?? null, funilId: lead.funilId ?? null }
+      ? {
+          id: lead.id,
+          responsavelId: lead.responsavelId ?? null,
+          funilId: lead.funilId ?? null,
+          etapaId: lead.etapaId ?? null,
+          status: lead.atendimentoStatus ?? "novo",
+        }
       : null,
   });
 }
 
 const schema = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("transferir"), usuarioId: z.string().min(1) }),
-  z.object({ acao: z.literal("crm"), funilId: z.string().min(1) }),
+  z.object({
+    acao: z.literal("crm"),
+    funilId: z.string().min(1),
+    /** Sem etapa, o caso entra na que corresponde à situação dele (a regra do quadro). */
+    etapaId: z.string().min(1).nullish(),
+    /** Sem responsável, o dono do caso fica como está. */
+    responsavelId: z.string().min(1).nullish(),
+  }),
 ]);
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -152,36 +173,118 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         { status: 409 },
       );
     }
+    // ─── TUDO É CONFERIDO ANTES DE GRAVAR QUALQUER COISA ───
+    //
+    // São três escolhas (funil, etapa, responsável) e uma depende da outra: dar dono a um
+    // caso novo o põe "em atendimento", e a etapa precisa combinar com isso. Recusar no
+    // meio deixaria o caso com dono novo e na etapa antiga.
+
+    let destino: { id: string; email: string; nome: string } | null = null;
+    if (input.responsavelId && input.responsavelId !== (existente?.responsavelId ?? null)) {
+      const u = (await repo.listUsers()).find((x) => x.id === input.responsavelId && x.active !== false);
+      if (!u) return NextResponse.json({ error: "Esta pessoa não está mais no time." }, { status: 400 });
+      destino = { id: u.id, email: u.email, nome: u.name?.trim() || u.email };
+    }
+
+    const statusAntes: AtendimentoStatus = existente?.atendimentoStatus ?? "novo";
+    // `assumirLead` faz exatamente isto: caso novo que ganha dono passa a em atendimento.
+    const statusComDono: AtendimentoStatus = destino && statusAntes === "novo" ? "em_atendimento" : statusAntes;
+
+    let etapa: EtapaCrm | null;
+    let statusFinal = statusComDono;
+    if (input.etapaId) {
+      etapa = etapas.find((e) => e.id === input.etapaId && e.funilId === funil.id && !e.arquivada) ?? null;
+      if (!etapa) {
+        return NextResponse.json({ error: "Esta etapa não existe mais neste funil. Feche e abra de novo." }, { status: 400 });
+      }
+      if (etapa.status !== statusComDono) {
+        const temDono = Boolean(destino ?? existente?.responsavelId);
+        if (etapa.status === "em_atendimento" && statusComDono === "novo") {
+          return NextResponse.json(
+            { error: `A etapa "${etapa.nome}" é de caso que alguém já pegou. Escolha o responsável.` },
+            { status: 400 },
+          );
+        }
+        if (etapa.status === "novo" && statusAntes === "novo" && destino) {
+          return NextResponse.json(
+            { error: `A etapa "${etapa.nome}" é de caso que ninguém pegou ainda. Deixe sem responsável ou escolha outra etapa.` },
+            { status: 400 },
+          );
+        }
+        // AGENDAR é a única mudança de situação que não pede mais nada. Proposta pede
+        // serviço e validade, fechar pede valor, perder pede motivo, e reabrir é decisão
+        // que se toma olhando o caso: essas continuam no quadro, onde há a pergunta.
+        const podeAgendar =
+          etapa.status === "agendado" && (statusComDono === "em_atendimento" || statusComDono === "proposta_enviada") && temDono;
+        if (!podeAgendar) {
+          return NextResponse.json(
+            {
+              error: `A etapa "${etapa.nome}" muda a situação do caso (de "${ATENDIMENTO_LABEL[statusComDono]}" para "${ATENDIMENTO_LABEL[etapa.status]}"), e isso é feito no quadro do CRM. Escolha outra etapa aqui e mova o card por lá.`,
+            },
+            { status: 409 },
+          );
+        }
+        statusFinal = "agendado";
+      }
+    } else {
+      etapa = etapaAoTrocarDeFunil(statusComDono, funil.id, etapas);
+      if (!etapa) {
+        return NextResponse.json(
+          {
+            error: `Este caso já está encerrado, e o funil "${funil.nome}" não tem etapa para caso encerrado. Reabra o caso no CRM antes de movê-lo.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    // ─── AGORA GRAVA ───
+
     const lead =
       existente ??
       (await repo.upsertLead(conv.id, conv.contactName ? { contactName: conv.contactName } : {}));
 
-    const etapa = etapaAoTrocarDeFunil(lead.atendimentoStatus ?? "novo", funil.id, etapas);
-    if (!etapa) {
-      return NextResponse.json(
-        {
-          error: `Este caso já está encerrado, e o funil "${funil.nome}" não tem etapa para caso encerrado. Reabra o caso no CRM antes de movê-lo.`,
-        },
-        { status: 409 },
-      );
+    if (destino) {
+      await repo.assumirLead(lead.id, destino.id, auth.session.email);
+      // O AGENTE SEGUE O DONO, como na ficha do caso: dar um responsável é pôr uma pessoa
+      // na conversa, e a agente não pode continuar respondendo por cima dela.
+      await repo.assumeConversation(conv.id, destino.email);
+      await repo.updateConversation(conv.id, {
+        handedOffTo: destino.nome,
+        handoffReason: "Responsável definido ao enviar ao CRM.",
+      });
     }
 
-    const jaEstava = lead.funilId === funil.id;
-    if (!jaEstava) await repo.updateLead(lead.id, { funilId: funil.id, etapaId: etapa.id });
+    const mudouDeLugar = lead.funilId !== funil.id || lead.etapaId !== etapa.id;
+    if (mudouDeLugar || statusFinal !== statusComDono) {
+      await repo.updateLead(lead.id, {
+        funilId: funil.id,
+        etapaId: etapa.id,
+        ...(statusFinal !== statusComDono ? { atendimentoStatus: statusFinal } : {}),
+      });
+    }
     await registrarAcesso(
       auth.session,
       "enviou_ao_crm",
-      { tipo: "lead", id: lead.id, detalhe: `${funil.nome} · ${etapa.nome}${existente ? "" : " · lead criado"}` },
+      {
+        tipo: "lead",
+        id: lead.id,
+        detalhe: `${funil.nome} · ${etapa.nome}${destino ? ` · responsável: ${destino.nome}` : ""}${existente ? "" : " · lead criado"}`,
+      },
       req,
     );
 
+    const onde = `no funil "${funil.nome}", na etapa "${etapa.nome}"`;
     return NextResponse.json({
       ok: true,
       leadId: lead.id,
       criado: !existente,
-      mensagem: jaEstava
-        ? `Este contato já estava no funil "${funil.nome}".`
-        : `${existente ? "Lead enviado" : "Lead criado e enviado"} para o funil "${funil.nome}", na etapa "${etapa.nome}".`,
+      responsavelNome: destino?.nome ?? null,
+      mensagem:
+        (!mudouDeLugar && !destino
+          ? `Este contato já estava ${onde}.`
+          : `${existente ? "Lead" : "Lead criado e"} ${mudouDeLugar ? "enviado" : "mantido"} ${onde}.`) +
+        (destino ? ` Responsável: ${destino.nome}; a agente parou de responder nesta conversa.` : ""),
     });
   } catch (err) {
     console.error("[conversations/encaminhar:POST]", err instanceof Error ? err.message : err);

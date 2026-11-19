@@ -34,6 +34,8 @@ import type { LeadVerdict } from "@/lib/agent/lead-score";
  * esperando resposta de outro setor.
  */
 type ConversaNaLista = Conversation & {
+  /** Com quem a conversa está: o responsável do caso, ou para onde foi encaminhada. */
+  comQuem?: string;
   verdict?: LeadVerdict;
   verdictLabel?: string;
   verdictReason?: string;
@@ -56,8 +58,21 @@ const PAGE_SIZE = 10;
 interface OpcoesDeEncaminhar {
   pessoas: { id: string; nome: string; eu: boolean }[];
   funis: { id: string; nome: string; padrao: boolean }[];
-  lead: { id: string; responsavelId: string | null; funilId: string | null } | null;
+  etapas: { id: string; funilId: string; nome: string; status: string }[];
+  lead: {
+    id: string;
+    responsavelId: string | null;
+    funilId: string | null;
+    etapaId: string | null;
+    status: string;
+  } | null;
 }
+
+/** Situações em que o caso só entra pelo quadro do CRM, onde há a pergunta que elas pedem. */
+const SO_PELO_QUADRO = new Set(["proposta_enviada", "fechado", "perdido"]);
+
+const seletorDoDialogo =
+  "mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20";
 
 const botaoDeLinha =
   "inline-flex items-center justify-center rounded-lg border border-ib-line bg-white px-2 py-1.5 text-ib-slate transition hover:border-ib-mar/40 hover:bg-ib-bruma hover:text-ib-mar";
@@ -128,6 +143,10 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
   const [encaminhando, setEncaminhando] = useState<{ tipo: "transferir" | "crm"; conversa: ConversaNaLista } | null>(null);
   const [opcoes, setOpcoes] = useState<OpcoesDeEncaminhar | null>(null);
   const [escolha, setEscolha] = useState("");
+  // Só do "Enviar ao CRM". "" na etapa = a que corresponde à situação do caso; "" no
+  // responsável = não mexer em quem é o dono.
+  const [etapaEscolhida, setEtapaEscolhida] = useState("");
+  const [responsavelEscolhido, setResponsavelEscolhido] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroNoDialogo, setErroNoDialogo] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; crm: boolean } | null>(null);
@@ -141,12 +160,19 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
     setEncaminhando({ tipo, conversa });
     setOpcoes(null);
     setEscolha("");
+    setEtapaEscolhida("");
+    setResponsavelEscolhido("");
     setErroNoDialogo(null);
     try {
       const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, { cache: "no-store" });
       if (!res.ok) throw new Error();
       const d = (await res.json()) as OpcoesDeEncaminhar;
       setOpcoes(d);
+      // No CRM o responsável começa em quem já é o dono; sem dono, começa sem ninguém —
+      // dar dono a um caso novo o tira da etapa de "novo", e isso tem de ser escolha.
+      setResponsavelEscolhido(
+        d.lead?.responsavelId && d.pessoas.some((p) => p.id === d.lead?.responsavelId) ? d.lead.responsavelId : "",
+      );
       // O QUE JÁ VEM MARCADO. Transferir: o dono atual, senão quem está clicando. CRM: o
       // funil em que o contato já está, senão o comercial, senão o padrão.
       setEscolha(
@@ -173,15 +199,35 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
       const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(tipo === "transferir" ? { acao: tipo, usuarioId: escolha } : { acao: tipo, funilId: escolha }),
+        body: JSON.stringify(
+          tipo === "transferir"
+            ? { acao: tipo, usuarioId: escolha }
+            : {
+                acao: tipo,
+                funilId: escolha,
+                etapaId: etapaEscolhida || undefined,
+                responsavelId: responsavelEscolhido || undefined,
+              },
+        ),
       });
-      const d = (await res.json().catch(() => ({}))) as { mensagem?: string; error?: string };
+      const d = (await res.json().catch(() => ({}))) as {
+        mensagem?: string;
+        error?: string;
+        responsavelNome?: string | null;
+      };
       if (!res.ok) throw new Error(d.error ?? "Não foi possível concluir.");
       setAviso({ texto: d.mensagem ?? "Feito.", crm: tipo === "crm" });
       // Transferir muda o status da conversa na hora; a lista não espera os 20s do ciclo.
-      if (tipo === "transferir") {
+      // O mesmo vale para o CRM quando ele deu um responsável ao caso.
+      const para =
+        tipo === "transferir" ? opcoes?.pessoas.find((p) => p.id === escolha)?.nome : d.responsavelNome ?? undefined;
+      if (tipo === "transferir" || para) {
         setConversations((prev) =>
-          prev ? prev.map((x) => (x.id === conversa.id ? { ...x, status: "transferred" } : x)) : prev,
+          prev
+            ? prev.map((x) =>
+                x.id === conversa.id ? { ...x, status: "transferred", ...(para ? { comQuem: para } : {}) } : x,
+              )
+            : prev,
         );
       }
       setEncaminhando(null);
@@ -640,6 +686,15 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <StatusBadge kind="conversation" status={c.status} />
+                        {c.comQuem ? (
+                          <span
+                            className="max-w-[11rem] truncate text-xs font-medium text-ib-ink"
+                            title={`${c.status === "transferred" ? "Transferida para" : "Responsável:"} ${c.comQuem}`}
+                          >
+                            <span className="text-ib-slate">{c.status === "transferred" ? "para " : "com "}</span>
+                            {c.comQuem}
+                          </span>
+                        ) : null}
                         {c.status === "waiting" && c.lastMessageAt ? (
                           <span
                             className={`inline-flex items-center gap-1 text-[11px] tabular-nums ${
@@ -746,7 +801,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     <span className="font-semibold text-ib-ink">
                       {encaminhando.conversa.contactName ?? encaminhando.conversa.whatsappNumber}
                     </span>{" "}
-                    vira um lead no CRM (se ainda não for) e entra no funil escolhido.
+                    vira um lead no CRM (se ainda não for) e entra no funil e na etapa escolhidos.
                   </>
                 ) : (
                   <>
@@ -772,8 +827,12 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     </span>
                     <select
                       value={escolha}
-                      onChange={(e) => setEscolha(e.target.value)}
-                      className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"
+                      onChange={(e) => {
+                        setEscolha(e.target.value);
+                        // A etapa é do funil: trocou o funil, a escolhida deixa de existir.
+                        setEtapaEscolhida("");
+                      }}
+                      className={seletorDoDialogo}
                     >
                       {encaminhando.tipo === "crm"
                         ? opcoes.funis.map((f) => (
@@ -795,6 +854,58 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
               ) : erroNoDialogo ? null : (
                 <p>Carregando…</p>
               )}
+              {opcoes && encaminhando.tipo === "crm" && opcoes.funis.length > 0 ? (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-ib-slate">Etapa</span>
+                    <select
+                      value={etapaEscolhida}
+                      onChange={(e) => setEtapaEscolhida(e.target.value)}
+                      className={seletorDoDialogo}
+                    >
+                      <option value="">Automática (a da situação do caso)</option>
+                      {opcoes.etapas
+                        .filter((e) => e.funilId === escolha)
+                        .map((e) => {
+                          // Proposta, fechado e perdido pedem dados que só o quadro pergunta —
+                          // a não ser que o caso já esteja nessa situação.
+                          const travada = SO_PELO_QUADRO.has(e.status) && e.status !== (opcoes.lead?.status ?? "novo");
+                          return (
+                            <option key={e.id} value={e.id} disabled={travada}>
+                              {e.nome}
+                              {e.id === opcoes.lead?.etapaId ? " (já está aqui)" : travada ? " — pelo quadro do CRM" : ""}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-ib-slate">Responsável</span>
+                    <select
+                      value={responsavelEscolhido}
+                      onChange={(e) => setResponsavelEscolhido(e.target.value)}
+                      className={seletorDoDialogo}
+                    >
+                      {/* Caso que já tem dono não volta a ficar sem: daqui só se troca. */}
+                      {opcoes.lead?.responsavelId && opcoes.pessoas.some((p) => p.id === opcoes.lead?.responsavelId) ? null : (
+                        <option value="">Sem responsável por enquanto</option>
+                      )}
+                      {opcoes.pessoas.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nome}
+                          {p.eu ? " (eu)" : ""}
+                          {p.id === opcoes.lead?.responsavelId ? " — responsável atual" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {responsavelEscolhido && responsavelEscolhido !== (opcoes.lead?.responsavelId ?? "") ? (
+                      <span className="mt-1.5 block text-xs text-ib-slate">
+                        Com responsável, a agente para de responder nesta conversa.
+                      </span>
+                    ) : null}
+                  </label>
+                </>
+              ) : null}
               {erroNoDialogo ? (
                 <p role="alert" className="rounded-lg border border-ib-danger/20 bg-ib-danger/5 px-3 py-2 text-ib-danger">
                   {erroNoDialogo}

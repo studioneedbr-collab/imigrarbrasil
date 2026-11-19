@@ -32,11 +32,30 @@ export async function GET(req: Request) {
    * e `listLeads` é UMA consulta; a nota inteira exigiria as mensagens de cada linha.
    * Um banco sem leads (ou uma falha) devolve a lista como sempre foi, sem veredito.
    */
-  const leads = await repo.listLeads().catch(() => []);
+  const [leads, usuarios] = await Promise.all([
+    repo.listLeads().catch(() => []),
+    repo.listUsers().catch(() => []),
+  ]);
   const porConversa = new Map(leads.map((l) => [l.conversationId, l]));
+  const nomeDe = new Map(usuarios.map((u) => [u.id, u.name?.trim() || u.email]));
   const comVeredito = conversations.map((c) => {
-    const v = vereditoBloqueante(porConversa.get(c.id), c);
-    return v ? { ...c, verdict: v.verdict, verdictLabel: v.label, verdictReason: v.signals[0]?.text } : c;
+    const lead = porConversa.get(c.id);
+    const v = vereditoBloqueante(lead, c);
+    /*
+     * COM QUEM ESTÁ. "Transferida" sozinho não diz para quem, e a pergunta de quem olha a
+     * lista é essa. A resposta é o RESPONSÁVEL do caso — é ele que muda quando alguém
+     * troca o dono pela ficha ou pelo quadro, sem passar por esta tela. `handedOffTo` é
+     * só o que ficou escrito na última transferência (às vezes um setor, quando foi a
+     * agente que encaminhou), e vale quando o caso ainda não tem dono.
+     */
+    const comQuem =
+      (lead?.responsavelId ? nomeDe.get(lead.responsavelId) : null) ??
+      (c.status === "transferred" ? c.handedOffTo?.trim() || null : null);
+    return {
+      ...c,
+      ...(comQuem ? { comQuem } : {}),
+      ...(v ? { verdict: v.verdict, verdictLabel: v.label, verdictReason: v.signals[0]?.text } : {}),
+    };
   });
 
   return NextResponse.json({ conversations: comVeredito });
