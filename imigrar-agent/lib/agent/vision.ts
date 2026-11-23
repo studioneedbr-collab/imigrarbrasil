@@ -1,19 +1,33 @@
-import { env } from "@/lib/env";
 import type { MediaKind } from "@/lib/domain/types";
 import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
+import { chamarChat, llmsDisponiveis, type Llm } from "@/lib/agent/llm";
 
-// LEITURA DE DOCUMENTOS recebidos no WhatsApp (foto do ponto, contracheque, currículo).
+// LEITURA DE DOCUMENTOS recebidos no WhatsApp (foto de passaporte, protocolo, certidão).
 //
-// O provedor do agente é o DeepSeek. Os modelos da API dele (deepseek-chat /
-// deepseek-reasoner) são SÓ TEXTO: não enxergam imagem nem PDF. Por isso a leitura
-// fica DESLIGADA por padrão — é preciso apontar DEEPSEEK_VISION_MODEL para um modelo
-// de visão no endpoint compatível (a chamada segue o formato OpenAI, o mesmo de
-// lib/agent/conducao.ts, então basta a variável quando houver um modelo disponível).
+// QUEM LÊ É O MESMO MODELO QUE RESPONDE, quando ele enxerga. O ChatGPT (gpt-4.1, 4o, 5)
+// lê imagem e PDF; o DeepSeek da API é só texto e só lê se DEEPSEEK_VISION_MODEL apontar
+// um modelo de visão. A ordem é a do painel: o escolhido primeiro, a reserva depois. Antes
+// a leitura era presa ao DeepSeek e, sem a variável, ficava desligada — com o ChatGPT
+// escolhido, a agente respondia com um modelo que enxerga e continuava cega para a foto
+// do documento.
 //
-// Com a leitura desligada o anexo continua sendo GUARDADO, exibido no painel e
-// baixável; a Ana apenas não sabe o que está escrito e pergunta à pessoa.
+// Sem nenhum modelo que enxergue, o anexo continua GUARDADO, exibido no painel e
+// baixável; a agente apenas não sabe o que está escrito e pergunta à pessoa.
 
-const VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL ?? "";
+const DEEPSEEK_VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL ?? "";
+
+/** O modelo que vai ler, e com qual nome de modelo. `null` quando ninguém enxerga. */
+export function leitorDeDocumento(llms: Llm[]): Llm | null {
+  for (const llm of llms) {
+    if (!llm.configurado) continue;
+    if (llm.provedor === "openai") return llm;
+    if (llm.provedor === "deepseek" && DEEPSEEK_VISION_MODEL) return { ...llm, modelo: DEEPSEEK_VISION_MODEL };
+  }
+  return null;
+}
+
+/** Quanto a leitura pode levar: ela acontece antes da resposta, dentro do mesmo webhook. */
+const LIMITE_DA_LEITURA_MS = 20_000;
 
 // Extração curta e objetiva: a saída vai para uma conversa de WhatsApp, não é um laudo.
 const MAX_TOKENS = 1024;
@@ -70,6 +84,19 @@ export function mediaKindFor(mime: string, name: string): MediaKind {
   return "document";
 }
 
+/**
+ * O anexo no formato do chat/completions. Imagem vai como `image_url` (os dois
+ * provedores). PDF só na OpenAI, como `file` — o DeepSeek não tem entrada de arquivo.
+ */
+export function parteDoAnexo(leitor: Pick<Llm, "provedor">, mime: string, nome: string, buf: Buffer): Record<string, unknown> | null {
+  const base64 = buf.toString("base64");
+  if (IMAGE_MIMES.has(mime)) return { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } };
+  if (mime === "application/pdf" && leitor.provedor === "openai") {
+    return { type: "file", file: { filename: nome || "documento.pdf", file_data: `data:application/pdf;base64,${base64}` } };
+  }
+  return null;
+}
+
 interface ChatChoice {
   message?: { content?: string | null };
 }
@@ -85,7 +112,8 @@ export async function readDocument(input: {
   /** De qual atendimento veio. Sem isto o custo da leitura não entra no custo da conversa. */
   conversationId?: string | null;
 }): Promise<string | null> {
-  if (!VISION_MODEL || !env.deepseekKey) return null;
+  const leitor = leitorDeDocumento(await llmsDisponiveis());
+  if (!leitor) return null;
   // Só https: uma URL forjada (file:, host interno) não deve ser buscada pelo servidor.
   if (!/^https:\/\//i.test(input.url)) return null;
 
@@ -102,32 +130,21 @@ export async function readDocument(input: {
     }
 
     const mime = guessMime(res.headers.get("content-type"), input.name, input.url);
-    if (!IMAGE_MIMES.has(mime)) return null; // PDF, áudio e afins não passam por visão
+    const anexo = parteDoAnexo(leitor, mime, input.name, buf);
+    if (!anexo) return null; // áudio e afins têm o próprio caminho
 
-    const dataUrl = `data:${mime};base64,${buf.toString("base64")}`;
     const inicio = Date.now();
-    const resp = await fetch(`${env.deepseekBaseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.deepseekKey}` },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        max_tokens: MAX_TOKENS,
-        temperature: 0.2,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: dataUrl } },
-              { type: "text", text: PROMPT },
-            ],
-          },
-        ],
-      }),
+    const resp = await chamarChat(leitor, {
+      maxTokens: MAX_TOKENS,
+      temperature: 0.2,
+      timeoutMs: LIMITE_DA_LEITURA_MS,
+      messages: [{ role: "user", content: [anexo, { type: "text", text: PROMPT }] }],
     });
     if (!resp.ok) {
-      console.error("[vision] leitura falhou:", resp.status, await resp.text().catch(() => ""));
+      // Sem o corpo no log: ele pode ecoar trecho do documento (LGPD).
+      console.error("[vision] leitura falhou:", resp.status);
       await registrarChamada({
-        provedor: "deepseek", modelo: VISION_MODEL, tipo: "extracao",
+        provedor: leitor.provedor, modelo: leitor.modelo, tipo: "extracao",
         conversationId: input.conversationId, duracaoMs: Date.now() - inicio,
         ok: false, erro: `HTTP ${resp.status}`,
       });
@@ -139,7 +156,7 @@ export async function readDocument(input: {
     // sistema, e a que menos parece cara — some numa linha do atendimento como qualquer
     // outra. Medida à parte (tipo `extracao`), ela aparece na quebra por tipo de chamada.
     await registrarChamada({
-      provedor: "deepseek", modelo: VISION_MODEL, tipo: "extracao",
+      provedor: leitor.provedor, modelo: leitor.modelo, tipo: "extracao",
       conversationId: input.conversationId, tokensEntrada: entrada, tokensSaida: saida,
       duracaoMs: Date.now() - inicio, ok: true,
     });

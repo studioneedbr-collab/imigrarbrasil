@@ -99,7 +99,7 @@ seguro e correto — não é o produto. É o passo 2 do runbook que muda isso.
 
 ### O que muda quando não há chave de LLM
 
-**Sem `DEEPSEEK_API_KEY` o app cai no caminho determinístico** (`lib/agent/fallback.ts`).
+**Sem chave de LLM (`OPENAI_API_KEY` ou `DEEPSEEK_API_KEY`) o app cai no caminho determinístico** (`lib/agent/fallback.ts`).
 Ele não é um menu: acolhe em PT/ES, aplica os guardrails (honorários nunca), encaminha ao
 time jurídico assim que aparece caso concreto e **não afirma nada sobre procedimento** —
 ali não há material oficial na mão, então qualquer frase de requisito ou prazo seria

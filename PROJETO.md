@@ -261,7 +261,7 @@ se a pessoa religa agora ou vai procurar quem desligou.
 WhatsApp da pessoa → Z-API → POST /api/webhook/whatsapp
   → grava a mensagem (SEMPRE, antes de qualquer decisão)
   → decidirAtendimento (os três níveis de ativação — ver §8)
-  → respondToConversation → runAgent (DeepSeek conduz, chamando as tools)
+  → respondToConversation → runAgent (o modelo escolhido em Integrações conduz, chamando as tools)
   → resposta pela Z-API, pela MESMA instância por onde a mensagem entrou
 ```
 
@@ -974,6 +974,10 @@ rag:      true    a OPENAI_API_KEY entrou — os 1.723 trechos saíram da pratel
 audio:    true    idem, pela mesma chave
 zapi:     true    ← o WhatsApp está no ar (leia a seção seguinte antes de comemorar)
 ```
+
+**Em novembro/2026 o ChatGPT passou a responder.** A escolha do modelo é feita em
+Integrações (`lib/agent/llm.ts`); o outro fica de reserva. O treino é o mesmo para os dois,
+e a leitura de documento segue o escolhido quando ele enxerga imagem (`lib/agent/vision.ts`).
 
 A decisão de 27/08 ("só DeepSeek, sem OpenAI") foi revista na prática: a chave entrou, e
 com ela o RAG e a transcrição. O parágrafo abaixo, escrito quando `rag` era `false`,

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getRepository } from "@/lib/data";
-import { env } from "@/lib/env";
 import { llmEmUso } from "@/lib/agent/llm";
 import { atividadeDaConversa, inicioDoDiaEmBrasilia } from "@/lib/dashboard/periodo";
 
@@ -33,7 +32,7 @@ export async function GET() {
 
   return NextResponse.json({
     // O modelo que está respondendo AGORA — o escolhido no painel, ou a reserva dele.
-    model: llm?.modelo ?? env.deepseekModel,
+    model: llm?.modelo ?? null,
     mode: llm ? "real" : "simulação",
     conversations: conversations.length,
     conversationsToday,

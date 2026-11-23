@@ -71,14 +71,11 @@ export function rotuloDoUso(t: TipoChamadaLlm): string {
  * aconteceu. Comparar as duas listas é o que revela roteamento parado.
  */
 function usosEsperados(chave: ProvedorNoPainel["chave"], ativo: ProvedorLlm): TipoChamadaLlm[] {
-  if (chave === "deepseek") {
-    const usos: TipoChamadaLlm[] = ativo === "deepseek" ? ["redacao"] : [];
-    // A leitura de documento só acontece com um modelo de visão apontado; sem ele o
-    // anexo é guardado e a Ana pergunta à pessoa o que está escrito.
-    if (process.env.DEEPSEEK_VISION_MODEL) usos.push("extracao");
-    return usos;
-  }
-  if (chave === "openai-chat") return ativo === "openai" ? ["redacao"] : [];
+  // O escolhido escreve as respostas e lê a ficha da abertura (extração). A leitura de
+  // documento também é dele quando ele enxerga — o ChatGPT sempre, o DeepSeek só com
+  // DEEPSEEK_VISION_MODEL (ver lib/agent/vision.ts).
+  if (chave === "deepseek") return ativo === "deepseek" ? ["redacao", "extracao"] : [];
+  if (chave === "openai-chat") return ativo === "openai" ? ["redacao", "extracao"] : [];
   if (chave === "openai-transcricao") return ["transcricao"];
   return ["embedding"];
 }

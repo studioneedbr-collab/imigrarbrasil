@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Guilloche } from "@/components/guilloche";
 
 export type AgentStatusData = {
-  model: string;
+  model: string | null;
   mode: "real" | "simulação";
   conversations: number;
   conversationsToday: number;

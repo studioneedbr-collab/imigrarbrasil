@@ -7,7 +7,7 @@ análise — nessa ordem, e nunca fora dela.
 
 - **Stack:** Next.js 14 (App Router, TS, Tailwind) · Supabase (Postgres) · Vitest
 - **Painel:** uma **fila de prazos** — ver [O painel](#o-painel-uma-fila-de-prazos-não-um-funil)
-- **LLM:** DeepSeek (`deepseek-chat`, OpenAI-compatible) · **WhatsApp:** Z-API · **E-mail:** Brevo
+- **LLM:** ChatGPT (OpenAI) ou DeepSeek — a escolha é feita em Integrações, e o outro fica de reserva (`lib/agent/llm.ts`) · **WhatsApp:** Z-API · **E-mail:** Brevo
 
 Identidade visual, paleta e a faixa MRZ: [IDENTIDADE.md](IDENTIDADE.md). Como colocar no
 ar: [docs/COLOCAR-NO-AR.md](docs/COLOCAR-NO-AR.md).
@@ -17,7 +17,7 @@ ar: [docs/COLOCAR-NO-AR.md](docs/COLOCAR-NO-AR.md).
 ## Como funciona
 
 **Fluxo:** WhatsApp da pessoa → Z-API → `POST /api/webhook/whatsapp` →
-`respondToConversation` → `runAgent` (DeepSeek conduz, chamando as tools) → resposta pela
+`respondToConversation` → `runAgent` (o modelo escolhido conduz, chamando as tools) → resposta pela
 Z-API.
 
 **Tools da Ana** (`lib/agent/tools.ts`): `registrar_dados_lead`,
@@ -26,7 +26,7 @@ Z-API.
 **Cérebro** (`lib/agent/knowledge.ts`): o bloco `AGENT_REASONING` — ela **pensa como quem
 faz primeiro atendimento numa assessoria jurídica** (em que idioma escreveram / isso é
 informação geral ou é o caso dela / eu tenho isso na mão / o que já me contaram / qual o
-próximo passo útil), **não segue script**. `deepseek.ts` injeta duas REGRAS ABSOLUTAS no
+próximo passo útil), **não segue script**. `conducao.ts` injeta duas REGRAS ABSOLUTAS no
 topo do prompt: responder no idioma da pessoa e nunca vazar raciocínio interno.
 
 **De onde vem o que ela diz** (`lib/agent/rag.ts`): a cada turno o sistema recupera

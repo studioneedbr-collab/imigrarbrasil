@@ -122,8 +122,9 @@ describe("a escolha de quem responde (DeepSeek ou ChatGPT)", () => {
 
     const { lerProvedores } = await import("@/lib/integracoes/provedores");
     const provedores = await lerProvedores();
-    expect(provedores.find((p) => p.chave === "openai-chat")?.usosEsperados).toEqual(["redacao"]);
+    expect(provedores.find((p) => p.chave === "openai-chat")?.usosEsperados).toEqual(["redacao", "extracao"]);
     expect(provedores.find((p) => p.chave === "deepseek")?.papel).toBe("reserva");
+    expect(provedores.find((p) => p.chave === "deepseek")?.usosEsperados).toEqual([]);
     // A chave colada no painel também não sai — nem em pedaço.
     expect(JSON.stringify(provedores)).not.toContain("9999");
   });
