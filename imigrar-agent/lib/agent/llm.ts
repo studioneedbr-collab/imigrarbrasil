@@ -176,6 +176,14 @@ export function corpoDoChat(
 }
 
 /** A chamada HTTP, igual para os dois. Quem chama decide o que fazer com a resposta. */
+/**
+ * Quanto uma chamada pode demorar. Sem teto, um provedor travado segurava o webhook até a
+ * Vercel matar a função — e aí nada era enviado, nem a resposta nem o aviso, com as
+ * tools já executadas. Estourado, a chamada falha e o runner tenta a reserva ou o
+ * atendimento determinístico, que ainda cabem no tempo.
+ */
+export const LIMITE_DA_CHAMADA_MS = 30_000;
+
 export function chamarChat(
   llm: Llm,
   p: { messages: unknown[]; maxTokens: number; temperature: number; tools?: unknown[] },
@@ -185,5 +193,6 @@ export function chamarChat(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${llm.key}` },
     body: JSON.stringify(corpoDoChat(llm, p)),
     cache: "no-store",
+    signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
   });
 }

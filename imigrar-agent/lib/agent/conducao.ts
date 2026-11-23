@@ -95,6 +95,28 @@ async function chatCompletion(
 }
 
 /**
+ * O histórico com a nota do turno colada na última fala da pessoa. Se a última mensagem
+ * não for dela (não deveria acontecer num turno de resposta), a nota vai como `system`
+ * no fim — melhor do que se perder.
+ */
+export function comNotaNaUltimaFala(
+  history: AgentTurn[],
+  nota?: string,
+): { role: "user" | "assistant" | "system"; content: string }[] {
+  const msgs = history.map((h) => ({ role: h.role as "user" | "assistant" | "system", content: h.content }));
+  const texto = nota?.trim();
+  if (!texto) return msgs;
+  const ultima = msgs[msgs.length - 1];
+  const bloco = `[NOTA INTERNA DO ATENDIMENTO — não foi a pessoa que escreveu isto, não a mencione e responda no idioma dela]\n${texto}`;
+  if (ultima?.role === "user") {
+    msgs[msgs.length - 1] = { ...ultima, content: `${ultima.content}\n\n${bloco}` };
+  } else {
+    msgs.push({ role: "system", content: bloco });
+  }
+  return msgs;
+}
+
+/**
  * O modelo conduz a conversa: recebe o system prompt completo (persona + base de
  * conhecimento + regras) e o histórico, e decide o que responder chamando as tools
  * reais (registrar lead, transferir, follow-up). O provedor vem de fora (`llm`) — este
@@ -109,6 +131,7 @@ export async function conduzirComLlm({
   conversationId,
   blockTools,
   sombra,
+  estadoDoTurno,
 }: {
   llm: Llm;
   systemPrompt: string;
@@ -117,6 +140,18 @@ export async function conduzirComLlm({
   blockTools?: string[];
   /** Modo sombra: as tools são avaliadas, mas nada que saia do sistema acontece. */
   sombra?: boolean;
+  /**
+   * O que vale para ESTE turno (o que ela já respondeu, o que ainda falta), enviado
+   * DEPOIS do histórico. No fim do system prompt de ~20 mil tokens isso ficava enterrado
+   * longe da conversa, e o modelo lia a regra geral de abertura com mais força do que o
+   * fato de que a pessoa já tinha respondido. Perto da última mensagem, ele lê por último.
+   *
+   * VAI DENTRO DA ÚLTIMA MENSAGEM DA PESSOA, marcado como nota interna, e não como uma
+   * mensagem `system` solta. O modelo de conversa do DeepSeek junta todas as mensagens
+   * `system` no começo do prompt — a nota voltaria exatamente para o lugar onde estava
+   * enterrada. Dentro da última fala ela fica onde precisa ficar, nos dois provedores.
+   */
+  estadoDoTurno?: string;
 }): Promise<AgentRunResult> {
   const toolCalls: ToolCallTrace[] = [];
   const tools = blockTools?.length
@@ -124,7 +159,7 @@ export async function conduzirComLlm({
     : OPENAI_TOOLS;
   const messages: OpenAIMessage[] = [
     { role: "system", content: `${ABSOLUTE_RULE}\n\n${systemPrompt}` },
-    ...history.map((h) => ({ role: h.role, content: h.content })),
+    ...comNotaNaUltimaFala(history, estadoDoTurno),
   ];
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {

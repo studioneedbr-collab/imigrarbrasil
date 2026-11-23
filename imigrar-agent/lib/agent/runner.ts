@@ -41,6 +41,8 @@ export async function runAgent(params: {
    * `respondToConversation` e parava lá — as tools rodavam para valer.
    */
   sombra?: boolean;
+  /** Ver `conduzirComLlm`: vai depois do histórico. O motor determinístico não o usa. */
+  estadoDoTurno?: string;
 }): Promise<AgentRunResult> {
   // Imports dinâmicos evitam ciclo (conducao.ts importa tipos daqui).
   const { llmsDisponiveis } = await import("@/lib/agent/llm");

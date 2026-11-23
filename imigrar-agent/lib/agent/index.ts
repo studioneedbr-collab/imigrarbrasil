@@ -15,7 +15,19 @@ import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
 import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
 import { llmEmUso } from "@/lib/agent/llm";
+import { faltaAbertura, lerAberturaComLlm, patchDaLeitura } from "@/lib/agent/leitura-da-ficha";
+import { instrucaoDeReescrita, perguntasRepetidas, semAsPerguntasRepetidas } from "@/lib/agent/pergunta-repetida";
+import { AGENT_TOOLS } from "@/lib/agent/tools";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
+
+/**
+ * Até quando ainda vale reescrever uma resposta com o modelo. O webhook tem 60 s para
+ * tudo — espera do lote, leitura da ficha, resposta, envio —, e uma reescrita é outra
+ * chamada inteira. Passado isto, a pergunta repetida é só retirada.
+ */
+const ORCAMENTO_PARA_REESCREVER_MS = 25_000;
+/** Em quantas mensagens da pessoa a abertura ainda é lida pelo modelo. */
+const LEITURAS_DA_ABERTURA = 8;
 
 export interface ProcessResult {
   /**
@@ -49,6 +61,39 @@ const PRAZO_LABEL: Record<string, string> = {
   medium: "médio prazo",
   long: "longo prazo",
 };
+
+/**
+ * O ESTADO DESTE TURNO, CURTO, PARA IR DEPOIS DO HISTÓRICO.
+ *
+ * As mesmas regras já estão no system prompt — mas lá elas são três linhas no meio de
+ * ~20 mil tokens, e a regra geral ("ORDEM OBRIGATÓRIA DE ABERTURA: pergunte nome,
+ * nacionalidade, onde está") pesava mais do que o fato de que ela já tinha respondido.
+ * Aqui é a última coisa que o modelo lê antes de escrever.
+ */
+export function montarEstadoDoTurno(lead: Lead | null, emRajada: number): string {
+  const onde =
+    lead?.region ??
+    (lead?.localizacao === "brasil" ? "no Brasil" : lead?.localizacao === "exterior" ? `no exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}` : null);
+  const sabido = [
+    lead?.contactName && `nome: ${lead.contactName}`,
+    (lead?.nacionalidade ?? lead?.clientType) && `nacionalidade: ${lead?.nacionalidade ?? lead?.clientType}`,
+    onde && `onde está agora: ${onde}`,
+  ].filter(Boolean);
+  return [
+    "ESTADO DESTA CONVERSA — leia antes de responder.",
+    sabido.length ? `Ela JÁ respondeu — ${sabido.join(" · ")}.` : "",
+    "Não pergunte de novo, nem peça confirmação, de nada que ela já disse nesta conversa, esteja ou não na linha acima. Releia as mensagens dela antes de perguntar qualquer coisa.",
+    emRajada > 1
+      ? `As últimas ${emRajada} mensagens dela são UMA fala só: responda ao conjunto, numa mensagem só.`
+      : "",
+    "Faça no máximo UMA pergunta, e só sobre o que ainda não foi respondido.",
+    // As respostas de 900 caracteres que o time viu: num texto de 20 mil tokens, "seja
+    // breve" perde para os exemplos longos. Aqui é a última coisa lida.
+    "Escreva curto, como uma pessoa no WhatsApp: no máximo 3 ou 4 frases, sem listas.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 /**
  * Tudo que já se sabe do contato, destacado no system prompt para a Ana confirmar em vez
@@ -210,9 +255,16 @@ export async function respondToConversation(
      * "você está no Brasil ou em Portugal?").
      */
     aindaVale?: () => Promise<boolean>;
+    /**
+     * ENSAIO QUE CONVERSA: a resposta é gravada (o próximo turno precisa dela), mas as
+     * tools rodam em sombra — encaminhar não avisa o time, follow-up não é agendado. É o
+     * que a bateria de testes usa; o simulador antigo rodava as tools de verdade.
+     */
+    ferramentasEmSombra?: boolean;
   } = {},
 ): Promise<ProcessResult> {
   const repo = getRepository();
+  const inicioDoTurno = Date.now();
 
   // LEAD ENVIOU MENSAGEM: reabre se estava inativa (retomando do histórico, nunca do zero),
   // reativa se estava aguardando, e marca a atividade. Envolto em try/catch para que uma
@@ -292,6 +344,26 @@ export async function respondToConversation(
     if (patch) knownLead = await repo.upsertLead(conversationId, patch);
   } catch (err) {
     console.error("[agent] captura automática do lead falhou:", err instanceof Error ? err.message : err);
+  }
+
+  // A REGRA NÃO RECONHECEU? O MODELO LÊ. A lista de gentílicos e lugares deixa de fora
+  // "Estou na Suíça", "Brasileiro" respondido seco, "moro em Madrid" — e campo vazio aqui
+  // vira "falta descobrir a nacionalidade" no prompt, que faz o modelo perguntar de novo
+  // o que a pessoa acabou de dizer. Só roda enquanto a abertura está incompleta, e em
+  // sombra também: o rascunho precisa ser avaliado com a mesma ficha.
+  // Com teto de turnos: quem nunca diz o nome (ou só manda "oi") não paga uma leitura a
+  // mais em toda mensagem, para sempre.
+  if (faltaAbertura(knownLead) && userTurns <= LEITURAS_DA_ABERTURA) {
+    try {
+      const leitura = await lerAberturaComLlm(
+        rawMsgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        conversationId,
+      );
+      const patch = leitura ? patchDaLeitura(leitura, knownLead) : null;
+      if (patch) knownLead = await repo.upsertLead(conversationId, patch);
+    } catch (err) {
+      console.error("[agent] leitura da abertura pelo modelo falhou:", err instanceof Error ? err.message : err);
+    }
   }
 
   // Injeta o que já se sabe deste contato — a Ana confirma em vez de reperguntar.
@@ -402,7 +474,7 @@ export async function respondToConversation(
   if (ehAtendimentoMigratorio && userTurns >= 1) {
     systemPrompt += faltaNaTriagem.completo
       ? `\n\n════════ QUALIFICAÇÃO COMPLETA ════════\nVocê já sabe o que o time jurídico precisa para pegar este caso. Não pergunte mais nada de cadastro: ou você informa algo útil com o material oficial que tiver, ou encaminha (avisando e confirmando antes).`
-      : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\n${
+      : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\nESTA LISTA É UMA LEITURA AUTOMÁTICA E PODE ESTAR ATRASADA. Antes de perguntar qualquer item dela, releia a conversa: se ela já respondeu — mesmo com outras palavras, em outro idioma ou numa mensagem seca —, está respondido. Não pergunte de novo e não peça confirmação.\n${
           abrirPeloNome
             ? "O NOME VEM PRIMEIRO, e é a PRÓXIMA pergunta que você faz — nunca a última. Pergunte agora, sozinho, antes de entrar no ramo da situação dela, com uma frase sua (\"antes de mais nada, como você se chama?\"). Perguntar o nome lá no fim, na hora de passar o caso, é o erro que este bloco existe para impedir. EXCEÇÃO: se ela acabou de descrever risco, prazo correndo ou pedir um advogado, acolha e encaminhe primeiro — o nome vem depois, e a ficha vai como estiver.\n"
             : ""
@@ -421,15 +493,17 @@ export async function respondToConversation(
   const mensagensDoCliente = rawMsgs.filter((m) => m.role === "user").map((m) => m.content);
   systemPrompt += await blocoMaterialPara(consultaDoTurno(mensagensDoCliente));
 
+  const estadoDoTurno = montarEstadoDoTurno(knownLead, emRajada);
   const { reply: rawReply, toolCalls, source } = await runAgent({
     systemPrompt,
+    estadoDoTurno,
     history,
     conversationId,
     blockTools,
     // O flag desce até `executeTool`. Sem isto ele parava aqui: a resposta não era gravada,
     // mas as tools rodavam para valer e o "ensaio" mandava WhatsApp para o advogado e
     // agendava follow-up para a pessoa.
-    sombra: opts.sombra,
+    sombra: opts.sombra || opts.ferramentasEmSombra,
   });
 
   // Botões de resposta rápida (enviar_opcoes): a pergunta da tool vira uma mensagem
@@ -500,7 +574,7 @@ export async function respondToConversation(
         setor: impasse.setor,
         priority: impasse.priority,
       },
-      { sombra: opts.sombra },
+      { sombra: opts.sombra || opts.ferramentasEmSombra },
     ).catch((err) => console.error("[anti-loop] transferir:", err instanceof Error ? err.message : err));
     toolCalls.push({ name: "transferir_para_humano", input: { setor: impasse.setor, reason: impasse.motivo }, result: { ok: true, antiLoop: true } });
     reply = impasse.msg;
@@ -525,6 +599,51 @@ export async function respondToConversation(
     (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok !== false,
   );
 
+  // PERGUNTOU DE NOVO O QUE ELA JÁ DISSE? Corrige antes de sair, em dois níveis.
+  //
+  // REESCREVER com o modelo só quando a primeira passada foi uma conversa simples: sem
+  // encaminhamento, sem mensagem fixa do anti-loop e sem tool que trouxe informação
+  // (material oficial). A reescrita vai sem tools e sem o resultado delas — se a primeira
+  // passada encaminhou o caso, a segunda não sabe disso e escreveria uma resposta sem o
+  // aviso, com o advogado já chamado e a pessoa sem saber. E só com tempo de sobra: é uma
+  // segunda chamada com o prompt inteiro, e o webhook tem 60 segundos para tudo.
+  //
+  // Fora desses casos, ou se a reescrita falhar, a frase da pergunta repetida é RETIRADA
+  // da resposta. Uma resposta sem a pergunta é melhor do que perguntar de novo.
+  const repetidas = source !== "fallback" && !buttons && !impasse ? perguntasRepetidas(reply, knownLead) : [];
+  const turnoSimples =
+    !transferred && toolCalls.every((t) => t.name === "registrar_dados_lead");
+  const temTempo = Date.now() - inicioDoTurno < ORCAMENTO_PARA_REESCREVER_MS;
+  if (repetidas.length && knownLead) {
+    const original = reply;
+    try {
+      if (!turnoSimples || !temTempo) throw new Error("sem reescrita neste turno");
+      const segunda = await runAgent({
+        systemPrompt,
+        estadoDoTurno: `${estadoDoTurno}\n\n${instrucaoDeReescrita(repetidas, knownLead)}`,
+        history,
+        conversationId,
+        blockTools: AGENT_TOOLS.map((t) => t.name),
+        sombra: true,
+      });
+      const corrigida = segunda.source !== "fallback" ? segunda.reply.trim() : "";
+      // "Desculpe, pode repetir?" é o que a condução devolve quando o modelo responde vazio.
+      const presta = corrigida.length >= 20 && corrigida !== "Desculpe, pode repetir?";
+      if (presta && !perguntasRepetidas(corrigida, knownLead).length) reply = corrigida;
+    } catch {
+      // Sem reescrita: cai no corte abaixo.
+    }
+    if (reply === original) reply = semAsPerguntasRepetidas(original, knownLead);
+    console.warn(`[pergunta-repetida] corrigi a resposta (${repetidas.join(", ")}) — conversa ${conversationId}`);
+    await repo
+      .registrarEventoOperacao({
+        tipo: "pergunta_repetida",
+        conversationId,
+        detalhe: `pergunta repetida (${repetidas.join(", ")}) — ${reply === original ? "não deu para corrigir" : turnoSimples && temTempo ? "reescrita" : "pergunta retirada"}`,
+      })
+      .catch(() => {});
+  }
+
   // ─── O VERIFICADOR DE SAÍDA ───
   //
   // A última leitura antes de a mensagem sair. Corta três coisas que o prompt proíbe e o
@@ -532,6 +651,7 @@ export async function respondToConversation(
   // pessoa ("sua entrada ficou regular"), o anúncio de um encaminhamento que não houve, e
   // a promessa de enviar documento ("vou te mandar o orçamento") — que o agente não
   // produz. Ver lib/agent/verificador-de-saida.ts.
+
   const revisao = revisarTurno(reply, {
     idioma: idiomaDetectado ?? convBefore?.idioma,
     encaminhou: transferred,

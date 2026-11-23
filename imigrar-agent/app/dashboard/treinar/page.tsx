@@ -27,6 +27,7 @@ import {
   type WorkSchedule,
 } from "@/lib/agent/training";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { BateriaDeTestes } from "@/components/treinar/bateria";
 
 /* ================================================================== */
 /* Tipos                                                              */
@@ -2173,6 +2174,8 @@ function TabTestar({
     : ({} as Record<string, boolean>);
 
   return (
+    <div className="space-y-6">
+    <BateriaDeTestes />
     <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
       {/* Esquerda — configurações ativas */}
       <div className="space-y-4">
@@ -2372,6 +2375,7 @@ function TabTestar({
           </button>
         </form>
       </Card>
+    </div>
     </div>
   );
 }

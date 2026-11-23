@@ -581,7 +581,10 @@ export type TipoEventoOperacao =
   | "parecer_barrado"
   // A resposta foi gerada e gravada, e a Z-API recusou o envio. No painel a conversa
   // parece respondida; no WhatsApp do cliente, não chegou nada.
-  | "envio_falhou";
+  | "envio_falhou"
+  // A resposta perguntava de novo algo que a ficha já tinha (nome, nacionalidade, onde
+  // está) e foi reescrita antes de sair. Contado para saber se o prompt está melhorando.
+  | "pergunta_repetida";
 
 /** A mesma lista, como valor — é ela que o teste compara com o check do banco. */
 export const TIPOS_EVENTO_OPERACAO: TipoEventoOperacao[] = [
@@ -590,6 +593,7 @@ export const TIPOS_EVENTO_OPERACAO: TipoEventoOperacao[] = [
   "documento_falhou",
   "parecer_barrado",
   "envio_falhou",
+  "pergunta_repetida",
 ];
 
 export interface EventoOperacao {

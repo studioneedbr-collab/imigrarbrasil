@@ -13,6 +13,21 @@
 
 import type { Lead } from "@/lib/domain/types";
 
+export type CampoDaAbertura = "nome" | "nacionalidade" | "onde";
+
+/**
+ * Um campo da abertura está conhecido? UMA definição para todos os leitores: a lista do
+ * que falta (que vai ao prompt), a rede contra pergunta repetida e a leitura da ficha.
+ * Quando cada um olhava colunas diferentes, o prompt dizia "falta descobrir onde ela
+ * está" e a rede chamava de repetida a pergunta que o próprio prompt mandou fazer.
+ */
+export function campoDaAberturaConhecido(lead: Lead | null, campo: CampoDaAbertura): boolean {
+  if (!lead) return false;
+  if (campo === "nome") return !!lead.contactName?.trim();
+  if (campo === "nacionalidade") return !!(lead.clientType?.trim() || lead.nacionalidade?.trim());
+  return !!(lead.region?.trim() || lead.localizacao);
+}
+
 export interface DossieFaltando {
   /** Rótulos legíveis do que ainda falta, na ordem em que vale a pena descobrir. */
   faltam: string[];
@@ -54,8 +69,8 @@ export function qualificacaoFaltando(lead: Lead | null): DossieFaltando {
   // não divergirem — o rótulo ("o nome dela") mandado ao cliente já aconteceu.
   const pendencias = [
     !lead?.contactName && { falta: "o nome dela", pergunta: "qual é o seu nome" },
-    !lead?.clientType && { falta: "a nacionalidade", pergunta: "qual é a sua nacionalidade" },
-    !lead?.region && {
+    !campoDaAberturaConhecido(lead, "nacionalidade") && { falta: "a nacionalidade", pergunta: "qual é a sua nacionalidade" },
+    !campoDaAberturaConhecido(lead, "onde") && {
       falta: "onde a pessoa está agora (no Brasil ou no exterior)",
       pergunta: "você está no Brasil ou no exterior neste momento",
     },
