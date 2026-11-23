@@ -1,6 +1,7 @@
 import type { MediaKind } from "@/lib/domain/types";
 import { registrarChamada, tokensDe, type UsoDeTokens } from "@/lib/custos/registro";
-import { chamarChat, llmsDisponiveis, type Llm } from "@/lib/agent/llm";
+import { chamarChat, todosOsLlms, type Llm } from "@/lib/agent/llm";
+import { emTeste } from "@/lib/env";
 
 // LEITURA DE DOCUMENTOS recebidos no WhatsApp (foto de passaporte, protocolo, certidão).
 //
@@ -16,18 +17,25 @@ import { chamarChat, llmsDisponiveis, type Llm } from "@/lib/agent/llm";
 
 const DEEPSEEK_VISION_MODEL = process.env.DEEPSEEK_VISION_MODEL ?? "";
 
-/** O modelo que vai ler, e com qual nome de modelo. `null` quando ninguém enxerga. */
+/**
+ * O modelo que vai ler — SÓ O ESCOLHIDO, e só se ele enxerga. `null` quando não.
+ *
+ * A reserva não lê documento, de propósito. A chave da OpenAI existe para a transcrição
+ * de áudio; usá-la como "reserva que enxerga" com o DeepSeek escolhido mandaria toda foto
+ * de passaporte para a OpenAI sem ninguém ter decidido isso. Quem escolhe o ChatGPT em
+ * Integrações escolhe também quem lê os documentos.
+ */
 export function leitorDeDocumento(llms: Llm[]): Llm | null {
-  for (const llm of llms) {
-    if (!llm.configurado) continue;
-    if (llm.provedor === "openai") return llm;
-    if (llm.provedor === "deepseek" && DEEPSEEK_VISION_MODEL) return { ...llm, modelo: DEEPSEEK_VISION_MODEL };
-  }
+  const escolhido = llms[0];
+  if (!escolhido?.configurado) return null;
+  if (escolhido.provedor === "openai") return escolhido;
+  if (escolhido.provedor === "deepseek" && DEEPSEEK_VISION_MODEL) return { ...escolhido, modelo: DEEPSEEK_VISION_MODEL };
   return null;
 }
 
 /** Quanto a leitura pode levar: ela acontece antes da resposta, dentro do mesmo webhook. */
-const LIMITE_DA_LEITURA_MS = 20_000;
+const LIMITE_DA_LEITURA_MS = 15_000;
+const LIMITE_DO_DOWNLOAD_MS = 8_000;
 
 // Extração curta e objetiva: a saída vai para uma conversa de WhatsApp, não é um laudo.
 const MAX_TOKENS = 1024;
@@ -112,15 +120,26 @@ export async function readDocument(input: {
   /** De qual atendimento veio. Sem isto o custo da leitura não entra no custo da conversa. */
   conversationId?: string | null;
 }): Promise<string | null> {
-  const leitor = leitorDeDocumento(await llmsDisponiveis());
+  // A lista INTEIRA, o escolhido primeiro mesmo sem chave — `llmsDisponiveis` tira quem
+  // não tem credencial, e aí a reserva subia para o primeiro lugar e lia os documentos.
+  // Dentro de teste, ninguém: é a mesma proteção de llmsDisponiveis.
+  const leitor = emTeste ? null : leitorDeDocumento((await todosOsLlms()).llms);
   if (!leitor) return null;
   // Só https: uma URL forjada (file:, host interno) não deve ser buscada pelo servidor.
   if (!/^https:\/\//i.test(input.url)) return null;
 
   try {
-    const res = await fetch(input.url);
+    // Com teto de tempo e de tamanho ANTES de baixar: a URL vem do webhook, e um arquivo
+    // enorme ou um servidor lento seguravam a função até a Vercel matá-la — e aí nem a
+    // mensagem da pessoa era gravada.
+    const res = await fetch(input.url, { signal: AbortSignal.timeout(LIMITE_DO_DOWNLOAD_MS) });
     if (!res.ok) {
       console.error("[vision] download falhou:", res.status);
+      return null;
+    }
+    const declarado = Number(res.headers.get("content-length") ?? 0);
+    if (declarado > MAX_BYTES) {
+      console.error("[vision] arquivo grande demais:", declarado);
       return null;
     }
     const buf = Buffer.from(await res.arrayBuffer());

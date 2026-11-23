@@ -5,6 +5,9 @@ import { podeExportar } from "@/lib/auth/papeis";
 import { carregarFila } from "@/lib/fila/carregar";
 import { rotuloPrazo } from "@/lib/fila/ordenacao";
 import type { LeadDaFila } from "@/lib/fila/ordenacao";
+// A célula escapa aspas E fórmula: o nome vem do perfil de WhatsApp de quem escreveu, e
+// "=HYPERLINK(...)" num nome era executado no Excel de quem abrisse a planilha.
+import { celulaCsv } from "@/lib/site/formularios";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +31,8 @@ const CABECALHO = [
   "prazo_data_limite", "dias_restantes", "atendimento", "responsavel",
 ];
 
-function csvEscape(v: unknown): string {
-  const s = v === null || v === undefined ? "" : String(v);
-  return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function linha(l: LeadDaFila): string {
+/** Os valores crus da linha, na ordem do CABECALHO. Escapados só no fim. */
+function valores(l: LeadDaFila): unknown[] {
   return [
     l.id, l.createdAt, l.contactName ?? "", l.whatsappNumber, l.idioma ?? "",
     l.nacionalidade ?? "", l.localizacao ?? "", l.classificacao ?? "",
@@ -41,7 +40,7 @@ function linha(l: LeadDaFila): string {
     l.temPrazoCorrendo ? "sim" : "não",
     l.prazoTipo ?? "", l.prazoDataLimite ?? "", "", l.atendimentoStatus ?? "",
     l.responsavelNome ?? "",
-  ].map(csvEscape).join(";");
+  ];
 }
 
 export async function GET(req: NextRequest) {
@@ -86,15 +85,22 @@ export async function GET(req: NextRequest) {
   );
 
   // Os dias restantes entram calculados, para a planilha não repetir a conta e errar.
+  // A coluna é trocada ANTES de escapar. Antes a linha era montada, cortada de volta por
+  // ";" e remontada — e um ";" dentro de um nome (entre aspas) deslocava todas as colunas
+  // seguintes daquela linha.
+  //
+  // E a coluna certa: o cálculo era gravado na posição 13 ("tem_prazo_correndo") e a de
+  // "dias_restantes" saía sempre vazia.
+  const colunaDoPrazo = CABECALHO.indexOf("dias_restantes");
   const corpo = linhas.map((l) => {
-    const base = linha(l).split(";");
+    const base = valores(l);
     if (l.prazoDataLimite) {
       const item = fila.correndo.find((i) => i.lead.id === l.id);
-      base[13] = csvEscape(item ? rotuloPrazo(item.diasRestantes) : "");
+      base[colunaDoPrazo] = item ? rotuloPrazo(item.diasRestantes) : "";
     } else if (l.temPrazoCorrendo) {
-      base[13] = "prazo a confirmar";
+      base[colunaDoPrazo] = "prazo a confirmar";
     }
-    return base.join(";");
+    return base.map(celulaCsv).join(";");
   });
 
   // BOM na frente: sem ele o Excel em português abre "Venezuela" como "Venezuela" mas

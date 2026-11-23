@@ -14,6 +14,8 @@ export class FalhaDoLlm extends Error {
   constructor(
     mensagem: string,
     readonly toolsExecutadas: number,
+    /** As tools que JÁ rodaram — um encaminhamento feito não pode sumir com a falha. */
+    readonly toolCalls: ToolCallTrace[] = [],
   ) {
     super(mensagem);
     this.name = "FalhaDoLlm";
@@ -200,7 +202,7 @@ export async function conduzirComLlm({
     try {
       msg = await chatCompletion(llm, messages, tools, conversationId, prazo);
     } catch (err) {
-      throw new FalhaDoLlm(err instanceof Error ? err.message : String(err), toolCalls.length);
+      throw new FalhaDoLlm(err instanceof Error ? err.message : String(err), toolCalls.length, [...toolCalls]);
     }
 
     const calls = msg.tool_calls ?? [];

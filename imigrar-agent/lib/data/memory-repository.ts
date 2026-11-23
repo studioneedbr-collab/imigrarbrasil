@@ -127,7 +127,7 @@ export class MemoryRepository implements Repository {
   async getConversationsForFollowup() {
     const cutoff = Date.now() - 24 * 3600 * 1000;
     return Array.from(this.conversations.values()).filter(
-      (c) => c.status === "waiting" && !c.followupSentAt && !c.optOutAt && !c.noFollowupAt
+      (c) => c.status === "waiting" && !c.followupSentAt && !c.optOutAt && !c.noFollowupAt && !c.assumedBy
         && new Date(c.lastMessageAt ?? c.updatedAt).getTime() < cutoff,
     );
   }

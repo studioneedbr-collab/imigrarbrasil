@@ -45,6 +45,11 @@ export async function runAgent(params: {
   estadoDoTurno?: string;
   /** Até quando o turno pode esperar o modelo — a reserva usa o que sobrar. */
   prazo?: number;
+  /**
+   * O que dizer se o modelo cair DEPOIS de já ter encaminhado o caso. Montado por quem
+   * chama, que sabe o idioma, o setor e o expediente.
+   */
+  avisoDeEncaminhamento?: string;
 }): Promise<AgentRunResult> {
   // Imports dinâmicos evitam ciclo (conducao.ts importa tipos daqui).
   const { llmsDisponiveis } = await import("@/lib/agent/llm");
@@ -65,6 +70,31 @@ export async function runAgent(params: {
           ? (err as { toolsExecutadas: number }).toolsExecutadas
           : 0;
       const vaiParaReserva = Boolean(proximo) && toolsExecutadas === 0;
+
+      // O MODELO CAIU DEPOIS DE ENCAMINHAR. O time já foi avisado e a conversa já está
+      // como transferida. Ir para o atendimento determinístico jogava fora o que rodou:
+      // ou ele encaminhava DE NOVO (o time avisado duas vezes), ou não encaminhava e a
+      // pessoa recebia uma pergunta de triagem no lugar do aviso — e o status voltava a
+      // "aguardando". Aqui sai o aviso do encaminhamento, com as tools que de fato rodaram.
+      const jaRodaram = (err as { toolCalls?: ToolCallTrace[] }).toolCalls ?? [];
+      const encaminhou = jaRodaram.some(
+        // `=== true`: uma tool que LANÇOU fica com `{ error }` no resultado, sem `ok` — e
+        // dizer "já deixei o seu caso com o time" sem ninguém avisado é o pior engano.
+        (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean } | undefined)?.ok === true,
+      );
+      if (encaminhou && params.avisoDeEncaminhamento) {
+        try {
+          const { getRepository } = await import("@/lib/data");
+          await getRepository().registrarEventoOperacao({
+            tipo: "llm_falhou",
+            conversationId: params.conversationId,
+            detalhe: `${llm.nome} caiu depois de encaminhar; saiu o aviso fixo: ${motivo}`.slice(0, 500),
+          });
+        } catch {
+          // Registrar não pode virar uma segunda falha.
+        }
+        return { reply: params.avisoDeEncaminhamento, toolCalls: jaRodaram, source: llm.provedor };
+      }
       console.error(
         `[${llm.provedor}] falhou — ${vaiParaReserva ? `tentando ${proximo.provedor}` : "caindo no atendimento determinístico"}:`,
         motivo,

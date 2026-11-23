@@ -133,8 +133,12 @@ export function avaliarEncaminhamentoComercial(
  * "posso pedir para eles falarem com você?", "¿puedo pasar tu contacto?", "espero tu
  * confirmación", "may I ask them to get in touch?".
  */
+// Cada forma exige o OBJETO do encaminhamento (o time, um advogado, o seu contato). Sem
+// ele, "Posso pedir para você me contar…?", "¿Me confirmas de qué país eres?" e "Would you
+// like to tell me more?" contavam como pedido de passar o contato — e no turno seguinte a
+// tool sumia e o prompt mandava "repetir a pergunta" que nunca tinha sido feita.
 export const PEDIDO_DE_CONFIRMACAO =
-  /\b(posso|poderia)\s+(pedir|passar|encaminhar|chamar)\b|\bquer\s+que\s+(eu\s+)?(pe[çc]a|passe|encaminhe|chame)\b|\bvoc[êe]\s+quer\s+que\s+(o|a)\s+(time|equipe)\b|\bconfirma\s+(para|pra)\s+eu\b|\baguardo\s+(a\s+)?sua\s+confirma[çc][ãa]o\b|\bpuedo\s+(pedir|pasar|derivar|pasarte)\b|\bquieres\s+que\s+(les\s+)?(pida|pase|derive)\b|\bespero\s+tu\s+confirmaci[óo]n\b|\bme\s+confirmas\b|\bmay\s+i\s+(ask|pass|have)\b|\bwould\s+you\s+like\s+(me\s+)?to\b|\bshall\s+i\s+(ask|pass)\b|\bpuis-je\s+(demander|transmettre)\b/i;
+  /\b(posso|poderia)\s+(pedir\s+(para|pra|que|ao|à|a)\s+(o\s+|a\s+|um\s+|uma\s+|nosso\s+|nossa\s+)?(time|equipe|advogad|algu[ée]m|eles|elas|especialista)|passar\s+(o\s+)?(seu|teu)\s+(contato|caso|n[úu]mero|atendimento)|passar\s+(o\s+)?(seu\s+)?(caso|contato)\s+(para|pro|ao)|encaminhar\s+(o\s+)?(seu\s+|o\s+)?(caso|contato|atendimento)|chamar\s+(algu[ée]m|o\s+time|a\s+equipe|um\s+advogad))\b|\bquer\s+que\s+(eu\s+)?(pe[çc]a|passe|encaminhe|chame)\b|\bvoc[êe]\s+quer\s+que\s+(o|a)\s+(time|equipe)\b|\bconfirma\s+(para|pra)\s+eu\b|\baguardo\s+(a\s+)?sua\s+confirma[çc][ãa]o\b|\bpuedo\s+(pedir\s+(a|al|que\s+(el|la|un|una|alguien|nuestro))|pasar|derivar|pasarte)\b|\bquieres\s+que\s+(les\s+)?(pida|pase|derive)\b|\bespero\s+tu\s+confirmaci[óo]n\b|\bme\s+confirmas\s+(si|que)\s+(puedo|quieres|te\s+pas|les\s+pas|lo\s+pas)|\bmay\s+i\s+(ask\s+(our|the|a|someone|them)|pass|have\s+(our|a|the|someone))\b|\bwould\s+you\s+like\s+(me\s+to\s+(pass|ask|connect|forward|share|refer)|(our\s+|a\s+|the\s+)?(team|lawyer|attorney|someone)\s+to)\b|\bshall\s+i\s+(ask|pass)\b|\bpuis-je\s+(demander|transmettre)\b/i;
 
 /**
  * A pessoa disse SIM?

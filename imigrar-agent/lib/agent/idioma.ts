@@ -89,6 +89,17 @@ const MARCADORES: { idioma: IdiomaSuportado; peso: number; re: RegExp }[] = [
   { idioma: "ht", peso: 2, re: /\b(pa|gen|fè|vle|kapab|ayiti|papye|rezidans)\b/i },
 ];
 
+/**
+ * O `\b` DO JAVASCRIPT SÓ CONHECE LETRA ASCII. "\bvocê\b" nunca casava — o "ê" não é
+ * letra para ele —, nem "qué", "aquí", "où". Os marcadores mais fortes de cada língua são
+ * justamente os acentuados, e o detector desistia de frases óbvias ("você pode me ajudar
+ * agora"). Aqui cada `\b` vira a borda de palavra Unicode.
+ */
+const BORDA = "(?:(?<![\\p{L}\\p{N}])(?=[\\p{L}\\p{N}])|(?<=[\\p{L}\\p{N}])(?![\\p{L}\\p{N}]))";
+for (const m of MARCADORES) {
+  m.re = new RegExp(m.re.source.replace(/\\b/g, BORDA), m.re.flags.includes("u") ? m.re.flags : `${m.re.flags}u`);
+}
+
 /** Mínimos para aceitar um palpite. Abaixo disso, `undefined` — e ninguém se compromete. */
 const PONTOS_MINIMOS = 3;
 const MARGEM_MINIMA = 2;
@@ -170,6 +181,27 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
  */
 export function idiomaEfetivo(textoAtual: string, gravado?: string | null): string | undefined {
   return detectarIdioma(textoAtual) ?? gravado ?? undefined;
+}
+
+/**
+ * O QUE A PESSOA DISSE, sem o que o sistema escreveu em volta.
+ *
+ * Foto, documento e áudio entram no histórico como "📎 Arquivo recebido…", com a leitura
+ * do arquivo e instruções para o modelo — tudo em português. Lido como fala da pessoa,
+ * isso virava o idioma da conversa: uma conversa em francês com a foto de um protocolo
+ * passava a ser "pt", o contato era gravado em português e o follow-up saía em português.
+ * Daqui sai só a legenda que ela escreveu, ou a transcrição do áudio (que é a voz dela).
+ */
+export function falaDaPessoa(conteudo: string): string {
+  const t = conteudo ?? "";
+  if (t.startsWith("🎤 Mensagem de voz (transcrita):")) {
+    return t.slice("🎤 Mensagem de voz (transcrita):".length).trim();
+  }
+  if (t.startsWith("📎 Arquivo recebido:")) {
+    // A legenda inteira, mesmo com quebra de linha — até o bloco que o sistema acrescenta.
+    return t.match(/(?:^|\n)Legenda do cliente: ([\s\S]*?)(?=\n\[|$)/)?.[1]?.trim() ?? "";
+  }
+  return t;
 }
 
 /**

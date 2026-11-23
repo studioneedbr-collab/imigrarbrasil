@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/data";
 import { llmEmUso } from "@/lib/agent/llm";
 import { atividadeDaConversa, inicioDoDiaEmBrasilia } from "@/lib/dashboard/periodo";
@@ -7,6 +8,11 @@ export const dynamic = "force-dynamic";
 
 // Signal panel data for the "Agente ao vivo" module (sidebar rail + overview hero).
 export async function GET() {
+  // A sessão é conferida AQUI, e não só no middleware: ele só olha se o cookie é válido, e
+  // uma conta desativada continuava lendo esta rota. Ver getSession (lib/auth/guard.ts).
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   const repo = getRepository();
   const [conversations, leads, llm] = await Promise.all([
     repo.listConversations(),

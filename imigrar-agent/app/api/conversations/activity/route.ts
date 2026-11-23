@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/data";
 
 /** Teto de mensagens por resposta — evita enxurrada de notificações num pico. */
@@ -10,6 +11,11 @@ const LIMIT = 20;
  * Nunca retorna o conteúdo da mensagem (pode conter CPF).
  */
 export async function GET() {
+  // A sessão é conferida AQUI, e não só no middleware: ele só olha se o cookie é válido, e
+  // uma conta desativada continuava lendo esta rota. Ver getSession (lib/auth/guard.ts).
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   const repo = getRepository();
   const messages = await repo.listRecentUserMessages(LIMIT);
   return NextResponse.json({ messages });

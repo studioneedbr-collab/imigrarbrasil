@@ -12,10 +12,11 @@ import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capt
 import { promocaoDoAtendimento } from "@/lib/crm/promocao";
 import { PERGUNTOU_O_NOME } from "@/lib/agent/triagem";
 import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
-import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
+import { buildIdiomaBlock, falaDaPessoa, registrarIdioma } from "@/lib/agent/idioma";
 import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
 import { llmEmUso } from "@/lib/agent/llm";
 import { nomeDoIdioma } from "@/lib/domain/idiomas";
+import { mensagemDeEncaminhamento } from "@/lib/agent/mensagens-fixas";
 import { conduzirComLlm, semNotaInterna } from "@/lib/agent/conducao";
 import { faltaAbertura, lerAberturaComLlm, patchDaLeitura } from "@/lib/agent/leitura-da-ficha";
 import { instrucaoDeReescrita, perguntasRepetidas, semAsPerguntasRepetidas } from "@/lib/agent/pergunta-repetida";
@@ -34,6 +35,8 @@ const ORCAMENTO_PARA_REESCREVER_MS = 25_000;
  * função inteira abaixo dos 60 s da Vercel mesmo no pior caso.
  */
 const PRAZO_DO_TURNO_MS = 40_000;
+/** O mesmo prazo, contado da chegada ao webhook: deixa ~8 s para gravar e enviar. */
+const PRAZO_DESDE_O_WEBHOOK_MS = 52_000;
 /** Quanto a reescrita pode levar. Sem reserva e sem atendimento determinístico. */
 const LIMITE_DA_REESCRITA_MS = 12_000;
 /** Em quantas mensagens da pessoa a abertura ainda é lida pelo modelo. */
@@ -274,6 +277,11 @@ export async function respondToConversation(
      * que a bateria de testes usa; o simulador antigo rodava as tools de verdade.
      */
     ferramentasEmSombra?: boolean;
+    /**
+     * Quando a mensagem chegou ao webhook (epoch ms). O prazo do turno conta daqui: a
+     * espera do lote, a transcrição e a leitura de documento já gastaram parte dos 60 s.
+     */
+    inicio?: number;
   } = {},
 ): Promise<ProcessResult> {
   const repo = getRepository();
@@ -304,7 +312,12 @@ export async function respondToConversation(
   }
 
   const rawMsgs = await repo.listMessages(conversationId);
-  const raw = rawMsgs.map((m) => ({ role: m.role, content: m.content }));
+  // As notas internas do sistema ("[sistema] Conversa encerrada por inatividade…") ficam no
+  // histórico do painel, mas não vão ao modelo: gravadas como mensagem da agente, ele as
+  // lia como algo que ELA disse à pessoa.
+  const raw = rawMsgs
+    .filter((m) => !(m.role === "assistant" && m.content.startsWith("[sistema]")))
+    .map((m) => ({ role: m.role, content: m.content }));
   const history = mergeConsecutive(raw);
   let systemPrompt = await getSystemPrompt();
 
@@ -366,7 +379,10 @@ export async function respondToConversation(
   // sombra também: o rascunho precisa ser avaliado com a mesma ficha.
   // Com teto de turnos: quem nunca diz o nome (ou só manda "oi") não paga uma leitura a
   // mais em toda mensagem, para sempre.
-  if (faltaAbertura(knownLead) && userTurns <= LEITURAS_DA_ABERTURA) {
+  // E só com tempo: num turno que já gastou o prazo com áudio ou documento, a leitura
+  // ficaria entre a resposta e o limite da Vercel.
+  const tempoParaLer = !opts.inicio || Date.now() - opts.inicio < 25_000;
+  if (faltaAbertura(knownLead) && userTurns <= LEITURAS_DA_ABERTURA && tempoParaLer) {
     try {
       const leitura = await lerAberturaComLlm(
         rawMsgs.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
@@ -395,9 +411,12 @@ export async function respondToConversation(
   // a resposta do turno saía certa (é a REGRA ABSOLUTA 1 do prompt), mas o contato ficava
   // sem idioma gravado, e aí o follow-up automático saía em português e a fila mostrava o
   // chip vazio. Aí, e só aí, o modelo é consultado. Ver lib/agent/idioma-modelo.ts.
+  // Só a fala da pessoa: o texto que o sistema escreve em volta de um arquivo é português
+  // e virava o idioma da conversa. Ver `falaDaPessoa`.
+  const falas = rawMsgs.filter((m) => m.role === "user").map((m) => falaDaPessoa(m.content)).filter(Boolean);
   const idiomaDetectado = await idiomaDaConversaOuModelo(
-    lastUserText,
-    allUserText,
+    falaDaPessoa(lastUserText),
+    falas.join("  "),
     convBefore?.idioma,
     { conversationId, habilitado: Boolean(await llmEmUso()) },
   );
@@ -438,8 +457,19 @@ export async function respondToConversation(
   }
 
   if (!portao.liberado) {
+    // "Pergunte o que a pessoa precisa" SÓ se ela ainda não disse. Para quem abriu com
+    // "sou português, estou na Suíça, quero me mudar", a ordem fixa fazia o modelo
+    // perguntar o que ela acabara de contar — e, junto com a pergunta do nome, eram duas
+    // perguntas obrigatórias na mesma mensagem. E a apresentação é só na primeira.
+    const jaDisseOQuePrecisa = Boolean(knownLead?.servicesInterested?.length || knownLead?.objetivo?.trim());
+    const oQueFazer = [
+      userTurns <= 1 ? "Acolha e se apresente em uma linha." : "Acolha o que ela disse.",
+      jaDisseOQuePrecisa
+        ? "Ela já disse o que precisa: não pergunte de novo — siga para o próximo ponto que falta."
+        : "Pergunte o que a pessoa precisa.",
+    ].join(" ");
     systemPrompt +=
-      `\n\n════════ ANTES DE ENCAMINHAR, ATENDA ════════\nEsta conversa ainda não tem nada que exija um advogado (${portao.motivo}). Acolha, se apresente em uma linha e pergunte o que a pessoa precisa. Não diga que vai encaminhar e não prometa que "o time entra em contato" — ainda não há caso nenhum para encaminhar. Assim que aparecer caso concreto, prazo, irregularidade, refúgio ou pedido de valores, aí sim o encaminhamento é o certo.`;
+      `\n\n════════ ANTES DE ENCAMINHAR, ATENDA ════════\nEsta conversa ainda não tem nada que exija um advogado (${portao.motivo}). ${oQueFazer} Não diga que vai encaminhar e não prometa que "o time entra em contato" — ainda não há caso nenhum para encaminhar. Assim que aparecer caso concreto, prazo, irregularidade, refúgio ou pedido de valores, aí sim o encaminhamento é o certo.`;
   }
 
   // QUEM PROCURA EMPREGO NA PRÓPRIA IMIGRAR BRASIL. É raro, mas acontece — e a diferença
@@ -483,7 +513,9 @@ export async function respondToConversation(
   const jaPerguntouONome = rawMsgs.some(
     (m) => m.role === "assistant" && PERGUNTOU_O_NOME.test(m.content),
   );
-  const abrirPeloNome = !knownLead?.contactName && !jaPerguntouONome;
+  // Com a pergunta de confirmação pendente, ela é a única pergunta do turno: pedir o nome
+  // junto seriam duas perguntas obrigatórias, e o verificador de saída só deixa uma.
+  const abrirPeloNome = !knownLead?.contactName && !jaPerguntouONome && confirmacao.liberado;
   if (ehAtendimentoMigratorio && userTurns >= 1) {
     systemPrompt += faltaNaTriagem.completo
       ? `\n\n════════ QUALIFICAÇÃO COMPLETA ════════\nVocê já sabe o que o time jurídico precisa para pegar este caso. Não pergunte mais nada de cadastro: ou você informa algo útil com o material oficial que tiver, ou encaminha (avisando e confirmando antes).`
@@ -507,9 +539,17 @@ export async function respondToConversation(
   systemPrompt += await blocoMaterialPara(consultaDoTurno(mensagensDoCliente));
 
   const estadoDoTurno = montarEstadoDoTurno(knownLead, emRajada, idiomaDetectado ?? convBefore?.idioma);
-  const prazoDoTurno = inicioDoTurno + PRAZO_DO_TURNO_MS;
+  const prazoDoTurno = opts.inicio ? opts.inicio + PRAZO_DESDE_O_WEBHOOK_MS : inicioDoTurno + PRAZO_DO_TURNO_MS;
   const { reply: rawReply, toolCalls, source } = await runAgent({
     prazo: prazoDoTurno,
+    avisoDeEncaminhamento: mensagemDeEncaminhamento({
+      setor: pedeVaga ? "rh" : (classifyRouting(lastUserText)?.setor ?? knownLead?.setor ?? "comercial"),
+      idioma: idiomaDetectado ?? convBefore?.idioma,
+      proximoRetorno: (() => {
+        const j = proximoAtendimento(new Date());
+        return j.dentroDoExpediente ? undefined : j.quando;
+      })(),
+    }),
     systemPrompt,
     estadoDoTurno,
     history,
@@ -576,6 +616,7 @@ export async function respondToConversation(
     faltamNoDossie: faltaNaTriagem.faltam,
     perguntasAoCliente: faltaNaTriagem.perguntas,
     proximoRetorno: janela.dentroDoExpediente ? undefined : janela.quando,
+    idioma: idiomaDetectado ?? convBefore?.idioma,
   });
   if (impasse?.acao === "encaminhar") {
     // O terceiro caminho até a tool — e o mais fácil de esquecer, porque não passa pelo
@@ -611,7 +652,8 @@ export async function respondToConversation(
   // FATO: uma mensagem que diz "já passei o seu caso" sem encaminhamento nenhum deixa
   // alguém aflito esperando um telefonema que ninguém agendou.
   const transferred = toolCalls.some(
-    (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok !== false,
+    // `=== true`, e não `!== false`: a tool que lançou fica com `{ error }`, sem `ok`.
+    (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok === true,
   );
 
   // PERGUNTOU DE NOVO O QUE ELA JÁ DISSE? Corrige antes de sair, em dois níveis.
@@ -711,9 +753,33 @@ export async function respondToConversation(
   // CHEGOU MENSAGEM NOVA ENQUANTO A AGENTE ESCREVIA: esta resposta não sai e não entra no
   // histórico — o turno da mensagem nova responde ao conjunto. Um encaminhamento já feito
   // é a exceção: ele aconteceu de verdade, e a pessoa precisa ser avisada dele.
-  if (!opts.sombra && !transferred && opts.aindaVale && !(await opts.aindaVale().catch(() => true))) {
-    console.log(`[agent] resposta descartada: chegou mensagem nova durante a geração (conversa ${conversationId})`);
+  // O QUE MUDOU NA CONVERSA ENQUANTO A AGENTE ESCREVIA. Dois casos em que a resposta não
+  // pode ser gravada nem enviada:
+  //   · uma pessoa do time assumiu (pelo painel ou respondendo do celular do escritório) —
+  //     a resposta não sai, e gravá-la deixava no histórico uma mensagem que o cliente
+  //     nunca recebeu, com o status em "aguardando" e follow-up automático armado;
+  //   · OUTRO TURNO encaminhou o caso — mandar esta resposta depois do aviso de
+  //     encaminhamento fazia a pessoa receber uma pergunta de triagem e, pior, voltava o
+  //     status para "aguardando": a agente reativava numa conversa que já era do time.
+  const descartar = async (motivo: string): Promise<ProcessResult> => {
+    console.log(`[agent] resposta descartada: ${motivo} (conversa ${conversationId})`);
+    // O lembrete agendado NESTE turno foi escrito para uma resposta que não vai sair.
+    // Só o deste turno: os agendados em turnos anteriores continuam valendo.
+    for (const t of toolCalls) {
+      const id = t.name === "agendar_followup" ? (t.result as { followup_id?: string } | undefined)?.followup_id : undefined;
+      if (id) await repo.updateFollowupStatus(id, "cancelled").catch(() => {});
+    }
     return { reply, toolCalls, status: convBefore?.status ?? "active", buttons, descartada: true };
+  };
+  if (!opts.sombra) {
+    const agora = await repo.getConversation(conversationId).catch(() => null);
+    if (agora?.assumedBy) return descartar("uma pessoa assumiu durante a geração");
+    if (!transferred && agora?.status === "transferred" && convBefore?.status !== "transferred") {
+      return descartar("outro turno encaminhou o caso durante a geração");
+    }
+  }
+  if (!opts.sombra && !transferred && opts.aindaVale && !(await opts.aindaVale().catch(() => true))) {
+    return descartar("chegou mensagem nova durante a geração");
   }
 
   if (!opts.sombra) await repo.addMessage(conversationId, "assistant", reply);

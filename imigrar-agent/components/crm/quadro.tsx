@@ -237,13 +237,38 @@ export default function QuadroCrm({
    * O APOIO VAI JUNTO, intacto. A ação grava dono e apoio de uma vez; mandar só o dono
    * apagaria quem estava ajudando no caso sem ninguém ter pedido.
    */
+  /** Volta um card ao que ele era antes do gesto que falhou — só ele. */
+  function desfazer(original: LeadDaFila) {
+    setLeads((atual) => atual.map((l) => (l.id === original.id ? original : l)));
+  }
+
+  /** Aplica no card o que o servidor gravou: dono, situação, etapa. */
+  function aplicarDoServidor(id: string, salvo: Partial<LeadDaFila> | null | undefined) {
+    if (!salvo) return;
+    const nomeDoDono = salvo.responsavelId ? time.find((p) => p.id === salvo.responsavelId)?.nome : undefined;
+    setLeads((atual) =>
+      atual.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              ...(salvo.atendimentoStatus ? { atendimentoStatus: salvo.atendimentoStatus } : {}),
+              ...(salvo.etapaId !== undefined ? { etapaId: salvo.etapaId } : {}),
+              ...(salvo.funilId !== undefined ? { funilId: salvo.funilId } : {}),
+              ...(salvo.responsavelId !== undefined
+                ? { responsavelId: salvo.responsavelId, responsavelNome: salvo.responsavelId ? (nomeDoDono ?? null) : null }
+                : {}),
+            }
+          : l,
+      ),
+    );
+  }
+
   async function trocarResponsavel(lead: LeadDaFila, usuarioId: string) {
     if (usuarioId === (lead.responsavelId ?? "")) return;
     const novo = time.find((p) => p.id === usuarioId);
     if (!novo) return;
 
     setErro(null);
-    const antes = leads;
     setLeads((atual) =>
       atual.map((l) =>
         l.id === lead.id ? { ...l, responsavelId: novo.id, responsavelNome: novo.nome } : l,
@@ -261,7 +286,9 @@ export default function QuadroCrm({
     }).catch(() => null);
 
     if (!r?.ok) {
-      setLeads(antes);
+      // Desfaz SÓ este card. Voltar a lista inteira desfaria na tela outra mudança feita
+      // enquanto esta estava em andamento — e que foi salva.
+      desfazer(lead);
       setErro(
         (await r?.json().catch(() => null))?.error ??
           "Não foi possível trocar o responsável. Nada foi alterado.",
@@ -271,14 +298,7 @@ export default function QuadroCrm({
     // O SERVIDOR PODE TER MUDADO O STATUS: caso "novo" que ganha dono vira "em
     // atendimento". O card troca de coluna com o que ele respondeu, e não com o que a
     // tela supôs — senão ficaria na coluna de novos até alguém recarregar a página.
-    const salvo = (await r.json().catch(() => null))?.lead as
-      | { atendimentoStatus?: LeadDaFila["atendimentoStatus"] }
-      | undefined;
-    if (salvo?.atendimentoStatus) {
-      setLeads((atual) =>
-        atual.map((l) => (l.id === lead.id ? { ...l, atendimentoStatus: salvo.atendimentoStatus } : l)),
-      );
-    }
+    aplicarDoServidor(lead.id, (await r.json().catch(() => null))?.lead);
     router.refresh();
   }
 
@@ -299,7 +319,6 @@ export default function QuadroCrm({
     const acao = t?.acao ?? "mover";
 
     setErro(null);
-    const antes = leads;
     setLeads((atual) =>
       atual.map((l) =>
         l.id === lead.id
@@ -321,13 +340,17 @@ export default function QuadroCrm({
     }).catch(() => null);
 
     if (!r?.ok) {
-      setLeads(antes);
+      desfazer(lead);
       setErro(
         (await r?.json().catch(() => null))?.error ??
           "Não foi possível mover este atendimento. Nada foi alterado.",
       );
       return;
     }
+    // O SERVIDOR PODE TER FEITO MAIS DO QUE MOVER: arrastar um caso novo para uma etapa de
+    // atendimento é "assumir", e dá o caso a quem arrastou. Sem aplicar a resposta, o card
+    // mudava de coluna e continuava "sem responsável" até alguém recarregar a página.
+    aplicarDoServidor(lead.id, (await r.json().catch(() => null))?.lead);
     router.refresh();
   }
 

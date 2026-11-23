@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/data";
 import { getZapiConnected } from "@/lib/whatsapp/config";
 
@@ -6,6 +7,11 @@ export const dynamic = "force-dynamic";
 
 // Alimenta a barra de topo: transferências recentes (para o sino) + status do WhatsApp.
 export async function GET() {
+  // A sessão é conferida AQUI, e não só no middleware: ele só olha se o cookie é válido, e
+  // uma conta desativada continuava lendo esta rota. Ver getSession (lib/auth/guard.ts).
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
+
   const repo = getRepository();
   const tickets = await repo.listTransferTickets();
 

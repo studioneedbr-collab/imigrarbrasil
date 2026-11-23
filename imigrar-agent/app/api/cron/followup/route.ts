@@ -73,6 +73,17 @@ export async function GET(req: NextRequest) {
     }
     try {
       const messages = await repo.listMessages(conv.id);
+      // "FICOU ALGUMA DÚVIDA?" SÓ VAI DEPOIS DE UMA RESPOSTA NOSSA. Com a instância
+      // desligada ou em modo sombra, a conversa ficava como "aguardando" de um turno antigo
+      // e a mensagem dela, sem resposta, recebia o follow-up — como se fosse ela que
+      // tivesse sumido. E com uma pessoa do time na conversa, o automático não fala.
+      const ultima = messages[messages.length - 1];
+      // Não marca como enviado: marcado, a varredura de inatividade encerraria daqui a 24h
+      // uma conversa em que a pessoa é que está esperando.
+      // (`aguardandoHumanoDesde` não entra: ele só é limpo quando alguém assume, e a conversa
+      // que a agente voltou a atender depois de um período desligada nunca mais teria
+      // follow-up. "A última fala é nossa" já diz se a pessoa está esperando.)
+      if (conv.assumedBy || ultima?.role !== "assistant") continue;
       const msg = await generateFollowupMessage(conv, messages, agentName);
       await sendMessage(conv.whatsappNumber, msg, await canalDaConversa(repo, conv));
       await repo.addMessage(conv.id, "assistant", msg);

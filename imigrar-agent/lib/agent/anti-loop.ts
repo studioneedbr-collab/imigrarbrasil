@@ -1,5 +1,6 @@
 import { mensagemSemConteudo } from "@/lib/agent/triagem";
 import type { LeadSetor } from "@/lib/domain/types";
+import { mensagemDeDestravar, mensagemDeEncaminhamento } from "@/lib/agent/mensagens-fixas";
 
 // Rede de segurança contra REPETIÇÃO. Quando a agente esbarra em algo que ela não consegue
 // resolver — uma pergunta que o material oficial não cobre, um caso que ela não deveria
@@ -133,38 +134,8 @@ export function ehFechamentoCordial(texto: string): boolean {
   return AGRADECIMENTO.test(t) && !PEDIDO_PENDENTE.test(t);
 }
 
-// PARA QUEM VAI O IMPASSE. Quem destrava o atendimento é o setor DAQUELA conversa, e a
-// mensagem tem que combinar com ele — mandar um candidato a vaga para a fila do jurídico
-// ouvir sobre o caso migratório dele é pior do que não encaminhar nada.
-// Na Imigrar Brasil, "comercial" é o funil onde caem os atendimentos de imigração — quem
-// os recebe é o TIME JURÍDICO. Os outros setores continuam existindo na estrutura (e no
-// painel) e ganham aqui a redação deste domínio.
-const QUEM: Record<LeadSetor, string> = {
-  comercial: "um advogado do nosso time jurídico",
-  rh: "quem cuida das vagas aqui",
-  operacional: "uma pessoa do nosso time",
-  departamento_pessoal: "o nosso administrativo",
-  suprimentos: "uma pessoa do nosso time",
-  diretoria: "uma pessoa da nossa diretoria",
-};
-
-// FORA DO EXPEDIENTE NINGUÉM PEGA. Domingo não tem advogado no escritório, e dizer "já
-// chamei uma pessoa aqui" às 21h de sábado é prometer um retorno que não existe — para
-// alguém que pode estar contando os dias de um prazo. Quando estamos
-// fora do horário, a mensagem diz QUANDO o time volta, em vez de sugerir que alguém
-// está olhando naquele instante.
-function msgImpasse(setor: LeadSetor, proximoRetorno?: string): string {
-  const quem = QUEM[setor] ?? QUEM.comercial;
-  const abertura = "Para não repetir a mesma informação, vou encaminhar o seu atendimento. ";
-  // A partir do encaminhamento o agente se cala (ver lib/agent/ativacao.ts), então o
-  // fecho não pode prometer que ele continua por perto. O que ele diz é o que é verdade:
-  // escrever aqui continua funcionando, e quem lê agora é o time.
-  const fecho = " Pode continuar escrevendo por aqui: eles leem tudo o que você mandar.";
-  if (proximoRetorno) {
-    return `${abertura}Já deixei o seu caso com ${quem}. O atendimento é de segunda a sexta, das 8h às 18h, então eles te retornam ${proximoRetorno}.${fecho}`;
-  }
-  return `${abertura}Já pedi para ${quem} falar com você sobre isso.${fecho}`;
-}
+// A redação das mensagens fixas (encaminhamento e destravar), no idioma da conversa,
+// mora em lib/agent/mensagens-fixas.ts.
 
 export interface ImpasseInput {
   /** Resposta que a agente está prestes a enviar. */
@@ -192,6 +163,8 @@ export interface ImpasseInput {
    * estamos dentro do expediente e alguém pega agora.
    */
   proximoRetorno?: string;
+  /** O idioma da conversa. As mensagens fixas saem nele (lib/agent/mensagens-fixas.ts). */
+  idioma?: string | null;
 }
 
 export interface ImpasseHandoff {
@@ -231,11 +204,9 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
       acao: "destravar",
       setor,
       motivo: `Atendimento travado: ainda falta saber ${faltam.join(", ")}. Nada encaminhado — a conversa continua aqui.`,
-      msg:
-        // Texto fixo, que não passa pela persona: o escritório pediu tom formal, sem gíria
-        // e sem pedido de desculpas ("acho que me embolei aqui" foi vetado nominalmente).
-        `Para seguirmos com o seu atendimento, preciso de uma informação: ` +
-        `${i.perguntasAoCliente?.[0] ?? "pode me contar um pouco mais sobre o seu caso"}?`,
+      // Texto fixo, que não passa pela persona: o escritório pediu tom formal, sem gíria
+      // e sem pedido de desculpas ("acho que me embolei aqui" foi vetado nominalmente).
+      msg: mensagemDeDestravar({ idioma: i.idioma, perguntaEmPortugues: i.perguntasAoCliente?.[0] }),
       priority: "normal",
     };
   }
@@ -244,7 +215,7 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
     acao: "encaminhar",
     setor,
     motivo: `Atendimento travado (${setor}): a agente repetiu a mesma resposta sem conseguir avançar.`,
-    msg: msgImpasse(setor, i.proximoRetorno),
+    msg: mensagemDeEncaminhamento({ setor, idioma: i.idioma, proximoRetorno: i.proximoRetorno, motivo: "impasse" }),
     // O funil de imigração ("comercial") trata impasse como urgente: quem está travado numa
     // conversa dessas costuma estar com prazo correndo ou com medo.
     priority: setor === "comercial" ? "urgent" : "normal",

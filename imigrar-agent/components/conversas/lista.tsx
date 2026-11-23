@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -156,9 +156,18 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
   // Referência estável: o diálogo devolve o foco ao botão de confirmar sempre que o
   // `onCancel` muda, e uma função nova a cada render tiraria o foco do seletor a cada
   // opção escolhida.
-  const fecharEncaminhar = useCallback(() => setEncaminhando(null), []);
+  const fecharEncaminhar = useCallback(() => {
+    aberturaAtual.current++;
+    setEncaminhando(null);
+  }, []);
+
+  // Cada abertura tem um número. A resposta de uma abertura antiga (fechou o diálogo de A
+  // e abriu o de B antes de A responder) não pode preencher o diálogo de B — no pior caso
+  // ela punha o id de uma pessoa no campo do funil.
+  const aberturaAtual = useRef(0);
 
   async function abrirEncaminhar(tipo: "transferir" | "crm", conversa: ConversaNaLista) {
+    const estaAbertura = ++aberturaAtual.current;
     setEncaminhando({ tipo, conversa });
     setOpcoes(null);
     setEscolha("");
@@ -169,6 +178,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
       const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, { cache: "no-store" });
       if (!res.ok) throw new Error();
       const d = (await res.json()) as OpcoesDeEncaminhar;
+      if (estaAbertura !== aberturaAtual.current) return;
       setOpcoes(d);
       // No CRM o responsável começa em quem já é o dono; sem dono, começa sem ninguém —
       // dar dono a um caso novo o tira da etapa de "novo", e isso tem de ser escolha.
@@ -188,6 +198,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
               d.funis[0])?.id ?? "",
       );
     } catch {
+      if (estaAbertura !== aberturaAtual.current) return;
       setErroNoDialogo("Não foi possível carregar as opções. Feche e tente de novo.");
     }
   }

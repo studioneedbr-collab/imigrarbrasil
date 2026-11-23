@@ -112,10 +112,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       }
       const nome = destino.name?.trim() || destino.email;
 
+      if (eConversaDeGrupo(conv.whatsappNumber)) {
+        return NextResponse.json({ error: "Esta é uma conversa de grupo — não tem um caso para transferir." }, { status: 400 });
+      }
+      // JÁ ESTÁ COM ESSA PESSOA: nada muda, e ninguém precisa ser avisado de novo. O
+      // diálogo abre com o dono atual marcado, e confirmar sem trocar reenviava o aviso
+      // de "conversa transferida" ao WhatsApp do time.
+      const leadAtual = await repo.getLeadByConversation(conv.id);
+      if (leadAtual?.responsavelId === destino.id && conv.assumedBy === destino.email) {
+        return NextResponse.json({ ok: true, leadId: leadAtual.id, mensagem: `A conversa já está com ${nome}.` });
+      }
+
       // Conversa sem lead (quem só mandou "oi") ganha um agora: é no lead que mora o dono
       // do caso, e é ele que faz a conversa aparecer em "Meus" para quem recebeu.
       const lead =
-        (await repo.getLeadByConversation(conv.id)) ??
+        leadAtual ??
         (await repo.upsertLead(conv.id, conv.contactName ? { contactName: conv.contactName } : {}));
 
       await repo.assumirLead(lead.id, destino.id, auth.session.email);
@@ -232,6 +243,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         return NextResponse.json(
           {
             error: `Este caso já está encerrado, e o funil "${funil.nome}" não tem etapa para caso encerrado. Reabra o caso no CRM antes de movê-lo.`,
+          },
+          { status: 409 },
+        );
+      }
+      // A AUTOMÁTICA SEGUE A MESMA REGRA DA ESCOLHA À MÃO. Sem etapa com a situação do
+      // caso, `etapaAoTrocarDeFunil` cai na primeira do funil — e um caso em atendimento
+      // ia parar na coluna de "novo", ou um caso aberto numa coluna de contrato fechado,
+      // com o quadro e a fila contando coisas diferentes.
+      if (etapa.status !== statusComDono) {
+        return NextResponse.json(
+          {
+            error: `O funil "${funil.nome}" não tem etapa para caso "${ATENDIMENTO_LABEL[statusComDono]}". Escolha a etapa à mão ou outro funil.`,
           },
           { status: 409 },
         );

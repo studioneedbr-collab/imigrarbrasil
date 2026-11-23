@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth/guard";
 import DashboardNav from "@/components/dashboard/nav";
 import { AgentStatus } from "@/components/dashboard/ui";
 import Topbar from "@/components/dashboard/topbar";
@@ -8,7 +10,13 @@ import FaixaAlerta from "@/components/operacao/faixa-alerta";
 import ChaveGeral from "@/components/agente/chave-geral";
 import SaudeRail from "@/components/operacao/saude-rail";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+/**
+ * O middleware só confere se o cookie é válido; quem confere se a CONTA ainda vale é
+ * `getSession` (lib/auth/guard.ts). Sem esta linha, uma conta desativada continuava
+ * abrindo as telas que leem o banco direto, sem passar por rota de API.
+ */
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  if (!(await getSession())) redirect("/login");
   return (
     <div className="min-h-screen bg-ib-papel text-ib-ink md:flex">
       <aside className="w-full shrink-0 bg-gradient-to-b from-ib-casa to-ib-ink text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col">

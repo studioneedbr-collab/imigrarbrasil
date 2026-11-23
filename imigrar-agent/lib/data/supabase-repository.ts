@@ -81,6 +81,41 @@ const mapMessage = (r: DbMessage): Message => ({
   mediaText: (r as unknown as Record<string, any>).media_text ?? null,
 });
 
+/** O teto do PostgREST por pedido. Passou disso, a resposta vem cortada sem erro nenhum. */
+const LINHAS_POR_PEDIDO = 1000;
+/** Quantos ids cabem num `.in(...)` sem a URL passar do limite do gateway. */
+const IDS_POR_PEDIDO = 150;
+
+/**
+ * TODAS AS LINHAS, em lotes. O PostgREST devolve no máximo 1000 por pedido e corta o resto
+ * CALADO — sem erro, sem aviso. Era assim que a lista de conversas perdia as antigas, a
+ * exportação saía com linhas faltando e o "parado há" lia mensagens velhas: o repositório
+ * em memória devolve tudo, então nenhum teste via. `teto` limita o total quando quem chama
+ * só quer os N primeiros.
+ */
+async function emLotes(
+  pedir: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+  teto = 200_000,
+): Promise<Record<string, any>[]> {
+  const linhas: Record<string, any>[] = [];
+  // Linha nova inserida entre um lote e outro empurra as seguintes uma posição: a mesma
+  // linha viria duas vezes (chave repetida na tela, linha dobrada na planilha).
+  const vistos = new Set<unknown>();
+  for (let de = 0; de < teto; de += LINHAS_POR_PEDIDO) {
+    const ate = Math.min(de + LINHAS_POR_PEDIDO, teto) - 1;
+    const { data, error } = await pedir(de, ate);
+    if (error) throw error;
+    const lote = (data as Record<string, any>[] | null) ?? [];
+    for (const r of lote) {
+      if (r.id !== undefined && vistos.has(r.id)) continue;
+      if (r.id !== undefined) vistos.add(r.id);
+      linhas.push(r);
+    }
+    if (lote.length < ate - de + 1) break;
+  }
+  return linhas;
+}
+
 export class SupabaseRepository implements Repository {
   private db = createServerClient();
 
@@ -189,8 +224,12 @@ export class SupabaseRepository implements Repository {
     return mapConversation(data as DbConversation);
   }
   async listConversations() {
-    const { data } = await this.db.from("conversations").select("*").order("created_at", { ascending: false });
-    return ((data as DbConversation[] | null) ?? []).map(mapConversation);
+    const linhas = await emLotes((de, ate) =>
+      this.db.from("conversations").select("*")
+        .order("created_at", { ascending: false }).order("id", { ascending: false })
+        .range(de, ate),
+    );
+    return (linhas as DbConversation[]).map(mapConversation);
   }
 
   // Ciclo de status/follow-up automático.
@@ -225,7 +264,7 @@ export class SupabaseRepository implements Repository {
     // waiting há mais de 24h e sem follow-up enviado ainda.
     const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data } = await this.db.from("conversations").select("*")
-      .eq("status", "waiting").is("followup_sent_at", null).lt("last_message_at", cutoff);
+      .eq("status", "waiting").is("followup_sent_at", null).is("assumed_by", null).lt("last_message_at", cutoff);
     // Quem pediu para parar sai fora. O corte é em JS, não no SQL, porque o conjunto já
     // é pequeno (waiting, sem follow-up) e assim a rota não quebra num banco que ainda
     // não rodou a migration 016 — sem a coluna os campos vêm null e nada é filtrado.
@@ -322,12 +361,29 @@ export class SupabaseRepository implements Repository {
   async listMessagesForConversations(conversationIds: string[]): Promise<Map<string, Message[]>> {
     const out = new Map<string, Message[]>();
     if (conversationIds.length === 0) return out;
-    const { data } = await this.db
-      .from("messages").select("*")
-      .in("conversation_id", conversationIds)
-      .order("created_at", { ascending: true });
+    // Em grupos de ids (a URL do `.in` tem limite) e em lotes de linhas (o PostgREST corta
+    // em 1000). Sem isto, acima de ~1000 mensagens no total caíam justamente as MAIS NOVAS
+    // — a ordem é crescente —, e "parado há" e "aguardando cliente" liam o passado.
+    const grupos: string[][] = [];
+    for (let i = 0; i < conversationIds.length; i += IDS_POR_PEDIDO) {
+      grupos.push(conversationIds.slice(i, i + IDS_POR_PEDIDO));
+    }
+    // Os grupos em paralelo: um atrás do outro, a fila de quem tem muitos casos esperava a
+    // soma de todos.
+    const rows = (
+      await Promise.all(
+        grupos.map((grupo) =>
+          emLotes((de, ate) =>
+            this.db.from("messages").select("*")
+              .in("conversation_id", grupo)
+              .order("created_at", { ascending: true }).order("id", { ascending: true })
+              .range(de, ate),
+          ),
+        ),
+      )
+    ).flat() as DbMessage[];
     for (const id of conversationIds) out.set(id, []);
-    for (const row of (data as DbMessage[] | null) ?? []) {
+    for (const row of rows) {
       const msg = mapMessage(row);
       // A conversa sempre existe no map (pré-populada acima), mas o ?? protege
       // caso o banco devolva uma linha de conversa que não foi pedida.
@@ -970,19 +1026,24 @@ export class SupabaseRepository implements Repository {
     return data ? this.mapLead(data) : null;
   }
   async listLeads(opcoes: { limite?: number; funilIds?: string[] } = {}) {
-    let q = this.db.from("leads").select("*").order("created_at", { ascending: false });
-    if (opcoes.limite && opcoes.limite > 0) q = q.limit(opcoes.limite);
-    const { data } = await q;
-    const linhas = (data as Record<string, any>[] | null) ?? [];
+    const linhas = await emLotes(
+      (de, ate) =>
+        this.db.from("leads").select("*")
+          .order("created_at", { ascending: false }).order("id", { ascending: false })
+          .range(de, ate),
+      opcoes.limite && opcoes.limite > 0 ? opcoes.limite : undefined,
+    );
     if (!opcoes.limite || !opcoes.funilIds?.length) return linhas.map((r) => this.mapLead(r));
 
-    const { data: dosFunis } = await this.db
-      .from("leads")
-      .select("*")
-      .in("funil_id", opcoes.funilIds)
-      .order("created_at", { ascending: false });
+    const funilIds = opcoes.funilIds;
+    const dosFunis = await emLotes((de, ate) =>
+      this.db.from("leads").select("*")
+        .in("funil_id", funilIds)
+        .order("created_at", { ascending: false }).order("id", { ascending: false })
+        .range(de, ate),
+    );
     const vistos = new Set(linhas.map((r) => r.id));
-    const alem = ((dosFunis as Record<string, any>[] | null) ?? []).filter((r) => !vistos.has(r.id));
+    const alem = dosFunis.filter((r) => !vistos.has(r.id));
     return [...linhas, ...alem].map((r) => this.mapLead(r));
   }
   async listarLeadsPorOrigem(
@@ -998,9 +1059,15 @@ export class SupabaseRepository implements Repository {
     if (opcoes.porPagina) {
       const de = (Math.max(1, opcoes.pagina ?? 1) - 1) * opcoes.porPagina;
       const { data, count, error } = await base().range(de, de + opcoes.porPagina - 1);
-      // Página além do fim: o PostgREST responde erro de faixa, e a tela trata como vazia.
       if (error && !/range/i.test(error.message ?? "")) throw error;
       const linhas = (data as Record<string, any>[] | null) ?? [];
+      if (error) {
+        // PÁGINA ALÉM DO FIM: o PostgREST responde erro de faixa e NÃO manda a contagem.
+        // Devolver total 0 fazia a tela mostrar "nenhum formulário ainda" com centenas
+        // deles no banco. A contagem vem de um pedido à parte.
+        const { count: real } = await this.db.from("leads").select("id", { count: "exact", head: true }).eq("origem", origem);
+        return { leads: [], total: real ?? 0 };
+      }
       return { leads: linhas.map((r) => this.mapLead(r)), total: count ?? linhas.length };
     }
 

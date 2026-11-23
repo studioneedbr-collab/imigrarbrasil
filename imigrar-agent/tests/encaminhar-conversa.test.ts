@@ -220,6 +220,19 @@ describe("criar o lead e mandar para um funil do CRM", () => {
     expect(await repo.getLeadByConversation(c.id)).toBeNull();
   });
 
+  it("etapa automática segue a mesma regra: sem etapa para a situação do caso, recusa", async () => {
+    await entrar(await pessoa("Quem Clica"));
+    const sergio = await pessoa("Sérgio Reis");
+    // Funil só com "novo" e "fechado": um caso com dono (em atendimento) não tem coluna.
+    const funil = await repo.criarFunil({ nome: `Pós-contrato ${++n}` });
+    await repo.criarEtapa({ funilId: funil.id, nome: "Entrada", status: "novo", ordem: 0 });
+    await repo.criarEtapa({ funilId: funil.id, nome: "Contrato", status: "fechado", ordem: 1 });
+    const c = await conversa();
+    const res = await pedir(c.id, { acao: "crm", funilId: funil.id, responsavelId: sergio.id });
+    expect(res.status).toBe(409);
+    expect(await repo.getLeadByConversation(c.id)).toBeNull();
+  });
+
   it("o diálogo recebe as etapas e a situação do caso", async () => {
     await entrar(await pessoa("Quem Clica"));
     const { funil, nova } = await funilComercial();

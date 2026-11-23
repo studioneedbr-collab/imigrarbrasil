@@ -61,7 +61,9 @@ export async function GET(req: NextRequest) {
       // Cancela só se a conversa terminou/saiu de cena; segue para conversas ainda
       // abertas ('active'/'waiting'/'negotiating'). Antes exigia 'active' e passou a
       // cancelar tudo, já que a Shayene agora deixa a conversa em 'waiting' ao responder.
-      const terminal = conv && ["transferred", "finished", "inactive"].includes(conv.status);
+      // Uma pessoa do time assumiu: lembrete automático no meio de um atendimento humano
+      // fala por cima de quem está atendendo.
+      const terminal = conv && (["transferred", "finished", "inactive"].includes(conv.status) || Boolean(conv.assumedBy));
       // Pediu para parar depois que o lembrete foi agendado: o pendente morre aqui.
       const pediuParar = conv && (conv.optOutAt || conv.noFollowupAt);
       if (!conv?.whatsappNumber || terminal || pediuParar) {

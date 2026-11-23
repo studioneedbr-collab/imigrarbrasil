@@ -154,7 +154,9 @@ export async function transcreverAudio(input: {
   if (!/^https:\/\//i.test(input.url)) return null;
 
   try {
-    const res = await fetch(input.url, { cache: "no-store" });
+    // Com teto de tempo: sem ele um download ou uma transcrição lentos seguravam o webhook
+    // até a Vercel matar a função — e aí nem a mensagem da pessoa era gravada.
+    const res = await fetch(input.url, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
     if (!res.ok) {
       console.error("[audio] download falhou:", res.status);
       return null;
@@ -180,9 +182,10 @@ export async function transcreverAudio(input: {
       headers: { Authorization: `Bearer ${env.openaiKey}` },
       body: form,
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) {
-      console.error("[audio] transcrição falhou:", resp.status, await resp.text().catch(() => ""));
+      console.error("[audio] transcrição falhou:", resp.status);
       await registrarChamada({
         provedor: "openai", modelo: MODELO, tipo: "transcricao",
         conversationId: input.conversationId, duracaoMs: Date.now() - inicio,

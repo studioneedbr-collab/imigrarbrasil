@@ -18,8 +18,8 @@ describe("quem lê o documento", () => {
     expect(leitorDeDocumento([openai, deepseek])?.modelo).toBe("gpt-4.1");
   });
 
-  it("com o DeepSeek escolhido (só texto), a reserva que enxerga lê", () => {
-    expect(leitorDeDocumento([deepseek, openai])?.provedor).toBe("openai");
+  it("com o DeepSeek escolhido (só texto), ninguém lê — a reserva não recebe documento", () => {
+    expect(leitorDeDocumento([deepseek, openai])).toBeNull();
   });
 
   it("ninguém enxerga: não lê", () => {

@@ -187,6 +187,9 @@ async function registrarRespostaDoCelular(body: ZApiWebhookBody): Promise<void> 
 }
 
 export async function POST(req: NextRequest) {
+  // O relógio do turno começa aqui, e não quando a agente começa a pensar: a espera do
+  // lote e o processamento de áudio e documento já são parte dos 60 s da função.
+  const chegouEm = Date.now();
   // Autenticação do webhook. Quando há um segredo configurado (WEBHOOK_VERIFY_TOKEN),
   // a requisição PRECISA provar que é legítima, senão qualquer terceiro que conheça a
   // URL poderia POSTar e fazer a conta enviar WhatsApp para números arbitrários, injetar
@@ -319,6 +322,11 @@ export async function POST(req: NextRequest) {
         .catch((e) => console.error("[webhook] não gravei a instância da conversa:", e instanceof Error ? e.message : e));
     }
 
+    // O que a pessoa DISSE neste turno: o texto, ou a transcrição do áudio. É sobre isto
+    // que se lê o pedido de parar — "parem de me mandar mensagem" dito num áudio é o
+    // mesmo pedido, e ignorá-lo é insistir com quem pediu para parar.
+    let falaDoTurno = text;
+
     if (media) {
       // ANEXO: antes a URL era descartada (só ficava "📎 Documento recebido: imagem.jpg"),
       // o arquivo ia direto pro e-mail do RH e a Shayene nem via a mensagem. Agora o
@@ -377,6 +385,7 @@ export async function POST(req: NextRequest) {
         lido = await readDocument({ url: media.url, name: media.name, conversationId: conv.id });
       }
 
+      if (transcrito && lido) falaDoTurno = lido;
       const conteudo = transcrito
         ? `🎤 Mensagem de voz (transcrita):\n${lido}`
         : [
@@ -468,10 +477,10 @@ export async function POST(req: NextRequest) {
     // empresa é taxa de bloqueio/denúncia, e o caminho mais curto para uma denúncia é
     // insistir com quem acabou de pedir para parar. A leitura é determinística — deixar
     // isso a cargo do modelo é apostar o número da empresa num dia ruim dele.
-    const optOut = detectarOptOut(text);
+    const optOut = detectarOptOut(falaDoTurno);
     if (optOut) {
       await repo
-        .marcarOptOut(conv.id, optOut, text)
+        .marcarOptOut(conv.id, optOut, falaDoTurno)
         .catch((e) =>
           console.error(
             "[webhook] NÃO consegui registrar o opt-out (rodou a migration 016?):",
@@ -483,7 +492,7 @@ export async function POST(req: NextRequest) {
         // Uma despedida e só. Se ele já estava marcado, nem isso — repetir a despedida
         // para quem pediu silêncio é exatamente o comportamento que gera a denúncia.
         if (!conv.optOutAt) {
-          const despedida = despedidaDoOptOut(idiomaDaConversa(text, text, conv.idioma));
+          const despedida = despedidaDoOptOut(idiomaDaConversa(falaDoTurno, falaDoTurno, conv.idioma));
           await repo.addMessage(conv.id, "assistant", despedida);
           await sendMessage(phone, despedida, instancia ? configDaInstancia(instancia) : undefined).catch((e) =>
             console.error("[webhook] falha ao enviar despedida:", e instanceof Error ? e.message : e),
@@ -610,6 +619,7 @@ export async function POST(req: NextRequest) {
     // primeiros segundos; a mensagem que chega enquanto o modelo escreve fazia a pessoa
     // receber duas respostas seguidas, a primeira sem ter lido a segunda mensagem dela.
     const { reply, toolCalls, buttons, descartada } = await respondToConversation(conv.id, {
+      inicio: chegouEm,
       aindaVale: async () => {
         if (!body.messageId) return true;
         const ultima = [...(await repo.listMessages(conv.id))].reverse().find((m) => m.role === "user");

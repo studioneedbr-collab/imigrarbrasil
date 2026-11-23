@@ -115,7 +115,9 @@ async function enriquecer(
     prontos ? Promise.resolve(prontos.conversas) : repo.listConversationsByIds(conversationIds).catch(() => []),
     prontos ? Promise.resolve(prontos.usuarios) : repo.listUsers().catch(() => []),
     prontos ? Promise.resolve(prontos.instancias) : repo.listInstancias().catch(() => []),
-    repo.listMessagesForConversations(conversationIds),
+    // Uma falha passageira aqui derrubava a fila inteira: agora ela abre sem o "parado há"
+    // daquele carregamento, que volta no seguinte.
+    repo.listMessagesForConversations(conversationIds).catch(() => new Map()),
   ]);
 
   const nomePorId = new Map(usuarios.map((u) => [u.id, u.name || u.email]));
