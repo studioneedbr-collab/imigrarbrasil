@@ -18,6 +18,12 @@ import { llmEmUso } from "@/lib/agent/llm";
 import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
 
 export interface ProcessResult {
+  /**
+   * A resposta foi escrita mas NÃO VALE MAIS: chegou mensagem nova da pessoa enquanto a
+   * agente pensava. Nada foi gravado no histórico e nada deve ser enviado — quem responde
+   * é o turno da mensagem mais nova, que lê tudo. Ver `aindaVale`.
+   */
+  descartada?: boolean;
   reply: string;
   toolCalls: ToolCallTrace[];
   status: string;
@@ -111,7 +117,11 @@ export function buildDadosConhecidosBlock(lead: Lead | null): string {
     lead.email && `E-mail: ${lead.email}`,
   ].filter(Boolean);
   if (!known.length) return "";
-  return `\n\n════════ DADOS JÁ CONHECIDOS DESTE CONTATO (confirme, NÃO pergunte de novo) ════════\n${known.join(" · ")}`;
+  // "USE", e não "confirme". O título dizia "confirme, NÃO pergunte de novo", e o modelo
+  // obedecia à primeira metade: a pessoa escrevia "estou na Suíça" e a resposta era "só
+  // para confirmar: você está na Suíça neste momento?". Pedir confirmação do que acabou
+  // de ser dito É perguntar de novo — e é a frase que denuncia um robô que não leu.
+  return `\n\n════════ DADOS JÁ CONHECIDOS DESTE CONTATO ════════\n${known.join(" · ")}\n\nREGRA: trate estes dados como FATO. NÃO pergunte de novo nenhum deles e NÃO peça confirmação ("só para confirmar...", "você está mesmo em...?"). Vale o mesmo para tudo o que ela já escreveu nesta conversa, mesmo que não esteja nesta lista: se ela disse a nacionalidade ou onde está, isso está respondido. Faça só a PRÓXIMA pergunta que ainda falta — uma por mensagem.`;
 }
 
 /** Rótulos legíveis para o prompt — o código interno não diz nada ao modelo. */
@@ -189,7 +199,18 @@ export async function processMessage({
  */
 export async function respondToConversation(
   conversationId: string,
-  opts: { sombra?: boolean } = {},
+  opts: {
+    sombra?: boolean;
+    /**
+     * Perguntado logo antes de gravar a resposta: "esta resposta ainda é para a última
+     * mensagem da pessoa?". O agrupamento do webhook só segura as mensagens que chegam
+     * nos primeiros segundos; a que chega DEPOIS, enquanto o modelo escreve (5 a 30s),
+     * disparava um segundo turno — e a pessoa recebia duas respostas seguidas, a primeira
+     * escrita sem ter lido o que ela acabou de mandar ("estou na Suíça" respondido com
+     * "você está no Brasil ou em Portugal?").
+     */
+    aindaVale?: () => Promise<boolean>;
+  } = {},
 ): Promise<ProcessResult> {
   const repo = getRepository();
 
@@ -239,6 +260,16 @@ export async function respondToConversation(
   }
 
   // Nº de mensagens do cliente até aqui (usado pela rede de segurança de roteamento).
+  // VÁRIAS MENSAGENS SEGUIDAS SÃO UMA FALA SÓ. No WhatsApp a pessoa quebra a frase
+  // ("Sou português" / "Estou na Suíça"), e cada pedaço respondia uma pergunta diferente
+  // da mensagem anterior. Lidas como turnos separados, o modelo respondia ao último
+  // pedaço e reperguntava o que estava no primeiro.
+  const ultimoAssistente = rawMsgs.map((m) => m.role).lastIndexOf("assistant");
+  const emRajada = rawMsgs.slice(ultimoAssistente + 1).filter((m) => m.role === "user").length;
+  if (emRajada > 1) {
+    systemPrompt += `\n\n════════ ELA MANDOU ${emRajada} MENSAGENS SEGUIDAS ════════\nLeia todas juntas, como uma fala só: cada uma pode responder a uma parte diferente do que você perguntou. Aproveite TUDO o que elas dizem antes de perguntar qualquer coisa, e escreva UMA resposta só.`;
+  }
+
   const userTurns = rawMsgs.filter((m) => m.role === "user").length;
   const lastUserText = [...rawMsgs].reverse().find((m) => m.role === "user")?.content ?? "";
   const allUserText = rawMsgs.filter((m) => m.role === "user").map((m) => m.content).join("  ");
@@ -520,6 +551,14 @@ export async function respondToConversation(
       .catch(() => {
         // Registrar o corte não pode virar um segundo problema no meio do atendimento.
       });
+  }
+
+  // CHEGOU MENSAGEM NOVA ENQUANTO A AGENTE ESCREVIA: esta resposta não sai e não entra no
+  // histórico — o turno da mensagem nova responde ao conjunto. Um encaminhamento já feito
+  // é a exceção: ele aconteceu de verdade, e a pessoa precisa ser avisada dele.
+  if (!opts.sombra && !transferred && opts.aindaVale && !(await opts.aindaVale().catch(() => true))) {
+    console.log(`[agent] resposta descartada: chegou mensagem nova durante a geração (conversa ${conversationId})`);
+    return { reply, toolCalls, status: convBefore?.status ?? "active", buttons, descartada: true };
   }
 
   if (!opts.sombra) await repo.addMessage(conversationId, "assistant", reply);

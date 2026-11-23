@@ -606,7 +606,20 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("[webhook:diag] respondendo conversa", conv.id);
-    const { reply, toolCalls, buttons } = await respondToConversation(conv.id);
+    // A MESMA PERGUNTA DO AGRUPAMENTO, FEITA DE NOVO NO FIM. A espera acima só cobre os
+    // primeiros segundos; a mensagem que chega enquanto o modelo escreve fazia a pessoa
+    // receber duas respostas seguidas, a primeira sem ter lido a segunda mensagem dela.
+    const { reply, toolCalls, buttons, descartada } = await respondToConversation(conv.id, {
+      aindaVale: async () => {
+        if (!body.messageId) return true;
+        const ultima = [...(await repo.listMessages(conv.id))].reverse().find((m) => m.role === "user");
+        return !ultima?.whatsappMessageId || ultima.whatsappMessageId === body.messageId;
+      },
+    });
+    if (descartada) {
+      console.log("[webhook:diag] saída: cedeu depois de gerar (chegou msg mais nova)");
+      return NextResponse.json({ ok: true });
+    }
     console.log("[webhook:diag] reply len", reply.length, "tools", toolCalls.length, "botoes", buttons?.length ?? 0);
 
     // ALGUÉM ASSUMIU ENQUANTO A AGENTE PENSAVA. Entre a decisão lá em cima e este ponto
