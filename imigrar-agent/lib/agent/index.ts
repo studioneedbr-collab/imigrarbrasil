@@ -15,6 +15,8 @@ import { blocoMaterialPara, consultaDoTurno } from "@/lib/agent/rag";
 import { buildIdiomaBlock, registrarIdioma } from "@/lib/agent/idioma";
 import { idiomaDaConversaOuModelo } from "@/lib/agent/idioma-modelo";
 import { llmEmUso } from "@/lib/agent/llm";
+import { nomeDoIdioma } from "@/lib/domain/idiomas";
+import { conduzirComLlm, semNotaInterna } from "@/lib/agent/conducao";
 import { faltaAbertura, lerAberturaComLlm, patchDaLeitura } from "@/lib/agent/leitura-da-ficha";
 import { instrucaoDeReescrita, perguntasRepetidas, semAsPerguntasRepetidas } from "@/lib/agent/pergunta-repetida";
 import { AGENT_TOOLS } from "@/lib/agent/tools";
@@ -26,6 +28,14 @@ import type { ConversationStatus, Lead, LeadSetor } from "@/lib/domain/types";
  * chamada inteira. Passado isto, a pergunta repetida é só retirada.
  */
 const ORCAMENTO_PARA_REESCREVER_MS = 25_000;
+/**
+ * Quanto o turno pode esperar o modelo, contado do começo de `respondToConversation`. O
+ * webhook já gastou ~3,5 s esperando o lote e ainda precisa enviar: 40 s aqui deixam a
+ * função inteira abaixo dos 60 s da Vercel mesmo no pior caso.
+ */
+const PRAZO_DO_TURNO_MS = 40_000;
+/** Quanto a reescrita pode levar. Sem reserva e sem atendimento determinístico. */
+const LIMITE_DA_REESCRITA_MS = 12_000;
 /** Em quantas mensagens da pessoa a abertura ainda é lida pelo modelo. */
 const LEITURAS_DA_ABERTURA = 8;
 
@@ -70,7 +80,7 @@ const PRAZO_LABEL: Record<string, string> = {
  * nacionalidade, onde está") pesava mais do que o fato de que ela já tinha respondido.
  * Aqui é a última coisa que o modelo lê antes de escrever.
  */
-export function montarEstadoDoTurno(lead: Lead | null, emRajada: number): string {
+export function montarEstadoDoTurno(lead: Lead | null, emRajada: number, idioma?: string | null): string {
   const onde =
     lead?.region ??
     (lead?.localizacao === "brasil" ? "no Brasil" : lead?.localizacao === "exterior" ? `no exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}` : null);
@@ -90,6 +100,9 @@ export function montarEstadoDoTurno(lead: Lead | null, emRajada: number): string
     // As respostas de 900 caracteres que o time viu: num texto de 20 mil tokens, "seja
     // breve" perde para os exemplos longos. Aqui é a última coisa lida.
     "Escreva curto, como uma pessoa no WhatsApp: no máximo 3 ou 4 frases, sem listas.",
+    // Esta nota é em português e vai colada na fala dela: sem o idioma dito pelo nome, ela
+    // puxaria a resposta para o português numa conversa em espanhol.
+    idioma && idioma !== "pt" ? `Responda em ${nomeDoIdioma(idioma) ?? idioma}, o idioma dela.` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -493,8 +506,10 @@ export async function respondToConversation(
   const mensagensDoCliente = rawMsgs.filter((m) => m.role === "user").map((m) => m.content);
   systemPrompt += await blocoMaterialPara(consultaDoTurno(mensagensDoCliente));
 
-  const estadoDoTurno = montarEstadoDoTurno(knownLead, emRajada);
+  const estadoDoTurno = montarEstadoDoTurno(knownLead, emRajada, idiomaDetectado ?? convBefore?.idioma);
+  const prazoDoTurno = inicioDoTurno + PRAZO_DO_TURNO_MS;
   const { reply: rawReply, toolCalls, source } = await runAgent({
+    prazo: prazoDoTurno,
     systemPrompt,
     estadoDoTurno,
     history,
@@ -613,33 +628,49 @@ export async function respondToConversation(
   const repetidas = source !== "fallback" && !buttons && !impasse ? perguntasRepetidas(reply, knownLead) : [];
   const turnoSimples =
     !transferred && toolCalls.every((t) => t.name === "registrar_dados_lead");
-  const temTempo = Date.now() - inicioDoTurno < ORCAMENTO_PARA_REESCREVER_MS;
+  const temTempo =
+    Date.now() - inicioDoTurno < ORCAMENTO_PARA_REESCREVER_MS &&
+    prazoDoTurno - Date.now() > LIMITE_DA_REESCRITA_MS;
   if (repetidas.length && knownLead) {
     const original = reply;
+    let caminho: "reescrita" | "pergunta retirada" | "não deu para corrigir" = "não deu para corrigir";
     try {
       if (!turnoSimples || !temTempo) throw new Error("sem reescrita neste turno");
-      const segunda = await runAgent({
+      // Direto no modelo escolhido, SEM o runner: o runner tentaria a reserva e o motor
+      // determinístico, e cada um pode levar mais 30 s. Se o escolhido não reescrever a
+      // tempo, a pergunta é retirada — e isso é instantâneo.
+      const llm = await llmEmUso();
+      if (!llm) throw new Error("sem modelo");
+      const segunda = await conduzirComLlm({
+        llm,
         systemPrompt,
         estadoDoTurno: `${estadoDoTurno}\n\n${instrucaoDeReescrita(repetidas, knownLead)}`,
         history,
         conversationId,
         blockTools: AGENT_TOOLS.map((t) => t.name),
         sombra: true,
+        prazo: Math.min(prazoDoTurno, Date.now() + LIMITE_DA_REESCRITA_MS),
       });
-      const corrigida = segunda.source !== "fallback" ? segunda.reply.trim() : "";
+      const corrigida = segunda.reply.trim();
       // "Desculpe, pode repetir?" é o que a condução devolve quando o modelo responde vazio.
       const presta = corrigida.length >= 20 && corrigida !== "Desculpe, pode repetir?";
-      if (presta && !perguntasRepetidas(corrigida, knownLead).length) reply = corrigida;
+      if (presta && !perguntasRepetidas(corrigida, knownLead).length) {
+        reply = corrigida;
+        caminho = "reescrita";
+      }
     } catch {
       // Sem reescrita: cai no corte abaixo.
     }
-    if (reply === original) reply = semAsPerguntasRepetidas(original, knownLead);
+    if (reply === original) {
+      reply = semAsPerguntasRepetidas(original, knownLead);
+      if (reply !== original) caminho = "pergunta retirada";
+    }
     console.warn(`[pergunta-repetida] corrigi a resposta (${repetidas.join(", ")}) — conversa ${conversationId}`);
     await repo
       .registrarEventoOperacao({
         tipo: "pergunta_repetida",
         conversationId,
-        detalhe: `pergunta repetida (${repetidas.join(", ")}) — ${reply === original ? "não deu para corrigir" : turnoSimples && temTempo ? "reescrita" : "pergunta retirada"}`,
+        detalhe: `pergunta repetida (${repetidas.join(", ")}) — ${caminho}`,
       })
       .catch(() => {});
   }
@@ -651,6 +682,10 @@ export async function respondToConversation(
   // pessoa ("sua entrada ficou regular"), o anúncio de um encaminhamento que não houve, e
   // a promessa de enviar documento ("vou te mandar o orçamento") — que o agente não
   // produz. Ver lib/agent/verificador-de-saida.ts.
+
+  // A NOTA INTERNA NÃO PODE SAIR. Ela vai colada na fala da pessoa, e um modelo que a
+  // cita ("conforme a nota interna...") entrega o funcionamento do atendimento.
+  reply = semNotaInterna(reply);
 
   const revisao = revisarTurno(reply, {
     idioma: idiomaDetectado ?? convBefore?.idioma,

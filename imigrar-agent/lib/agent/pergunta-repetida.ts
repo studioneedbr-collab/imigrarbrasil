@@ -19,45 +19,73 @@ import { campoDaAberturaConhecido, type CampoDaAbertura } from "@/lib/domain/fic
 // aqui são de letra Unicode.
 const I = "(?<![\\p{L}\\p{N}])";
 const F = "(?![\\p{L}\\p{N}])";
+/** Sem distinguir maiúscula: as formas fixas da pergunta. */
 const re = (corpo: string) => new RegExp(`${I}(?:${corpo})${F}`, "iu");
+/**
+ * DISTINGUINDO MAIÚSCULA, para "está na Suíça" / "está em Madrid": o lugar é reconhecido
+ * por começar com maiúscula. Com a flag `i`, `\p{Lu}` casa com QUALQUER letra — e "você
+ * está no prazo?", "está em situação irregular?", "está na fila da PF?" viravam pergunta
+ * sobre onde ela está, e eram retiradas da resposta. Por isso as palavras em volta vêm
+ * escritas com as duas grafias à mão.
+ */
+const reCaixa = (corpo: string) => new RegExp(`${I}(?:${corpo})${F}`, "u");
 
 const VOCE = "(?:voc[eê]|vc|tu|usted)";
+const VOCE_CAIXA = "(?:[Vv]oc[eê]|[Vv]c|[Tt]u|[Uu]sted)";
+/** Continuações que fazem de "onde você está/mora" outra pergunta. */
+const NAO_E_LUGAR_ATUAL = "(?! (?:pensando|planejando|querendo|com|indo|tentando))";
 
-const SOBRE: Record<CampoDaAbertura, RegExp> = {
-  nome: re(
-    [
-      // "Qual é o seu nome completo?" é outra pergunta: pede o que falta do nome.
-      "qual (?:[ée] )?(?:o )?seu nome(?! completo)",
-      `como ${VOCE} se chama`,
-      "c[óo]mo te llamas",
-      "cu[áa]l es tu nombre",
-      "what(?:'s| is) your name",
-    ].join("|"),
-  ),
-  nacionalidade: re(
-    [
-      "(?:qual|cu[áa]l) (?:[ée] |es )?(?:a )?(?:sua|tu) nacionalidad(?:e)?",
-      "(?:sua|tu) nacionalidad(?:e)? (?:[ée]|es)",
-      `de onde ${VOCE} [ée]`,
-      "de d[óo]nde eres",
-      "where are you from",
-      "what is your nationality",
-      `${VOCE} [ée] brasileir[oa] ou`,
-      "ou (?:tem|possui) outra nacionalidade",
-    ].join("|"),
-  ),
-  onde: re(
-    [
-      `onde ${VOCE} (?:est[áa]|mora|vive|se encontra|reside)`,
-      `onde (?:est[áa]|mora|vive) ${VOCE}`,
-      `${VOCE} (?:est[áa]|mora|vive|reside|se encontra)(?: (?:aqui|agora|hoje|atualmente|ainda))? (?:n[oa] brasil|no exterior|fora do brasil|em portugal|n[oa] \\p{Lu}\\p{L}+|em \\p{Lu}\\p{L}+|neste momento|agora)`,
-      "no brasil ou (?:no exterior|fora|em \\p{Lu}|n[oa] \\p{Lu})",
-      "d[óo]nde (?:est[áa]s|vives|te encuentras)",
-      "(?:est[áa]s|vives) en (?:brasil|\\p{Lu})",
-      "where are you (?:now|currently|located|living|based)",
-      "are you (?:currently |now |still )?(?:in|living in) (?:brazil|\\p{Lu})",
-    ].join("|"),
-  ),
+const SOBRE: Record<CampoDaAbertura, RegExp[]> = {
+  nome: [
+    re(
+      [
+        // "Qual é o seu nome completo?" é outra pergunta: pede o que falta do nome.
+        "qual (?:[ée] )?(?:o )?seu nome(?! completo)",
+        `como ${VOCE} se chama`,
+        "como (?:posso|devo) (?:te|lhe) chamar",
+        "(?:me )?(?:diz|dizer|informar|passar) (?:o )?seu nome(?! completo)",
+        "c[óo]mo te llamas",
+        "cu[áa]l es (?:tu|su) nombre",
+        "what(?:'s| is) your name",
+      ].join("|"),
+    ),
+  ],
+  nacionalidade: [
+    re(
+      [
+        "(?:qual|cu[áa]l) (?:[ée] |es )?(?:a )?(?:sua|tu|su) nacionalidad(?:e)?",
+        "(?:sua|tu|su) nacionalidad(?:e)? (?:[ée]|es)",
+        `de onde ${VOCE} [ée]`,
+        `${VOCE} [ée] de (?:qual|que) pa[íi]s`,
+        "de d[óo]nde (?:eres|es usted)",
+        "where are you from",
+        "what is your nationality",
+        `${VOCE} [ée] brasileir[oa] ou`,
+        "ou (?:tem|possui) outra nacionalidade",
+      ].join("|"),
+    ),
+  ],
+  onde: [
+    re(
+      [
+        `onde ${VOCE} (?:est[áa]|mora|vive|se encontra|reside)${NAO_E_LUGAR_ATUAL}`,
+        `onde (?:est[áa]|mora|vive) ${VOCE}${NAO_E_LUGAR_ATUAL}`,
+        // "E você, onde está agora?" — só quando a frase termina aí: "onde está o seu
+        // passaporte?" é outra coisa.
+        "onde (?:est[áa]|mora|vive)(?: (?:agora|atualmente|neste momento|hoje))?\\s*\\?",
+        "d[óo]nde (?:est[áa]s|vives|te encuentras|est[áa] usted|vive usted)",
+        "where are you (?:now|currently|located|living|based)",
+        "where do you (?:live|stay)",
+      ].join("|"),
+    ),
+    reCaixa(
+      [
+        `${VOCE_CAIXA} (?:est[áa]|mora|vive|reside|se encontra)(?: (?:aqui|agora|hoje|atualmente|ainda))? (?:n[oa] [Bb]rasil|no exterior|fora do [Bb]rasil|n[oa] \\p{Lu}\\p{L}+|em \\p{Lu}\\p{L}+|neste momento\\s*\\?|agora\\s*\\?)`,
+        `(?:${VOCE_CAIXA} )?(?:est[áa]s?|vives?) en (?:[Bb]rasil|\\p{Lu}\\p{L}+)`,
+        "[Aa]re you (?:currently |now |still )?(?:in|living in) (?:[Bb]razil|\\p{Lu}\\p{L}+)",
+      ].join("|"),
+    ),
+  ],
 };
 
 /** Quanto tempo, desde quando: outra pergunta, mesmo que fale de onde ela está. */
@@ -70,7 +98,7 @@ function perguntas(texto: string): string[] {
 
 function camposPerguntados(pergunta: string): CampoDaAbertura[] {
   if (OUTRA_PERGUNTA.test(pergunta)) return [];
-  return (Object.keys(SOBRE) as CampoDaAbertura[]).filter((c) => SOBRE[c].test(pergunta));
+  return (Object.keys(SOBRE) as CampoDaAbertura[]).filter((c) => SOBRE[c].some((r) => r.test(pergunta)));
 }
 
 /** Quais campos JÁ conhecidos a resposta pergunta de novo. Vazio = nada a corrigir. */
@@ -94,6 +122,9 @@ export function semAsPerguntasRepetidas(resposta: string, lead: Lead | null): st
     .replace(/[^.!?\n]*\?/g, (q) =>
       camposPerguntados(q.trim()).some((c) => campoDaAberturaConhecido(lead, c)) ? "" : q,
     )
+    // "Para eu entender:" sem a pergunta que vinha depois vira "Para eu entender." — os
+    // dois-pontos pendurados denunciam o corte.
+    .replace(/:(\s*)(?=\n\s*\n|$)/g, ".$1")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")

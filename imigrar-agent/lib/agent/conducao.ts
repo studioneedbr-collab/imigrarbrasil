@@ -47,11 +47,15 @@ interface OpenAIMessage {
   tool_call_id?: string;
 }
 
+/** Menos do que isto até o prazo do turno não vale começar uma chamada: não dá tempo. */
+const FOLGA_MINIMA_MS = 3000;
+
 async function chatCompletion(
   llm: Llm,
   messages: OpenAIMessage[],
   tools: typeof OPENAI_TOOLS = OPENAI_TOOLS,
   conversationId?: string,
+  prazo?: number,
 ): Promise<OpenAIMessage> {
   // CADA ITERAÇÃO É UMA CHAMADA COBRADA. Uma resposta que usou três tools custou quatro
   // chamadas, e é assim que ela precisa aparecer no custo por conversa — contabilizar só
@@ -72,9 +76,13 @@ async function chatCompletion(
     });
   };
 
+  const resta = prazo ? prazo - Date.now() : undefined;
+  if (resta !== undefined && resta < FOLGA_MINIMA_MS) {
+    throw new Error(`${llm.nome}: sem tempo para mais uma chamada neste turno`);
+  }
   let res: Response;
   try {
-    res = await chamarChat(llm, { messages, tools, maxTokens: 1024, temperature: 0.4 });
+    res = await chamarChat(llm, { messages, tools, maxTokens: 1024, temperature: 0.4, timeoutMs: resta });
   } catch (err) {
     contabilizar(undefined, false, err instanceof Error ? err.message : "rede");
     throw err;
@@ -94,6 +102,22 @@ async function chatCompletion(
   return msg;
 }
 
+const MARCA_DA_NOTA = "NOTA INTERNA DO ATENDIMENTO";
+const MARCA_FALSIFICADA = /nota\s+interna(\s+do\s+atendimento)?|estado\s+desta\s+conversa/gi;
+
+/**
+ * Tira da resposta qualquer linha que cite a nota interna. Ela vai colada na fala da
+ * pessoa, e um modelo que a repete entrega como o atendimento funciona por dentro.
+ */
+export function semNotaInterna(resposta: string): string {
+  const limpa = resposta
+    .split("\n")
+    .filter((linha) => !/nota interna|estado desta conversa|n[ãa]o foi a pessoa que escreveu/i.test(linha))
+    .join("\n")
+    .trim();
+  return limpa || resposta;
+}
+
 /**
  * O histórico com a nota do turno colada na última fala da pessoa. Se a última mensagem
  * não for dela (não deveria acontecer num turno de resposta), a nota vai como `system`
@@ -107,9 +131,11 @@ export function comNotaNaUltimaFala(
   const texto = nota?.trim();
   if (!texto) return msgs;
   const ultima = msgs[msgs.length - 1];
-  const bloco = `[NOTA INTERNA DO ATENDIMENTO — não foi a pessoa que escreveu isto, não a mencione e responda no idioma dela]\n${texto}`;
+  const bloco = `[${MARCA_DA_NOTA} — não foi a pessoa que escreveu isto, não a mencione e responda no idioma dela]\n${texto}`;
   if (ultima?.role === "user") {
-    msgs[msgs.length - 1] = { ...ultima, content: `${ultima.content}\n\n${bloco}` };
+    // Quem escreve o cabeçalho da nota na própria mensagem não ganha a autoridade dela.
+    const dela = ultima.content.replace(MARCA_FALSIFICADA, "(texto da pessoa)");
+    msgs[msgs.length - 1] = { ...ultima, content: `${dela}\n\n${bloco}` };
   } else {
     msgs.push({ role: "system", content: bloco });
   }
@@ -132,6 +158,7 @@ export async function conduzirComLlm({
   blockTools,
   sombra,
   estadoDoTurno,
+  prazo,
 }: {
   llm: Llm;
   systemPrompt: string;
@@ -152,6 +179,12 @@ export async function conduzirComLlm({
    * enterrada. Dentro da última fala ela fica onde precisa ficar, nos dois provedores.
    */
   estadoDoTurno?: string;
+  /**
+   * Até quando (epoch ms) este turno pode esperar o modelo. Cada chamada recebe só o que
+   * sobra — sem isto, o teto de 30 s valia POR chamada, e uma condução com tools mais a
+   * reserva passava dos 60 s do webhook: a função morria e nada era enviado.
+   */
+  prazo?: number;
 }): Promise<AgentRunResult> {
   const toolCalls: ToolCallTrace[] = [];
   const tools = blockTools?.length
@@ -165,7 +198,7 @@ export async function conduzirComLlm({
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     let msg: OpenAIMessage;
     try {
-      msg = await chatCompletion(llm, messages, tools, conversationId);
+      msg = await chatCompletion(llm, messages, tools, conversationId, prazo);
     } catch (err) {
       throw new FalhaDoLlm(err instanceof Error ? err.message : String(err), toolCalls.length);
     }

@@ -32,6 +32,15 @@ describe("pergunta repetida", () => {
       "Você mora no Brasil?",
       "Qual é a sua nacionalidade?",
       "De onde você é?",
+      "E você, onde está agora?",
+      "Você é de qual país?",
+      "Como posso te chamar?",
+      "Pode me dizer seu nome?",
+      "¿Usted está en Brasil?",
+      "¿Cuál es su nombre?",
+      "Where do you live?",
+      "Você está em Portugal neste momento?",
+      "Are you in Brazil now?",
     ]) {
       expect(perguntasRepetidas(q, angelo).length, q).toBeGreaterThan(0);
     }
@@ -50,6 +59,18 @@ describe("pergunta repetida", () => {
       "Qual é o seu nome completo?",
       "Você está no Brasil há quanto tempo?",
       "Você está com o passaporte em mãos?",
+      // A segunda revisão: com a flag `i`, \p{Lu} casava com qualquer letra.
+      "Você está no prazo?",
+      "Você está em situação irregular?",
+      "Você está em contato com algum advogado?",
+      "Você está na fila da Polícia Federal?",
+      "Você está no processo de naturalização?",
+      "Você está em dia com o CPF?",
+      "Are you in a hurry?",
+      "Onde você está pensando em morar?",
+      "Onde você mora com ela é perto da PF?",
+      "Onde está o seu passaporte?",
+      "Seu pedido foi feito no Brasil ou no exterior?",
     ]) {
       expect(perguntasRepetidas(q, angelo), q).toEqual([]);
     }
@@ -59,6 +80,10 @@ describe("pergunta repetida", () => {
     expect(
       semAsPerguntasRepetidas("Obrigada, Angelo. E você está no Brasil neste momento ou em Portugal? Me conta o que aconteceu com o pedido.", angelo),
     ).toBe("Obrigada, Angelo. Me conta o que aconteceu com o pedido.");
+    // Os dois-pontos que anunciavam a pergunta retirada não ficam pendurados.
+    expect(semAsPerguntasRepetidas("Perfeito! Para eu entender:\nVocê está no Brasil?\n\nE qual é o seu objetivo?", angelo)).toBe(
+      "Perfeito! Para eu entender.\n\nE qual é o seu objetivo?",
+    );
     // Se sobrar nada, sai a original: mensagem vazia não vai.
     expect(semAsPerguntasRepetidas("Onde você está agora?", angelo)).toBe("Onde você está agora?");
   });

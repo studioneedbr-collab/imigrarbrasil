@@ -186,13 +186,20 @@ export const LIMITE_DA_CHAMADA_MS = 30_000;
 
 export function chamarChat(
   llm: Llm,
-  p: { messages: unknown[]; maxTokens: number; temperature: number; tools?: unknown[] },
+  p: {
+    messages: unknown[];
+    maxTokens: number;
+    temperature: number;
+    tools?: unknown[];
+    /** Teto desta chamada. Quem tem prazo menor (o turno do webhook) passa o que sobra. */
+    timeoutMs?: number;
+  },
 ): Promise<Response> {
   return fetch(`${llm.baseUrl}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${llm.key}` },
     body: JSON.stringify(corpoDoChat(llm, p)),
     cache: "no-store",
-    signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
+    signal: AbortSignal.timeout(Math.max(1, Math.min(p.timeoutMs ?? LIMITE_DA_CHAMADA_MS, LIMITE_DA_CHAMADA_MS))),
   });
 }
