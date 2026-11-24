@@ -71,7 +71,7 @@ describe("estado do turno", () => {
     const e = montarEstadoDoTurno(null, 1);
     expect(e).not.toContain("JÁ respondeu");
     expect(e).not.toContain("UMA fala só");
-    expect(e).toContain("no máximo UMA pergunta");
+    expect(e).toContain("Pergunta é opcional: no máximo UMA");
   });
 });
 

@@ -21,6 +21,8 @@ import { getRepository } from "@/lib/data";
 import { respondToConversation } from "@/lib/agent";
 import { detectarIdioma } from "@/lib/agent/idioma";
 import { perguntasRepetidas } from "@/lib/agent/pergunta-repetida";
+import { dizONome, perguntasEmSequencia } from "@/lib/agent/conversa";
+import { getTrainingConfig } from "@/lib/agent/system-prompt";
 import type { Lead } from "@/lib/domain/types";
 
 /** Um turno é uma mensagem, ou várias seguidas (a pessoa quebrando a frase no WhatsApp). */
@@ -32,6 +34,11 @@ export interface Cenario {
   /** Por que este cenário existe — o defeito real que ele vigia. */
   vigia: string;
   turnos: TurnoDoCenario[];
+  /**
+   * O que a resposta do turno (0 = primeiro) precisa conter: é como se vê se a agente
+   * respondeu à pergunta que a pessoa fez, em vez de seguir com a própria.
+   */
+  espera?: Record<number, { re: RegExp; oQue: string }>;
   /** O idioma em que as respostas TÊM de vir. */
   idioma: "pt" | "es" | "en" | "fr";
   /** O que a ficha precisa ter no fim. Regex, porque a grafia do modelo varia. */
@@ -100,6 +107,24 @@ export const CENARIOS: Cenario[] = [
     ficha: { nome: /john/i, nacionalidade: /nig[ée]ria/i, onde: /lagos|nig[ée]ria|exterior/i },
   },
   {
+    id: "pergunta-no-meio",
+    titulo: "A pessoa pergunta outra coisa no meio da triagem",
+    vigia: "Reclamação do escritório: a agente ignora o que o cliente perguntou e faz a próxima pergunta da ficha, no automático.",
+    turnos: [
+      "Boa tarde, sou colombiano e moro em Curitiba, quero renovar minha residência",
+      "Antes me diz uma coisa: você é advogada?",
+      "E qual é o horário de atendimento de vocês?",
+      "Estou muito preocupado, minha mãe está doente na Colômbia e não sei se posso viajar",
+    ],
+    espera: {
+      1: { re: /n[ãa]o sou advogad|n[ãa]o,|primeiro atendimento|time jur[íi]dico|atendimento da/i, oQue: "se é advogada" },
+      2: { re: /\b0?8\s*(h|:|às|as)|segunda|dias? úte/i, oQue: "o horário de atendimento" },
+      3: { re: /m[ãa]e|preocupa|sinto|entendo|imagino|dif[íi]cil|viaj/i, oQue: "a preocupação com a mãe e a viagem" },
+    },
+    idioma: "pt",
+    ficha: { nacionalidade: /col[ôo]mbi/i, onde: /curitiba|brasil/i },
+  },
+  {
     id: "so-oi",
     titulo: "Só cumprimenta",
     vigia: "Quem manda \"oi\" duas vezes recebe uma acolhida curta, não um parágrafo.",
@@ -117,7 +142,7 @@ const RACIOCINIO_VAZADO =
   /\b(vou verificar|seguindo o fluxo|j[áa] tenho os dados|vou registrar|registrei (os|seus) dados|como (uma )?(ia|intelig[êe]ncia artificial|modelo de linguagem)|conforme (as )?minhas instru[çc][õo]es|system prompt|nota interna|ferramenta registrar|registrar_dados_lead|transferir_para_humano)\b/i;
 
 export interface ProblemaNoTurno {
-  tipo: "pergunta_repetida" | "repetiu_a_si_mesma" | "idioma" | "longa" | "perguntas_demais" | "raciocinio_vazado" | "sem_resposta";
+  tipo: "pergunta_repetida" | "repetiu_a_si_mesma" | "idioma" | "longa" | "perguntas_demais" | "raciocinio_vazado" | "sem_resposta" | "nao_se_apresentou" | "ignorou" | "interrogatorio";
   detalhe: string;
 }
 
@@ -155,10 +180,24 @@ export function avaliarResposta(p: {
   respostasAnteriores: string[];
   lead: Lead | null;
   idioma: Cenario["idioma"];
+  /** O nome da agente: a primeira resposta precisa dizê-lo. */
+  nomeDaAgente?: string;
+  espera?: { re: RegExp; oQue: string };
 }): ProblemaNoTurno[] {
   const r = p.resposta.trim();
   if (!r) return [{ tipo: "sem_resposta", detalhe: "A agente não respondeu nada." }];
   const problemas: ProblemaNoTurno[] = [];
+
+  if (p.nomeDaAgente && p.respostasAnteriores.length === 0 && !dizONome(r, p.nomeDaAgente)) {
+    problemas.push({ tipo: "nao_se_apresentou", detalhe: `A primeira mensagem não diz o nome (${p.nomeDaAgente}).` });
+  }
+  if (p.espera && !p.espera.re.test(r)) {
+    problemas.push({ tipo: "ignorou", detalhe: `Não respondeu ao que a pessoa trouxe: ${p.espera.oQue}.` });
+  }
+  const seguidas = perguntasEmSequencia([...p.respostasAnteriores, r]);
+  if (seguidas > 3) {
+    problemas.push({ tipo: "interrogatorio", detalhe: `${seguidas} mensagens seguidas terminando em pergunta.` });
+  }
 
   const repetidas = perguntasRepetidas(r, p.lead);
   if (repetidas.length) {
@@ -230,6 +269,7 @@ export async function rodarTurno(
   for (const m of enviado) await repo.addMessage(conversationId, "user", m);
   const { reply } = await respondToConversation(conversationId, { ferramentasEmSombra: true });
   const lead = await repo.getLeadByConversation(conversationId).catch(() => null);
+  const nomeDaAgente = (await getTrainingConfig().catch(() => null))?.identity.agentName;
 
   const ultimo = indice === cenario.turnos.length - 1;
   const fichaFaltando = ultimo ? conferirFicha(lead, cenario.ficha) : [];
@@ -240,7 +280,7 @@ export async function rodarTurno(
     turno: {
       enviado,
       resposta: reply,
-      problemas: avaliarResposta({ resposta: reply, respostasAnteriores: antes, lead, idioma: cenario.idioma }),
+      problemas: avaliarResposta({ resposta: reply, respostasAnteriores: antes, lead, idioma: cenario.idioma, nomeDaAgente, espera: cenario.espera?.[indice] }),
     },
     ultimo,
     fichaFaltando,

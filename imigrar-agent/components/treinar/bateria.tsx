@@ -46,6 +46,9 @@ const ROTULO: Record<string, string> = {
   perguntas_demais: "Perguntas demais",
   raciocinio_vazado: "Vazou o funcionamento",
   sem_resposta: "Sem resposta",
+  nao_se_apresentou: "Não se apresentou",
+  ignorou: "Ignorou o que foi dito",
+  interrogatorio: "Interrogatório",
 };
 
 export function BateriaDeTestes() {

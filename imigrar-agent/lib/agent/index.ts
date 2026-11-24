@@ -1,11 +1,14 @@
 ﻿import { getRepository } from "@/lib/data";
-import { getSystemPrompt } from "@/lib/agent/system-prompt";
+import { getSystemPrompt, getTrainingConfig } from "@/lib/agent/system-prompt";
+import { DEFAULT_IDENTITY } from "@/lib/agent/training";
+import { conferirAtencao, instrucaoDeAtencao, mereceConferencia } from "@/lib/agent/atencao";
+import { comoResponder, fezPergunta, garantirApresentacao, perguntasEmSequencia } from "@/lib/agent/conversa";
 import { runAgent, type AgentTurn, type ToolCallTrace } from "@/lib/agent/runner";
 import { computeLeadScore } from "@/lib/agent/lead-score";
 import { executeTool } from "@/lib/agent/tools";
 import { classifyRouting } from "@/lib/agent/routing-net";
 import { avaliarImpasse } from "@/lib/agent/anti-loop";
-import { avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-gate";
+import { PEDIDO_DE_CONFIRMACAO, avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-gate";
 import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
@@ -39,6 +42,8 @@ const PRAZO_DO_TURNO_MS = 40_000;
 const PRAZO_DESDE_O_WEBHOOK_MS = 52_000;
 /** Quanto a reescrita pode levar. Sem reserva e sem atendimento determinístico. */
 const LIMITE_DA_REESCRITA_MS = 12_000;
+/** Mais perguntas seguidas do que isto e a conversa virou interrogatório. */
+const MAXIMO_DE_PERGUNTAS_SEGUIDAS = 3;
 /** Em quantas mensagens da pessoa a abertura ainda é lida pelo modelo. */
 const LEITURAS_DA_ABERTURA = 8;
 
@@ -83,7 +88,13 @@ const PRAZO_LABEL: Record<string, string> = {
  * nacionalidade, onde está") pesava mais do que o fato de que ela já tinha respondido.
  * Aqui é a última coisa que o modelo lê antes de escrever.
  */
-export function montarEstadoDoTurno(lead: Lead | null, emRajada: number, idioma?: string | null): string {
+export function montarEstadoDoTurno(
+  lead: Lead | null,
+  emRajada: number,
+  idioma?: string | null,
+  /** Como responder a este turno (lib/agent/conversa.ts). Vem antes do resto. */
+  instrucoes: string[] = [],
+): string {
   const onde =
     lead?.region ??
     (lead?.localizacao === "brasil" ? "no Brasil" : lead?.localizacao === "exterior" ? `no exterior${lead.paisExterior ? ` — ${lead.paisExterior}` : ""}` : null);
@@ -94,12 +105,15 @@ export function montarEstadoDoTurno(lead: Lead | null, emRajada: number, idioma?
   ].filter(Boolean);
   return [
     "ESTADO DESTA CONVERSA — leia antes de responder.",
+    ...instrucoes,
     sabido.length ? `Ela JÁ respondeu — ${sabido.join(" · ")}.` : "",
     "Não pergunte de novo, nem peça confirmação, de nada que ela já disse nesta conversa, esteja ou não na linha acima. Releia as mensagens dela antes de perguntar qualquer coisa.",
     emRajada > 1
       ? `As últimas ${emRajada} mensagens dela são UMA fala só: responda ao conjunto, numa mensagem só.`
       : "",
-    "Faça no máximo UMA pergunta, e só sobre o que ainda não foi respondido.",
+    // "No máximo uma", e não "uma": dita como obrigação, ela fazia toda mensagem terminar
+    // em pergunta de ficha, mesmo quando a pessoa tinha perguntado outra coisa.
+    "Pergunta é opcional: no máximo UMA, só sobre o que ainda não foi respondido, e só depois de responder a ela.",
     // As respostas de 900 caracteres que o time viu: num texto de 20 mil tokens, "seja
     // breve" perde para os exemplos longos. Aqui é a última coisa lida.
     "Escreva curto, como uma pessoa no WhatsApp: no máximo 3 ou 4 frases, sem listas.",
@@ -463,7 +477,7 @@ export async function respondToConversation(
     // perguntas obrigatórias na mesma mensagem. E a apresentação é só na primeira.
     const jaDisseOQuePrecisa = Boolean(knownLead?.servicesInterested?.length || knownLead?.objetivo?.trim());
     const oQueFazer = [
-      userTurns <= 1 ? "Acolha e se apresente em uma linha." : "Acolha o que ela disse.",
+      userTurns <= 1 ? "Acolha e se apresente em uma linha, pelo seu nome." : "Acolha o que ela disse.",
       jaDisseOQuePrecisa
         ? "Ela já disse o que precisa: não pergunte de novo — siga para o próximo ponto que falta."
         : "Pergunte o que a pessoa precisa.",
@@ -521,9 +535,9 @@ export async function respondToConversation(
       ? `\n\n════════ QUALIFICAÇÃO COMPLETA ════════\nVocê já sabe o que o time jurídico precisa para pegar este caso. Não pergunte mais nada de cadastro: ou você informa algo útil com o material oficial que tiver, ou encaminha (avisando e confirmando antes).`
       : `\n\n════════ O QUE O TIME JURÍDICO AINDA NÃO SABE ════════\nFalta descobrir: ${faltaNaTriagem.faltam.join(", ")}.\nESTA LISTA É UMA LEITURA AUTOMÁTICA E PODE ESTAR ATRASADA. Antes de perguntar qualquer item dela, releia a conversa: se ela já respondeu — mesmo com outras palavras, em outro idioma ou numa mensagem seca —, está respondido. Não pergunte de novo e não peça confirmação.\n${
           abrirPeloNome
-            ? "O NOME VEM PRIMEIRO, e é a PRÓXIMA pergunta que você faz — nunca a última. Pergunte agora, sozinho, antes de entrar no ramo da situação dela, com uma frase sua (\"antes de mais nada, como você se chama?\"). Perguntar o nome lá no fim, na hora de passar o caso, é o erro que este bloco existe para impedir. EXCEÇÃO: se ela acabou de descrever risco, prazo correndo ou pedir um advogado, acolha e encaminhe primeiro — o nome vem depois, e a ficha vai como estiver.\n"
+            ? "O NOME VEM PRIMEIRO, e é a PRÓXIMA pergunta que você faz — nunca a última. Pergunte nesta mensagem, DEPOIS de responder ao que ela disse e antes de entrar no ramo da situação dela, com uma frase sua (\"com quem eu falo?\"). Perguntar o nome lá no fim, na hora de passar o caso, é o erro que este bloco existe para impedir. EXCEÇÃO: se ela acabou de descrever risco, prazo correndo ou pedir um advogado, acolha e encaminhe primeiro — o nome vem depois, e a ficha vai como estiver.\n"
             : ""
-        }O resto NÃO é a ordem das perguntas nem uma lista para despejar: é o que você precisa saber ao longo da conversa. Faça UMA pergunta por vez, na ordem que a conversa pedir, aproveitando o que a pessoa já contou sozinha, e comente algo útil entre uma coisa e outra. Se ela não quiser responder alguma, siga em frente sem insistir — inclusive o nome, que você pergunta UMA vez.\nNão segure o encaminhamento por causa desta lista: caso concreto, prazo correndo, situação irregular ou risco vão para o time jurídico mesmo com a lista pela metade.`;
+        }ISTO É PANO DE FUNDO, NÃO ROTEIRO: responder ao que ela acabou de dizer vem sempre antes de descobrir o próximo item. O resto NÃO é a ordem das perguntas nem uma lista para despejar: é o que você precisa saber ao longo da conversa. Faça UMA pergunta por vez, na ordem que a conversa pedir, aproveitando o que a pessoa já contou sozinha, e comente algo útil entre uma coisa e outra. Se ela não quiser responder alguma, siga em frente sem insistir — inclusive o nome, que você pergunta UMA vez.\nNão segure o encaminhamento por causa desta lista: caso concreto, prazo correndo, situação irregular ou risco vão para o time jurídico mesmo com a lista pela metade.`;
   }
 
   // ─── MATERIAL OFICIAL (RAG) ───
@@ -538,7 +552,28 @@ export async function respondToConversation(
   const mensagensDoCliente = rawMsgs.filter((m) => m.role === "user").map((m) => m.content);
   systemPrompt += await blocoMaterialPara(consultaDoTurno(mensagensDoCliente));
 
-  const estadoDoTurno = montarEstadoDoTurno(knownLead, emRajada, idiomaDetectado ?? convBefore?.idioma);
+  // QUEM ESTÁ FALANDO, e como responder a este turno. Ver lib/agent/conversa.ts.
+  const identidade = (await getTrainingConfig().catch(() => null))?.identity;
+  const nomeDaAgente = identidade?.agentName?.trim() || DEFAULT_IDENTITY.agentName;
+  const empresa = identidade?.companyName?.trim() || DEFAULT_IDENTITY.companyName;
+  const respostasDela = raw.filter((m) => m.role === "assistant").map((m) => m.content);
+  const primeiraResposta = respostasDela.length === 0;
+  const falasDeAgora = rawMsgs
+    .slice(ultimoAssistente + 1)
+    .filter((m) => m.role === "user")
+    .map((m) => falaDaPessoa(m.content));
+  const estadoDoTurno = montarEstadoDoTurno(
+    knownLead,
+    emRajada,
+    idiomaDetectado ?? convBefore?.idioma,
+    comoResponder({
+      primeira: primeiraResposta,
+      nome: nomeDaAgente,
+      empresa,
+      perguntou: falasDeAgora.some(fezPergunta),
+      emSequencia: perguntasEmSequencia(respostasDela),
+    }),
+  );
   const prazoDoTurno = opts.inicio ? opts.inicio + PRAZO_DESDE_O_WEBHOOK_MS : inicioDoTurno + PRAZO_DO_TURNO_MS;
   const { reply: rawReply, toolCalls, source } = await runAgent({
     prazo: prazoDoTurno,
@@ -656,6 +691,62 @@ export async function respondToConversation(
     (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean })?.ok === true,
   );
 
+  // A REESCRITA, usada pelas duas conferências abaixo. Direto no modelo escolhido, SEM o
+  // runner: ele tentaria a reserva e o motor determinístico, cada um com mais 30 s.
+  const turnoSimples = !transferred && toolCalls.every((t) => t.name === "registrar_dados_lead");
+  const temTempo = () =>
+    Date.now() - inicioDoTurno < ORCAMENTO_PARA_REESCREVER_MS &&
+    prazoDoTurno - Date.now() > LIMITE_DA_REESCRITA_MS;
+  const reescrever = async (instrucao: string): Promise<string | null> => {
+    const llm = await llmEmUso();
+    if (!llm) return null;
+    const segunda = await conduzirComLlm({
+      llm,
+      systemPrompt,
+      estadoDoTurno: `${estadoDoTurno}\n\n${instrucao}`,
+      history,
+      conversationId,
+      blockTools: AGENT_TOOLS.map((t) => t.name),
+      sombra: true,
+      prazo: Math.min(prazoDoTurno, Date.now() + LIMITE_DA_REESCRITA_MS),
+    });
+    const texto = segunda.reply.trim();
+    // "Desculpe, pode repetir?" é o que a condução devolve quando o modelo responde vazio.
+    return texto.length >= 20 && texto !== "Desculpe, pode repetir?" ? texto : null;
+  };
+
+  // A RESPOSTA OUVIU A PESSOA? Ver lib/agent/atencao.ts. Só em turno simples (a reescrita
+  // não sabe o que as tools fizeram) e com tempo de sobra; em qualquer falha, sai a
+  // resposta original.
+  const falaInteira = falasDeAgora.join("\n").trim();
+  // Pedir confirmação para encaminhar não é interrogatório: é a pergunta que precisa sair.
+  const virouInterrogatorio =
+    perguntasEmSequencia([...respostasDela, reply]) > MAXIMO_DE_PERGUNTAS_SEGUIDAS && !PEDIDO_DE_CONFIRMACAO.test(reply);
+  if (
+    source !== "fallback" && !buttons && !impasse && turnoSimples && confirmacao.liberado && temTempo() &&
+    (virouInterrogatorio || mereceConferencia(falaInteira))
+  ) {
+    try {
+      const llm = await llmEmUso();
+      const conferencia =
+        llm && mereceConferencia(falaInteira)
+          ? await conferirAtencao({ llm, ultimaDoAtendimento: ultimaRespostaDoAgente, fala: falaInteira, resposta: reply, conversationId })
+          : null;
+      const ignorou = conferencia?.aprovada === false;
+      if (llm && (ignorou || virouInterrogatorio) && temTempo()) {
+        const nova = await reescrever(
+          instrucaoDeAtencao({ ignorado: ignorou ? conferencia.ignorado ?? "o que ela acabou de dizer" : null, interrogatorio: virouInterrogatorio }),
+        );
+        if (nova) {
+          reply = nova;
+          console.warn(`[atencao] reescrevi a resposta (${ignorou ? "ignorou a pessoa" : "interrogatório"}) — conversa ${conversationId}`);
+        }
+      }
+    } catch (err) {
+      console.error("[atencao] reescrita falhou:", err instanceof Error ? err.message : err);
+    }
+  }
+
   // PERGUNTOU DE NOVO O QUE ELA JÁ DISSE? Corrige antes de sair, em dois níveis.
   //
   // REESCREVER com o modelo só quando a primeira passada foi uma conversa simples: sem
@@ -668,35 +759,13 @@ export async function respondToConversation(
   // Fora desses casos, ou se a reescrita falhar, a frase da pergunta repetida é RETIRADA
   // da resposta. Uma resposta sem a pergunta é melhor do que perguntar de novo.
   const repetidas = source !== "fallback" && !buttons && !impasse ? perguntasRepetidas(reply, knownLead) : [];
-  const turnoSimples =
-    !transferred && toolCalls.every((t) => t.name === "registrar_dados_lead");
-  const temTempo =
-    Date.now() - inicioDoTurno < ORCAMENTO_PARA_REESCREVER_MS &&
-    prazoDoTurno - Date.now() > LIMITE_DA_REESCRITA_MS;
   if (repetidas.length && knownLead) {
     const original = reply;
     let caminho: "reescrita" | "pergunta retirada" | "não deu para corrigir" = "não deu para corrigir";
     try {
-      if (!turnoSimples || !temTempo) throw new Error("sem reescrita neste turno");
-      // Direto no modelo escolhido, SEM o runner: o runner tentaria a reserva e o motor
-      // determinístico, e cada um pode levar mais 30 s. Se o escolhido não reescrever a
-      // tempo, a pergunta é retirada — e isso é instantâneo.
-      const llm = await llmEmUso();
-      if (!llm) throw new Error("sem modelo");
-      const segunda = await conduzirComLlm({
-        llm,
-        systemPrompt,
-        estadoDoTurno: `${estadoDoTurno}\n\n${instrucaoDeReescrita(repetidas, knownLead)}`,
-        history,
-        conversationId,
-        blockTools: AGENT_TOOLS.map((t) => t.name),
-        sombra: true,
-        prazo: Math.min(prazoDoTurno, Date.now() + LIMITE_DA_REESCRITA_MS),
-      });
-      const corrigida = segunda.reply.trim();
-      // "Desculpe, pode repetir?" é o que a condução devolve quando o modelo responde vazio.
-      const presta = corrigida.length >= 20 && corrigida !== "Desculpe, pode repetir?";
-      if (presta && !perguntasRepetidas(corrigida, knownLead).length) {
+      if (!turnoSimples || !temTempo()) throw new Error("sem reescrita neste turno");
+      const corrigida = await reescrever(instrucaoDeReescrita(repetidas, knownLead));
+      if (corrigida && !perguntasRepetidas(corrigida, knownLead).length) {
         reply = corrigida;
         caminho = "reescrita";
       }
@@ -748,6 +817,15 @@ export async function respondToConversation(
       .catch(() => {
         // Registrar o corte não pode virar um segundo problema no meio do atendimento.
       });
+  }
+
+  // A PRIMEIRA MENSAGEM DIZ O NOME, sempre. Depois do verificador, para nada o cortar.
+  if (primeiraResposta) {
+    reply = garantirApresentacao(reply, {
+      nome: nomeDaAgente,
+      empresa,
+      idioma: idiomaDetectado ?? convBefore?.idioma,
+    });
   }
 
   // CHEGOU MENSAGEM NOVA ENQUANTO A AGENTE ESCREVIA: esta resposta não sai e não entra no

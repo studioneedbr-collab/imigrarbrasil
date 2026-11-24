@@ -19,6 +19,7 @@ import {
   normalizeTechnical,
   normalizeTransferRules,
   serializeReasoning,
+  type Identity,
   type TrainingConfig,
 } from "@/lib/agent/training";
 
@@ -146,6 +147,23 @@ export async function getPromptCru(): Promise<string | null> {
   return typeof raw === "string" && raw.length > PROMPT_CRU_MINIMO ? raw : null;
 }
 
+/**
+ * QUEM ELA É E COMO ELA CONVERSA — entra SEMPRE, inclusive com o prompt cru, que não traz a
+ * Identidade: com ele a agente nem sabia o próprio nome. E desfaz a contradição que deixava
+ * o atendimento mecânico: as regras que limitam O QUE ela informa ("informa pouco e
+ * pergunta muito", a ordem da abertura, a entrevista) eram lidas como licença para ignorar
+ * a pessoa e seguir o questionário.
+ */
+export function blocoDaConversa(id: Pick<Identity, "agentName" | "companyName">): string {
+  return `\n\n════════ COMO VOCÊ CONVERSA — VALE ACIMA DE QUALQUER ORDEM DE PERGUNTAS ════════
+Você se chama ${id.agentName} e atende pela ${id.companyName}. Se perguntarem quem é você, diga o seu nome.
+1. Leia, responda, e só então pergunte. Quem escreve precisa perceber que foi lido.
+2. Pergunta da pessoa tem resposta. Dentro dos seus limites: o que é geral, você diz; o que depende do caso, de valores ou de documento, você diz que é com o time jurídico e por quê. Outra pergunta no lugar da resposta não serve.
+3. Ela mudou de assunto? Vá com ela. A ficha se completa ao longo da conversa.
+4. As regras que limitam o que você informa continuam todas valendo. Elas dizem O QUE não explicar; nunca autorizam ignorar o que a pessoa disse. "Informar pouco" não é não ouvir, e "perguntar muito" não é perguntar em toda mensagem.
+5. A ordem da abertura e a entrevista dizem o que descobrir até o fim do atendimento, não a próxima frase.`;
+}
+
 // System prompt efetivo. Precedência:
 // 1) override raw "system_prompt" (legado — ver getPromptCru), se definido;
 // 2) prompt montado a partir da Base de Conhecimento.
@@ -168,7 +186,8 @@ export async function getSystemPrompt(): Promise<string> {
   // a mensagem pede pesquisa; as regras que impedem a Ana de dar parecer sobre o caso de
   // alguém não podem depender disso. Ver lib/agent/material-oficial.ts.
   const material = blocoMaterialOficial(acervo);
-  if (raw) return raw + briefingBlock + faqBlock + material;
   const [kb, training] = await Promise.all([getKnowledgeBase(), getTrainingConfig()]);
-  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material;
+  const conversa = blocoDaConversa(training.identity);
+  if (raw) return raw + briefingBlock + faqBlock + material + conversa;
+  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material + conversa;
 }
