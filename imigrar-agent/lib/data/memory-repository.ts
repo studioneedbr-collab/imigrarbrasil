@@ -167,6 +167,12 @@ export class MemoryRepository implements Repository {
     for (const id of conversationIds) out.set(id, this.messages.get(id) ?? []);
     return out;
   }
+  async updateMessageContent(messageId: string, content: string, mediaText?: string | null) {
+    for (const list of Array.from(this.messages.values())) {
+      const m = list.find((x) => x.id === messageId);
+      if (m) { m.content = content; if (mediaText !== undefined) m.mediaText = mediaText; return; }
+    }
+  }
   async setMessageMediaText(messageId: string, text: string) {
     for (const list of Array.from(this.messages.values())) {
       const m = list.find((x) => x.id === messageId);
@@ -563,6 +569,9 @@ export class MemoryRepository implements Repository {
     return apagados;
   }
   async getLeadByConversation(conversationId: string) { return this.leads.get(conversationId) ?? null; }
+  async listLeadsDasConversas(ids: string[]) {
+    return ids.map((i) => this.leads.get(i)).filter((l): l is Lead => !!l);
+  }
   async listLeads(opcoes: { limite?: number; funilIds?: string[] } = {}) {
     // Mesma ordem do Supabase (mais recente primeiro), para o teto cortar a mesma ponta.
     const todos = Array.from(this.leads.values()).sort(
@@ -781,8 +790,13 @@ export class MemoryRepository implements Repository {
   async listUsers(): Promise<Array<Omit<User, "passwordHash">>> {
     return Array.from(this.users.values()).map((u) => ({
       id: u.id, email: u.email, name: u.name, role: u.role, setor: u.setor ?? null,
-      active: u.active, createdAt: u.createdAt,
+      active: u.active, dono: u.dono ?? false, createdAt: u.createdAt,
     }));
+  }
+  async updateUser(uid: string, patch: Partial<Pick<User, "name" | "role" | "setor" | "active">>): Promise<void> {
+    for (const [key, u] of Array.from(this.users.entries())) {
+      if (u.id === uid) { this.users.set(key, { ...u, ...patch }); return; }
+    }
   }
   async updateUserPassword(id: string, passwordHash: string): Promise<void> {
     for (const [key, u] of Array.from(this.users.entries())) {

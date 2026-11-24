@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getRepository } from "@/lib/data";
 import { getSession } from "@/lib/auth/guard";
-import { env } from "@/lib/env";
 import { Card, PageHeader, StatStrip, Kpi } from "@/components/dashboard/ui";
 import { AbasDoSite } from "@/components/dashboard/abas";
 import Publicar from "@/components/site/publicar";
@@ -88,14 +87,6 @@ export default async function SitePage(props: { searchParams: Promise<{ dias?: s
   const r = resumirSite(eventos, dias);
   const vazio = posts.length === 0 && servicos.length === 0;
 
-  // O que falta para o circuito inteiro funcionar. Cada item diz o que fazer, não só o que falta.
-  const pendencias = [
-    !env.siteExportToken && "SITE_EXPORT_TOKEN não está configurado no painel: o build não consegue buscar o conteúdo.",
-    !githubConfigurado() && "GITHUB_TOKEN não está configurado no painel: o botão Publicar fica desligado.",
-    env.siteOrigins.length === 0 && "SITE_CAPTURE_ORIGINS está vazio: os cliques mandados pelo site podem ser bloqueados pelo navegador (CORS).",
-    vazio && "O conteúdo do site ainda não foi importado para o painel.",
-  ].filter(Boolean) as string[];
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -113,13 +104,6 @@ export default async function SitePage(props: { searchParams: Promise<{ dias?: s
         }
       />
       <AbasDoSite />
-
-      {pendencias.length ? (
-        <Card className="border-ib-warn/40 p-5">
-          <h2 className="font-display text-base font-semibold text-ib-ink">Para ligar tudo</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ib-slate">{pendencias.map((p) => <li key={p}>{p}</li>)}</ul>
-        </Card>
-      ) : null}
 
       {vazio && sessao?.role === "admin" ? <Importar temGithub={githubConfigurado()} /> : null}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,26 +19,14 @@ import { nomeDoIdioma } from "@/lib/domain/idiomas";
 import { rotuloContato } from "@/lib/domain/rotulos";
 import RascunhoSombra, { type RascunhoView } from "@/components/agente/rascunho-sombra";
 import { QualidadeDoLead } from "@/components/atendimentos/qualidade";
-import { Selecao } from "@/components/dashboard/campos";
-
-// PARA ONDE SE TRANSFERE AQUI.
-//
-// A lista era a de uma assessoria de mão de obra — "Recursos Humanos", "Departamento
-// Pessoal", "Suporte" —, e nenhum desses times existe neste escritório. Transferir para
-// um setor que não existe é o mesmo que transferir para lugar nenhum: o caso sai da
-// conversa e não chega em ninguém.
-const SETORES = [
-  "Jurídico",
-  "Atendimento",
-  "Documentação",
-  "Financeiro",
-  "Diretoria",
-];
+import { TransferirConversa } from "@/components/conversas/transferir";
 
 type DetailResponse = {
   conversation: Conversation;
   messages: Message[];
   lead: Lead | null;
+  /** O responsável do caso, pelo nome. */
+  responsavelNome?: string | null;
   transferTickets?: TransferTicket[];
   /** Modo sombra: respostas montadas e não enviadas, esperando decisão. */
   rascunhos?: RascunhoView[];
@@ -93,20 +81,13 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
 
   // Transferência manual + exclusão
   const [showTransfer, setShowTransfer] = useState(false);
-  const [setor, setSetor] = useState(SETORES[0]);
-  const [pessoa, setPessoa] = useState("");
-  const [transferring, setTransferring] = useState(false);
-  const [transferError, setTransferError] = useState<string | null>(null);
-  const [users, setUsers] = useState<{ id: string; name?: string; email: string }[]>([]);
+  const [avisoTransferencia, setAvisoTransferencia] = useState<string | null>(null);
+  const fecharTransferencia = useCallback(() => setShowTransfer(false), []);
 
   // Quem sou eu — para distinguir "Você assumiu" de "Fulano está atendendo".
   const [meEmail, setMeEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/users", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { users: [] }))
-      .then((d) => setUsers(d.users ?? []))
-      .catch(() => setUsers([]));
     fetch("/api/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setMeEmail(d?.email ?? null))
@@ -149,31 +130,6 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
       vivo = false;
     };
   }, []);
-
-  async function doTransfer() {
-    if (!pessoa.trim()) {
-      setTransferError("Informe o nome da pessoa.");
-      return;
-    }
-    setTransferring(true);
-    setTransferError(null);
-    try {
-      const res = await fetch(`/api/conversations/${id}/transfer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setor, pessoa: pessoa.trim() }),
-      });
-      const d = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !d.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
-      setShowTransfer(false);
-      setPessoa("");
-      // o polling (3s) já traz a nota + o novo status.
-    } catch (e) {
-      setTransferError(e instanceof Error ? e.message : "Falha ao transferir.");
-    } finally {
-      setTransferring(false);
-    }
-  }
 
   /*
    * FALHA SILENCIOSA ERA O PIOR DESFECHO POSSÍVEL.
@@ -443,13 +399,13 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
             <button
               type="button"
               onClick={() => {
-                setTransferError(null);
+                setAvisoTransferencia(null);
                 setShowTransfer(true);
               }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-ib-mar px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-ib-carimbo"
             >
               <Icon name="users" className="h-3.5 w-3.5" />
-              Transferir p/ humano
+              Transferir
             </button>
             {/* A rota faz `requireAdmin`. Mostrar a ação para quem ela vai recusar é
                 convidar a pessoa a percorrer o diálogo de confirmação até o 403. */}
@@ -468,6 +424,12 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
           </div>
         }
       />
+
+      {avisoTransferencia ? (
+        <p role="status" className="rounded-xl border border-ib-success/25 bg-ib-success/8 px-4 py-3 text-sm text-[#15803D]">
+          {avisoTransferencia}
+        </p>
+      ) : null}
 
       {erroExcluir ? (
         <div
@@ -501,6 +463,11 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
             </span>
             <div className="min-w-0">
               <p className="truncate font-semibold text-ib-ink">{title}</p>
+              {/* QUEM ATENDE, sempre à vista — e não só quando alguém assumiu. */}
+              <p className="truncate text-xs text-ib-slate">
+                Responsável:{" "}
+                <span className="font-semibold text-ib-ink">{data.responsavelNome ?? "ninguém ainda"}</span>
+              </p>
               <p className="flex items-center gap-2 font-mono text-xs tabular-nums text-ib-slate">
                 {conversation.whatsappNumber}
                 {/* O idioma do contato, detectado no atendimento. Quem assume a conversa
@@ -1006,87 +973,15 @@ export default function ConversationDetailPage(props: { params: Promise<{ id: st
         </div>
       </div>
 
-      {/* Modal de transferência manual (setor + pessoa) */}
-      {showTransfer ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-ib-casa/45 backdrop-blur-[2px]"
-            onClick={() => !transferring && setShowTransfer(false)}
-            aria-hidden
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            className="relative w-full max-w-md rounded-2xl border border-ib-line bg-white p-6 shadow-2xl"
-          >
-            <div className="flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ib-bruma text-ib-mar">
-                <Icon name="users" className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className="text-base font-semibold text-ib-ink">Transferir para um humano</h2>
-                <p className="mt-1 text-sm leading-relaxed text-ib-slate">
-                  Escolha o setor e quem vai assumir. Entra uma nota na conversa e a equipe é avisada.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <Selecao
-                  valor={setor}
-                  onChange={setSetor}
-                  label="Setor de destino"
-                  opcoes={SETORES.map((s) => ({ valor: s, rotulo: s }))}
-                />
-              </div>
-              <div>
-                {users.length > 0 ? (
-                  <Selecao
-                    valor={pessoa}
-                    onChange={setPessoa}
-                    label="Quem assume"
-                    placeholder="Selecione…"
-                    opcoes={users.map((u) => ({ valor: u.name || u.email, rotulo: u.name || u.email }))}
-                  />
-                ) : (
-                  <input
-                    value={pessoa}
-                    onChange={(e) => setPessoa(e.target.value)}
-                    aria-label="Quem assume"
-                    placeholder="quem assume (ex.: Pedro Lucas)"
-                    autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && !transferring && doTransfer()}
-                    className="mt-1.5 w-full rounded-xl border border-ib-line bg-white px-3 py-2.5 text-sm text-ib-ink placeholder:text-ib-slate focus:border-ib-mar focus:outline-none focus:ring-2 focus:ring-ib-mar/20"
-                  />
-                )}
-              </div>
-              {transferError ? (
-                <p className="text-xs font-medium text-ib-danger">{transferError}</p>
-              ) : null}
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setShowTransfer(false)}
-                disabled={transferring}
-                className="rounded-xl border border-ib-line bg-white px-4 py-2 text-sm font-medium text-ib-ink transition hover:bg-ib-papel disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={doTransfer}
-                disabled={transferring}
-                className="rounded-xl bg-ib-mar px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-ib-carimbo disabled:opacity-60"
-              >
-                {transferring ? "Transferindo…" : "Transferir atendimento"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <TransferirConversa
+        conversationId={id}
+        aberto={showTransfer}
+        onFechar={fecharTransferencia}
+        onFeito={(m) => {
+          setShowTransfer(false);
+          setAvisoTransferencia(m); // o polling (3s) traz o responsável e o status novos
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDelete}

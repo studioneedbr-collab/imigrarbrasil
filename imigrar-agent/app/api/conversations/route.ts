@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireAdmin, requireSession } from "@/lib/auth/guard";
+import { comQuemEsta } from "@/lib/crm/agente-na-transferencia";
 import { ambienteDaConversa } from "@/lib/domain/ambiente";
 import { vereditoBloqueante } from "@/lib/agent/lead-score";
 
@@ -15,6 +16,10 @@ import { vereditoBloqueante } from "@/lib/agent/lead-score";
  * conversa de gente.
  */
 export async function GET(req: Request) {
+  // A conta é conferida AQUI: o middleware só olha o cookie, e uma conta desativada
+  // continuava lendo a lista inteira. Ver getSession (lib/auth/guard.ts).
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
   const repo = getRepository();
   const querEnsaios = new URL(req.url).searchParams.get("ambiente") === "teste";
   const todas = await repo.listConversations();
@@ -48,8 +53,7 @@ export async function GET(req: Request) {
      * só o que ficou escrito na última transferência (às vezes um setor, quando foi a
      * agente que encaminhou), e vale quando o caso ainda não tem dono.
      */
-    const responsavelNome = (lead?.responsavelId ? nomeDe.get(lead.responsavelId) : null) ?? null;
-    const comQuem = responsavelNome ?? (c.status === "transferred" ? c.handedOffTo?.trim() || null : null);
+    const { responsavelNome, comQuem } = comQuemEsta(c, lead?.responsavelId, nomeDe);
     return {
       ...c,
       ...(comQuem ? { comQuem } : {}),

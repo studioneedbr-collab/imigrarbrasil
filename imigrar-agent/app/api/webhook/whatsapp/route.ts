@@ -6,6 +6,7 @@ import { respondToConversation } from "@/lib/agent";
 import { sendMessage, sendDocument, sendButtons } from "@/lib/whatsapp/send";
 import { getZapiConfig } from "@/lib/whatsapp/config";
 import { sendBrevoEmailWithUrl } from "@/lib/email/brevo";
+import { conteudoPendente, esperarAnexos } from "@/lib/whatsapp/anexo-pendente";
 import { readDocument, mediaKindFor } from "@/lib/agent/vision";
 import { transcreverAudio, transcricaoConfigurada } from "@/lib/agent/audio";
 import { idiomaDaConversa, registrarIdioma } from "@/lib/agent/idioma";
@@ -338,6 +339,14 @@ export async function POST(req: NextRequest) {
       // recebido": entra como o que a pessoa DISSE. Um áudio é uma mensagem, não um anexo
       // — tratá-lo como anexo fazia a Ana responder sobre o arquivo em vez de responder à
       // pessoa. O idioma detectado aqui é o mesmo sinal que a regra de idioma usa.
+      // Gravado JÁ, com o id da mensagem; o conteúdo lido entra no fim. Ver anexo-pendente.ts.
+      const gravada = await repo.addMessage(conv.id, "user", conteudoPendente(media.name, media.caption), body.messageId, {
+        url: media.url,
+        kind,
+        name: media.name,
+        text: null,
+      });
+
       let lido: string | null = null;
       let transcrito = false;
       let idiomaDoAudio: string | undefined;
@@ -407,12 +416,7 @@ export async function POST(req: NextRequest) {
             .filter(Boolean)
             .join("\n");
 
-      await repo.addMessage(conv.id, "user", conteudo, body.messageId, {
-        url: media.url,
-        kind,
-        name: media.name,
-        text: lido,
-      });
+      await repo.updateMessageContent(gravada.id, conteudo, lido);
 
       // Idioma detectado no áudio: gravado no contato para os próximos turnos (inclusive
       // os de texto, e o follow-up automático, que sai sem ninguém por perto).
@@ -572,6 +576,8 @@ export async function POST(req: NextRequest) {
         // Espera o lote fechar igual ao caminho normal — um rascunho montado sobre meia
         // frase avalia a Ana pelo que ela não teve chance de ler.
         await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
+        // Foto ou áudio mandado junto ainda sendo lido: a resposta espera por ele.
+        await esperarAnexos(repo, conv.id);
         const msgs = await repo.listMessages(conv.id);
         const lastUser = [...msgs].reverse().find((m) => m.role === "user");
         if (body.messageId && lastUser?.whatsappMessageId && lastUser.whatsappMessageId !== body.messageId) {
@@ -607,6 +613,8 @@ export async function POST(req: NextRequest) {
     // Espera curta e verifica se esta ainda é a última mensagem do cliente. Se outra
     // chegou nesse meio, cede — a requisição da mensagem mais nova responde ao lote.
     await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
+    // Foto ou áudio mandado junto ainda sendo lido: a resposta espera por ele.
+    await esperarAnexos(repo, conv.id);
     const msgs = await repo.listMessages(conv.id);
     const lastUser = [...msgs].reverse().find((m) => m.role === "user");
     if (body.messageId && lastUser?.whatsappMessageId && lastUser.whatsappMessageId !== body.messageId) {

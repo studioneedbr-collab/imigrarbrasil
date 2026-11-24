@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/data";
+import { comQuemEsta } from "@/lib/crm/agente-na-transferencia";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,17 @@ export async function GET() {
     .sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt))
     .slice(0, 20);
 
-  const items = await Promise.all(
-    convs.map(async (c) => {
-      const msgs = await repo.listMessages(c.id);
+  const ids = convs.map((c) => c.id);
+  const [porConversa, leads, usuarios] = await Promise.all([
+    repo.listMessagesForConversations(ids),
+    repo.listLeadsDasConversas(ids).catch(() => []),
+    repo.listUsers().catch(() => []),
+  ]);
+  const donoDe = new Map(leads.map((l) => [l.conversationId, l.responsavelId]));
+  const nomePorId = new Map(usuarios.map((u) => [u.id, u.name?.trim() || u.email]));
+
+  const items = convs.map((c) => {
+      const msgs = porConversa.get(c.id) ?? [];
       const last = msgs[msgs.length - 1];
       return {
         id: c.id,
@@ -28,9 +37,9 @@ export async function GET() {
         lastAt: last?.createdAt ?? c.createdAt,
         unanswered: last?.role === "user",
         status: c.status,
+        comQuem: comQuemEsta(c, donoDe.get(c.id), nomePorId).comQuem,
       };
-    }),
-  );
+  });
 
   const count = items.filter((i) => i.unanswered).length;
   return NextResponse.json({ count, items });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/guard";
 import { getRepository } from "@/lib/data";
+import { rotuloDoTicket } from "@/lib/crm/agente-na-transferencia";
 import { getZapiConnected } from "@/lib/whatsapp/config";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +16,19 @@ export async function GET() {
   const repo = getRepository();
   const tickets = await repo.listTransferTickets();
 
-  const transfers = [...tickets]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 12)
+  const recentes = [...tickets].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 12);
+  const [leads, usuarios] = await Promise.all([
+    repo.listLeadsDasConversas([...new Set(recentes.map((t) => t.conversationId))]).catch(() => []),
+    repo.listUsers().catch(() => []),
+  ]);
+  const donoDe = new Map(leads.map((l) => [l.conversationId, l.responsavelId]));
+  const nomePorId = new Map(usuarios.map((u) => [u.id, u.name?.trim() || u.email]));
+
+  const transfers = recentes
     .map((t) => ({
       id: t.id,
       conversationId: t.conversationId,
-      reason: t.reason,
+      rotulo: rotuloDoTicket(t, nomePorId.get(donoDe.get(t.conversationId) ?? "") ?? null),
       nome: t.dossie?.nome ?? t.dossie?.empresa ?? null,
       createdAt: t.createdAt,
     }));

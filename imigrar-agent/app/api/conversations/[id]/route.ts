@@ -5,10 +5,13 @@ import { requireAdmin, requireSession } from "@/lib/auth/guard";
 import { registrarAcesso } from "@/lib/auth/auditoria";
 import { ACAO_CONVERSA, detalheDaMudanca } from "@/lib/agent/estado";
 import { nomesPorEmail, quemFez } from "@/lib/auth/nomes";
+import { comQuemEsta } from "@/lib/crm/agente-na-transferencia";
 
 // Conversa + mensagens + lead — usado pela visão em tempo real (polling) do dashboard.
 export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
+  const auth = await requireSession();
+  if (!auth.ok) return auth.response;
   const repo = getRepository();
   const conversation = await repo.getConversation(params.id);
   if (!conversation) {
@@ -16,7 +19,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
   }
   // Filtra os tickets no banco (usa idx_transfer_conv). Antes trazia todos os
   // tickets do sistema a cada poll do painel e descartava a maioria em JS.
-  const [messages, lead, transferTickets, rascunhos] = await Promise.all([
+  const [messages, lead, transferTickets, rascunhos, usuarios] = await Promise.all([
     repo.listMessages(params.id),
     repo.getLeadByConversation(params.id),
     repo.listTransferTicketsByConversation(params.id),
@@ -24,7 +27,13 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
     // Só as pendentes — as já decididas viraram mensagem de verdade (quando enviadas) ou
     // não têm mais o que decidir, e ficam na fila de sombra para quem quiser o histórico.
     repo.listRascunhos({ conversationId: params.id, status: "pendente" }).catch(() => []),
+    repo.listUsers().catch(() => []),
   ]);
+  const { responsavelNome } = comQuemEsta(
+    conversation,
+    lead?.responsavelId,
+    new Map(usuarios.map((u) => [u.id, u.name?.trim() || u.email])),
+  );
   // QUEM ASSUMIU, COM NOME DE GENTE.
   //
   // `assumedBy` é o e-mail, que é a identidade certa para gravar e a errada para mostrar:
@@ -37,6 +46,7 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
 
   return NextResponse.json({
     conversation: { ...conversation, assumedByNome: assumidaPor },
+    responsavelNome,
     messages,
     lead,
     transferTickets,

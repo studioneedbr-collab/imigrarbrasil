@@ -7,7 +7,8 @@ import BuscaGlobal from "@/components/dashboard/busca-global";
 interface Transfer {
   id: string;
   conversationId: string;
-  reason: string;
+  /** Para quem foi, ou que ainda espera alguém. Montado no servidor. */
+  rotulo: string;
   nome: string | null;
   createdAt: string;
 }
@@ -25,15 +26,6 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
 }
-
-const reasonLabel: Record<string, string> = {
-  trabalhista: "Trabalhista",
-  contratos: "Contratos",
-  financeiro: "Financeiro",
-  juridico: "Jurídico/LGPD",
-  consultor_comercial: "Falar com consultor",
-  supervisor_operacional: "Supervisor operacional",
-};
 
 export default function Topbar() {
   const [data, setData] = useState<TopbarData | null>(null);
@@ -135,7 +127,7 @@ export default function Topbar() {
                           {t.nome ?? "Lead sem nome"}
                         </p>
                         <p className="text-xs text-ib-slate">
-                          {reasonLabel[t.reason] ?? t.reason} · {timeAgo(t.createdAt)}
+                          {t.rotulo} · {timeAgo(t.createdAt)}
                         </p>
                       </div>
                     </Link>

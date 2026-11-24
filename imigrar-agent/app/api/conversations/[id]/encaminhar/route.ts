@@ -11,6 +11,7 @@ import { eConversaDeGrupo } from "@/lib/whatsapp/remetente";
 import { eFiltrada, type AtendimentoStatus, type EtapaCrm } from "@/lib/domain/types";
 import { ATENDIMENTO_LABEL } from "@/lib/domain/rotulos";
 import { primeiroNome } from "@/lib/auth/nomes";
+import { MODOS_DA_AGENTE, agenteCalada, aplicarAgente, fraseDaAgente } from "@/lib/crm/agente-na-transferencia";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
  * isso na linha, sem perder o lugar.
  *
  * NENHUM DOS DOIS INVENTA REGRA. Transferir é o mesmo "trocar o dono" da ficha
- * (`assumirLead` + calar a agente na conversa); mandar ao funil usa a mesma
+ * (`assumirLead` + a agente para ou continua, à escolha de quem transfere); mandar ao funil usa a mesma
  * `etapaAoTrocarDeFunil` do quadro. O que esta rota acrescenta é só o que faltava para
  * funcionar a partir de uma conversa: criar o lead quando ele ainda não existe.
  *
@@ -37,14 +38,17 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   if (!auth.ok) return auth.response;
 
   const repo = getRepository();
-  const [usuarios, funis, etapas, lead] = await Promise.all([
+  const [usuarios, funis, etapas, lead, conv] = await Promise.all([
     repo.listUsers().catch(() => []),
     repo.listFunis().catch(() => []),
     repo.listEtapas().catch(() => []),
     repo.getLeadByConversation(params.id).catch(() => null),
+    repo.getConversation(params.id).catch(() => null),
   ]);
 
   return NextResponse.json({
+    // O diálogo diz "continua" ou "volta a responder" conforme ela esteja falando ou não.
+    agenteCalada: agenteCalada(conv),
     // Só id e nome: a lista de usuários é dado de funcionário, e para escolher um nome
     // num seletor não é preciso e-mail, papel nem setor.
     pessoas: usuarios
@@ -74,7 +78,12 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 const schema = z.discriminatedUnion("acao", [
-  z.object({ acao: z.literal("transferir"), usuarioId: z.string().min(1) }),
+  z.object({
+    acao: z.literal("transferir"),
+    usuarioId: z.string().min(1),
+    /** Sem a escolha, a agente para — como sempre foi. */
+    agente: z.enum(MODOS_DA_AGENTE).default("para"),
+  }),
   z.object({
     acao: z.literal("crm"),
     funilId: z.string().min(1),
@@ -82,6 +91,7 @@ const schema = z.discriminatedUnion("acao", [
     etapaId: z.string().min(1).nullish(),
     /** Sem responsável, o dono do caso fica como está. */
     responsavelId: z.string().min(1).nullish(),
+    agente: z.enum(MODOS_DA_AGENTE).default("para"),
   }),
 ]);
 
@@ -119,7 +129,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       // diálogo abre com o dono atual marcado, e confirmar sem trocar reenviava o aviso
       // de "conversa transferida" ao WhatsApp do time.
       const leadAtual = await repo.getLeadByConversation(conv.id);
-      if (leadAtual?.responsavelId === destino.id && conv.assumedBy === destino.email) {
+      const nadaMuda =
+        input.agente === "para" ? conv.assumedBy === destino.email : !agenteCalada(conv);
+      if (leadAtual?.responsavelId === destino.id && nadaMuda) {
         return NextResponse.json({ ok: true, leadId: leadAtual.id, mensagem: `A conversa já está com ${nome}.` });
       }
 
@@ -130,20 +142,28 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         (await repo.upsertLead(conv.id, conv.contactName ? { contactName: conv.contactName } : {}));
 
       await repo.assumirLead(lead.id, destino.id, auth.session.email);
-      // A AGENTE SE CALA PARA QUEM RECEBEU. Sem isto a conversa mudaria de dono no CRM e
-      // a Ana continuaria respondendo por cima da pessoa.
-      await repo.assumeConversation(conv.id, destino.email);
-      await repo.updateConversation(conv.id, {
-        handedOffTo: nome,
-        handoffReason: "Transferência manual pelo painel.",
-      });
+      await aplicarAgente(repo, conv.id, { email: destino.email, nome }, input.agente, "Transferência manual pelo painel.");
 
       await registrarAcesso(
         auth.session,
         "transferiu_conversa",
-        { tipo: "lead", id: lead.id, detalhe: `para ${nome} · conversa ${conv.id}` },
+        { tipo: "lead", id: lead.id, detalhe: `para ${nome} · agente ${input.agente} · conversa ${conv.id}` },
         req,
       );
+
+      // O SINO. Transferir pela lista não abria ticket, e quem recebia não era avisado no
+      // painel. Para si mesmo não abre: ninguém precisa ser avisado do que acabou de fazer.
+      if (destino.id !== auth.session.sub && contaComoOperacaoReal(ambienteDaConversa(conv))) {
+        await repo
+          .createTransferTicket({
+            conversationId: conv.id,
+            clienteId: conv.clienteId,
+            reason: `manual:${nome}`,
+            priority: "normal",
+            dossie: { nome: lead.contactName ?? conv.contactName ?? undefined, para: nome, necessidade: `Transferida para ${nome}.` },
+          })
+          .catch((e) => console.error("[encaminhar] não abri o ticket:", e instanceof Error ? e.message : e));
+      }
 
       // O aviso no WhatsApp do time, como na transferência de dentro da conversa. Quem
       // transferiu para si mesmo não precisa ser avisado do que acabou de fazer.
@@ -155,7 +175,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         ).catch((e) => console.error("[encaminhar] falha ao avisar o time:", e instanceof Error ? e.message : e));
       }
 
-      return NextResponse.json({ ok: true, leadId: lead.id, mensagem: `Conversa transferida para ${nome}. A agente parou de responder nela.` });
+      return NextResponse.json({ ok: true, leadId: lead.id, mensagem: `Conversa transferida para ${nome}. ${fraseDaAgente(input.agente)}` });
     }
 
     // ─── MANDAR AO FUNIL DO CRM ───
@@ -269,13 +289,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
     if (destino) {
       await repo.assumirLead(lead.id, destino.id, auth.session.email);
-      // O AGENTE SEGUE O DONO, como na ficha do caso: dar um responsável é pôr uma pessoa
-      // na conversa, e a agente não pode continuar respondendo por cima dela.
-      await repo.assumeConversation(conv.id, destino.email);
-      await repo.updateConversation(conv.id, {
-        handedOffTo: destino.nome,
-        handoffReason: "Responsável definido ao enviar ao CRM.",
-      });
+      await aplicarAgente(repo, conv.id, destino, input.agente, "Responsável definido ao enviar ao CRM.");
     }
 
     const mudouDeLugar = lead.funilId !== funil.id || lead.etapaId !== etapa.id;
@@ -307,7 +321,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         (!mudouDeLugar && !destino
           ? `Este contato já estava ${onde}.`
           : `${existente ? "Lead" : "Lead criado e"} ${mudouDeLugar ? "enviado" : "mantido"} ${onde}.`) +
-        (destino ? ` Responsável: ${destino.nome}; a agente parou de responder nesta conversa.` : ""),
+        (destino ? ` Responsável: ${destino.nome}. ${fraseDaAgente(input.agente)}` : ""),
     });
   } catch (err) {
     console.error("[conversations/encaminhar:POST]", err instanceof Error ? err.message : err);

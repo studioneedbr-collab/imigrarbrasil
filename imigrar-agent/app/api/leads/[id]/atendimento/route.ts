@@ -1,3 +1,4 @@
+import { MODOS_DA_AGENTE, aplicarAgente } from "@/lib/crm/agente-na-transferencia";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRepository } from "@/lib/data";
@@ -59,6 +60,8 @@ const schema = z.object({
    */
   motivoPerdaCategoria: z.string().trim().min(1).max(40).optional(),
   responsavelId: z.string().nullish(),
+  /** Só para `responsaveis`: ao ganhar dono, a agente para (padrão) ou continua. */
+  agente: z.enum(MODOS_DA_AGENTE).default("para"),
   /** Só para `responsaveis`: quem MAIS está no caso, além do dono. */
   apoioIds: z.array(z.string()).max(10).optional(),
   /** Só para `reabrir`: para onde o caso volta. */
@@ -250,9 +253,13 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
         // não voltava nunca, dependendo de quem clicou.
         const novoDono = usuarios.find((u) => u.id === dono);
         if (novoDono?.email) {
-          await repo
-            .assumeConversation(lead.conversationId, novoDono.email)
-            .catch((e) => console.error("[atendimento] não movi o agente para o novo dono:", e instanceof Error ? e.message : e));
+          await aplicarAgente(
+            repo,
+            lead.conversationId,
+            { email: novoDono.email, nome: novoDono.name?.trim() || novoDono.email },
+            input.agente,
+            "Responsável definido no CRM.",
+          ).catch((e) => console.error("[atendimento] não movi o agente para o novo dono:", e instanceof Error ? e.message : e));
         }
       }
       lead = await repo.updateLead(params.id, { apoioIds: apoio });

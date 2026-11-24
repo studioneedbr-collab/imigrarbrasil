@@ -321,6 +321,17 @@ export class SupabaseRepository implements Repository {
     }
     throw error;
   }
+  async updateMessageContent(messageId: string, content: string, mediaText?: string | null) {
+    const muda = (row: Record<string, unknown>) => this.db.from("messages").update(row).eq("id", messageId);
+    const { error } = await muda(mediaText === undefined ? { content } : { content, media_text: mediaText });
+    // Sem a coluna de mídia (migration 009), o conteúdo ainda precisa entrar.
+    if (error && mediaText !== undefined) {
+      const de_novo = await muda({ content });
+      if (de_novo.error) throw de_novo.error;
+      return;
+    }
+    if (error) throw error;
+  }
   async setMessageMediaText(messageId: string, text: string) {
     await this.db.from("messages").update({ media_text: text }).eq("id", messageId);
   }
@@ -1025,6 +1036,12 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.db.from("leads").select("*").eq("conversation_id", conversationId).maybeSingle();
     return data ? this.mapLead(data) : null;
   }
+  async listLeadsDasConversas(ids: string[]) {
+    if (!ids.length) return [];
+    const { data, error } = await this.db.from("leads").select("*").in("conversation_id", ids);
+    if (error) throw error;
+    return ((data as Record<string, any>[] | null) ?? []).map((r) => this.mapLead(r));
+  }
   async listLeads(opcoes: { limite?: number; funilIds?: string[] } = {}) {
     const linhas = await emLotes(
       (de, ate) =>
@@ -1549,6 +1566,15 @@ export class SupabaseRepository implements Repository {
     const { data: created, error } = await this.db.from("users").insert(row).select("*").single();
     if (error) throw error;
     return mapUser(created);
+  }
+  async updateUser(id: string, patch: Partial<Pick<User, "name" | "role" | "setor" | "active">>): Promise<void> {
+    const row: Record<string, unknown> = {};
+    for (const campo of ["name", "role", "setor", "active"] as const) {
+      if (patch[campo] !== undefined) row[campo] = patch[campo];
+    }
+    if (!Object.keys(row).length) return;
+    const { error } = await this.db.from("users").update(row).eq("id", id);
+    if (error) throw error;
   }
   async updateUserPassword(id: string, passwordHash: string): Promise<void> {
     const { error } = await this.db.from("users").update({ password_hash: passwordHash }).eq("id", id);

@@ -1,12 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // A LISTA DE CONVERSAS DIZ COM QUEM CADA UMA ESTÁ: o responsável do caso quando há, e
 // senão o que ficou escrito na transferência.
 
+const pote = new Map<string, string>();
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (nome: string) => (pote.has(nome) ? { name: nome, value: pote.get(nome) } : undefined) }),
+}));
+
+import { createSession, SESSION_COOKIE } from "@/lib/auth/session";
 import { GET } from "@/app/api/conversations/route";
 import { getRepository } from "@/lib/data";
 
 const repo = getRepository();
+pote.set(SESSION_COOKIE, await createSession({ sub: "u1", email: "quem@exemplo.com", role: "atendente" }));
 const lista = async () =>
   ((await (await GET(new Request("http://painel.local/api/conversations"))).json()).conversations ?? []) as {
     id: string;

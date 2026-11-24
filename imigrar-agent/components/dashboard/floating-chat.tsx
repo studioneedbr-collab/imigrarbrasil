@@ -11,6 +11,8 @@ type InboxItem = {
   lastAt: string;
   unanswered: boolean;
   status: string;
+  /** O responsável, ou para onde foi encaminhada. */
+  comQuem?: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -144,6 +146,9 @@ export default function FloatingChat() {
                     <p className={`truncate text-xs ${c.unanswered ? "font-medium text-ib-ink" : "text-ib-slate"}`}>
                       {c.lastText || "—"}
                     </p>
+                    {c.comQuem ? (
+                      <p className="truncate text-[11px] text-ib-mar">com {c.comQuem}</p>
+                    ) : null}
                   </div>
                   {c.unanswered ? <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ib-danger" /> : null}
                 </button>

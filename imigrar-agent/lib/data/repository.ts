@@ -60,6 +60,11 @@ export interface Repository {
    * parecia travado depois do login.
    */
   listMessagesForConversations(conversationIds: string[]): Promise<Map<string, Message[]>>;
+  /**
+   * Troca o conteúdo de uma mensagem já gravada. Existe para o anexo: ele entra no
+   * histórico NA HORA em que chega, e o conteúdo lido (áudio, foto) entra depois.
+   */
+  updateMessageContent(messageId: string, content: string, mediaText?: string | null): Promise<void>;
   /** Grava o texto lido de um anexo depois que a visão termina (é lento para bloquear o insert). */
   setMessageMediaText(messageId: string, text: string): Promise<void>;
   /** Documentos recebidos — a conversa inteira, ou os mais recentes de todas (aba Documentos). */
@@ -92,6 +97,8 @@ export interface Repository {
    * mais antigos, e num funil de acompanhamento de processo são justamente os que seguem
    * em andamento.
    */
+  /** Os leads destas conversas, em UMA ida ao banco. Para telas que fazem polling. */
+  listLeadsDasConversas(conversationIds: string[]): Promise<Lead[]>;
   listLeads(opcoes?: { limite?: number; funilIds?: string[] }): Promise<Lead[]>;
   /**
    * Leads de UMA origem, do mais novo para o mais antigo. `pagina` começa em 1; sem
@@ -385,4 +392,6 @@ export interface Repository {
   createUser(data: { email: string; passwordHash: string; name?: string; role?: User["role"]; setor?: string | null }): Promise<User>;
   listUsers(): Promise<Array<Omit<User, "passwordHash">>>;
   updateUserPassword(id: string, passwordHash: string): Promise<void>;
+  /** Nome, papel, setor e se a conta está ativa. A senha tem o próprio método. */
+  updateUser(id: string, patch: Partial<Pick<User, "name" | "role" | "setor" | "active">>): Promise<void>;
 }

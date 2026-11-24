@@ -25,6 +25,8 @@ import { AbasDeConversas } from "@/components/dashboard/abas";
 import { atividadeDaConversa } from "@/lib/dashboard/periodo";
 import { NEW_MESSAGE_EVENT } from "@/components/dashboard/new-message-alerts";
 import type { Conversation, ConversationStatus } from "@/lib/domain/types";
+import { EscolhaDaAgente } from "@/components/conversas/escolha-da-agente";
+import type { ModoDaAgente } from "@/lib/crm/agente-na-transferencia";
 import type { LeadVerdict } from "@/lib/agent/lead-score";
 
 /**
@@ -58,6 +60,7 @@ const PAGE_SIZE = 10;
 
 /** O que GET /api/conversations/[id]/encaminhar devolve para os dois diálogos. */
 interface OpcoesDeEncaminhar {
+  agenteCalada: boolean;
   pessoas: { id: string; nome: string; eu: boolean }[];
   funis: { id: string; nome: string; padrao: boolean }[];
   etapas: { id: string; funilId: string; nome: string; status: string }[];
@@ -149,6 +152,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
   // responsável = não mexer em quem é o dono.
   const [etapaEscolhida, setEtapaEscolhida] = useState("");
   const [responsavelEscolhido, setResponsavelEscolhido] = useState("");
+  const [agente, setAgente] = useState<ModoDaAgente>("para");
   const [enviando, setEnviando] = useState(false);
   const [erroNoDialogo, setErroNoDialogo] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; crm: boolean } | null>(null);
@@ -173,6 +177,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
     setEscolha("");
     setEtapaEscolhida("");
     setResponsavelEscolhido("");
+    setAgente("para");
     setErroNoDialogo(null);
     try {
       const res = await fetch(`/api/conversations/${conversa.id}/encaminhar`, { cache: "no-store" });
@@ -214,12 +219,13 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           tipo === "transferir"
-            ? { acao: tipo, usuarioId: escolha }
+            ? { acao: tipo, usuarioId: escolha, agente }
             : {
                 acao: tipo,
                 funilId: escolha,
                 etapaId: etapaEscolhida || undefined,
                 responsavelId: responsavelEscolhido || undefined,
+                agente,
               },
         ),
       });
@@ -238,7 +244,15 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
         setConversations((prev) =>
           prev
             ? prev.map((x) =>
-                x.id === conversa.id ? { ...x, status: "transferred", ...(para ? { comQuem: para, responsavelNome: para } : {}) } : x,
+                x.id === conversa.id
+                  ? {
+                      ...x,
+                      // Com a agente respondendo, a conversa não está "transferida": se estava
+                      // calada, ela volta; senão fica como estava.
+                      status: agente === "para" ? "transferred" : opcoes?.agenteCalada ? "active" : x.status,
+                      ...(para ? { comQuem: para, responsavelNome: para } : {}),
+                    }
+                  : x,
               )
             : prev,
         );
@@ -830,7 +844,7 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     <span className="font-semibold text-ib-ink">
                       {encaminhando.conversa.contactName ?? encaminhando.conversa.whatsappNumber}
                     </span>
-                    , e a agente para de responder nesta conversa.
+                    , aqui e no CRM.
                   </>
                 )}
               </p>
@@ -921,11 +935,17 @@ export function ListaDeConversas({ ambiente = "producao" }: { ambiente?: "produc
                     </select>
                     {responsavelEscolhido && responsavelEscolhido !== (opcoes.lead?.responsavelId ?? "") ? (
                       <span className="mt-1.5 block text-xs text-ib-slate">
-                        Com responsável, a agente para de responder nesta conversa.
+                        Escolha abaixo se a agente para ou continua.
                       </span>
                     ) : null}
                   </label>
                 </>
+              ) : null}
+              {/* A escolha só aparece quando alguém está recebendo a conversa. */}
+              {opcoes &&
+              (encaminhando.tipo === "transferir" ||
+                (responsavelEscolhido && responsavelEscolhido !== (opcoes.lead?.responsavelId ?? ""))) ? (
+                <EscolhaDaAgente valor={agente} onChange={setAgente} calada={opcoes.agenteCalada} />
               ) : null}
               {erroNoDialogo ? (
                 <p role="alert" className="rounded-lg border border-ib-danger/20 bg-ib-danger/5 px-3 py-2 text-ib-danger">

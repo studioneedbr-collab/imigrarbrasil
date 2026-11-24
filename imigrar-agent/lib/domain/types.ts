@@ -191,6 +191,8 @@ export interface TransferDossie {
   nome?: string; empresa?: string; cpf?: string; cidade?: string;
   servicos?: string[];
   necessidade?: string; historicoResumo?: string;
+  /** Para quem foi, quando a transferência é para uma pessoa do time. */
+  para?: string;
 }
 
 export interface TransferTicket {

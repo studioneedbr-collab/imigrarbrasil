@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CardDoAtendimento } from "@/components/atendimentos/card";
 import { ResumoDoLead } from "@/components/atendimentos/resumo-modal";
@@ -11,6 +11,9 @@ import {
   type TipoDeMovimento,
 } from "@/components/crm/movimento";
 import { Selecao } from "@/components/dashboard/campos";
+import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { EscolhaDaAgente } from "@/components/conversas/escolha-da-agente";
+import type { ModoDaAgente } from "@/lib/crm/agente-na-transferencia";
 import { Icon, btnBarra, btnBarraAtivo, btnPrimary } from "@/components/dashboard/ui";
 import { destinosAoFechar, montarQuadro, funilPadrao, faltamDesfechos } from "@/lib/crm/funil";
 import { transicao } from "@/lib/fila/kanban";
@@ -263,8 +266,18 @@ export default function QuadroCrm({
     );
   }
 
-  async function trocarResponsavel(lead: LeadDaFila, usuarioId: string) {
+  /** A troca espera a resposta de uma pergunta: a agente para ou continua? */
+  const [trocando, setTrocando] = useState<{ lead: LeadDaFila; usuarioId: string } | null>(null);
+  const [agente, setAgente] = useState<ModoDaAgente>("para");
+  const cancelarTroca = useCallback(() => setTrocando(null), []);
+
+  function pedirTroca(lead: LeadDaFila, usuarioId: string) {
     if (usuarioId === (lead.responsavelId ?? "")) return;
+    setAgente("para");
+    setTrocando({ lead, usuarioId });
+  }
+
+  async function trocarResponsavel(lead: LeadDaFila, usuarioId: string, modo: ModoDaAgente) {
     const novo = time.find((p) => p.id === usuarioId);
     if (!novo) return;
 
@@ -281,6 +294,7 @@ export default function QuadroCrm({
       body: JSON.stringify({
         acao: "responsaveis",
         responsavelId: novo.id,
+        agente: modo,
         apoioIds: (lead.apoioIds ?? []).filter((id) => id !== novo.id),
       }),
     }).catch(() => null);
@@ -775,7 +789,7 @@ export default function QuadroCrm({
                             label="responsável"
                             placeholder="sem responsável — escolher"
                             valor={lead.responsavelId ?? null}
-                            onChange={(id) => void trocarResponsavel(lead, id)}
+                            onChange={(id) => pedirTroca(lead, id)}
                             opcoes={time.map((p) => ({ valor: p.id, rotulo: p.nome }))}
                           />
                         </div>
@@ -829,6 +843,30 @@ export default function QuadroCrm({
           onMover={(l, etapa) => pedirOuMover(l, etapa)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={trocando !== null}
+        tone="primary"
+        title="Trocar responsável"
+        confirmLabel="Trocar"
+        onCancel={cancelarTroca}
+        onConfirm={() => {
+          if (!trocando) return;
+          setTrocando(null);
+          void trocarResponsavel(trocando.lead, trocando.usuarioId, agente);
+        }}
+        message={
+          trocando ? (
+            <div className="space-y-3">
+              <p>
+                <span className="font-semibold text-ib-ink">{time.find((p) => p.id === trocando.usuarioId)?.nome}</span>{" "}
+                passa a ser o responsável por {trocando.lead.contactName ?? "este contato"}.
+              </p>
+              <EscolhaDaAgente valor={agente} onChange={setAgente} />
+            </div>
+          ) : null
+        }
+      />
 
       {perguntando ? (
         <DialogoDeMovimento

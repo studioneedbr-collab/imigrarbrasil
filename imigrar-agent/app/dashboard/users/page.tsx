@@ -18,6 +18,7 @@ import {
   btnPrimary,
   fmtDate,
 } from "@/components/dashboard/ui";
+import { EditarUsuario } from "@/components/usuarios/editar";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 
 type Setor = "comercial" | "operacional" | "rh" | "departamento_pessoal";
@@ -64,6 +65,8 @@ export default function UsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [editado, setEditado] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -149,6 +152,12 @@ export default function UsersPage() {
             </div>
           </div>
 
+          {editado ? (
+            <p role="status" className="border-b border-ib-line bg-ib-success/10 px-5 py-2 text-xs text-ib-success">
+              {editado}
+            </p>
+          ) : null}
+
           {users === null ? (
             <div className="divide-y divide-ib-line/70">
               {[0, 1, 2, 3].map((i) => (
@@ -172,10 +181,8 @@ export default function UsersPage() {
           ) : (
             <ul className="divide-y divide-ib-line">
               {usersPageItems.map((u) => (
-                <li
-                  key={u.id}
-                  className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-ib-papel/60"
-                >
+                <li key={u.id} className={u.active ? "" : "opacity-75"}>
+                <div className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-ib-papel/60">
                   <span
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
                       u.role === "admin"
@@ -242,6 +249,26 @@ export default function UsersPage() {
                       </span>
                     ) : null}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditando((e) => (e === u.id ? null : u.id))}
+                    aria-expanded={editando === u.id}
+                    className="shrink-0 rounded-lg border border-ib-line bg-white px-2.5 py-1.5 text-xs font-medium text-ib-ink transition hover:border-ib-mar/40 hover:text-ib-mar"
+                  >
+                    {editando === u.id ? "Fechar" : "Editar"}
+                  </button>
+                </div>
+                {editando === u.id ? (
+                  <EditarUsuario
+                    conta={u}
+                    setores={SETOR_LABEL}
+                    onSalvo={(m) => {
+                      setEditado(m);
+                      setEditando(null);
+                      void load();
+                    }}
+                  />
+                ) : null}
                 </li>
               ))}
             </ul>
