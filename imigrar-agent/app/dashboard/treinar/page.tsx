@@ -381,6 +381,7 @@ export default function TreinarPage() {
    * removendo.
    */
   async function descartarPromptCru() {
+    if (!window.confirm("Isto tira do ar o texto que a agente está usando agora e passa a valer o que está nesta tela. Confira antes se as instruções de vocês já estão aqui. Uma cópia do texto fica guardada no banco. Continuar?")) return;
     try {
       const res = await fetch("/api/training?descartar=prompt_cru", { method: "POST" });
       const d = await res.json();

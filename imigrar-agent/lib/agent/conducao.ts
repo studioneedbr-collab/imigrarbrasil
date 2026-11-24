@@ -233,10 +233,17 @@ export async function conduzirComLlm({
     }
   }
 
-  // Excedeu as iterações de tool — encaminha para uma pessoa finalizar.
-  return {
-    reply:
-      "Deixa eu pedir para alguém do nosso time jurídico falar com você sobre isso. Continuo por aqui se precisar de mais alguma coisa.",
-    toolCalls,
-  };
+  // Excedeu as iterações de tool. A frase fixa que saía aqui prometia o time jurídico sem
+  // ninguém ter sido chamado, em português fosse qual fosse a conversa. Agora o modelo
+  // escreve a resposta com o que já tem, sem tools; se nem isso sair, é uma falha — e quem
+  // chamou sabe o que fazer com ela (inclusive avisar um encaminhamento já feito).
+  let final: OpenAIMessage;
+  try {
+    final = await chatCompletion(llm, messages, [], conversationId, prazo);
+  } catch (err) {
+    throw new FalhaDoLlm(err instanceof Error ? err.message : String(err), toolCalls.length, [...toolCalls]);
+  }
+  const texto = (final.content ?? "").trim();
+  if (!texto) throw new FalhaDoLlm("excedeu as chamadas de ferramenta sem responder", toolCalls.length, [...toolCalls]);
+  return { reply: texto, toolCalls };
 }

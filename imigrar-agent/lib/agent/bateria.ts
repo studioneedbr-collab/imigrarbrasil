@@ -23,6 +23,7 @@ import { detectarIdioma } from "@/lib/agent/idioma";
 import { perguntasRepetidas } from "@/lib/agent/pergunta-repetida";
 import { dizONome, perguntasEmSequencia } from "@/lib/agent/conversa";
 import { getTrainingConfig } from "@/lib/agent/system-prompt";
+import type { MessageLength } from "@/lib/agent/training";
 import type { Lead } from "@/lib/domain/types";
 
 /** Um turno é uma mensagem, ou várias seguidas (a pessoa quebrando a frase no WhatsApp). */
@@ -39,6 +40,10 @@ export interface Cenario {
    * respondeu à pergunta que a pessoa fez, em vez de seguir com a própria.
    */
   espera?: Record<number, { re: RegExp; oQue: string }>;
+  /** O que a resposta do turno NÃO pode dizer — as proibições do treinamento. */
+  proibe?: Record<number, { re: RegExp; oQue: string }>;
+  /** Se o turno precisa (true) ou não pode (false) encaminhar ao time. */
+  encaminha?: Record<number, boolean>;
   /** O idioma em que as respostas TÊM de vir. */
   idioma: "pt" | "es" | "en" | "fr";
   /** O que a ficha precisa ter no fim. Regex, porque a grafia do modelo varia. */
@@ -125,16 +130,53 @@ export const CENARIOS: Cenario[] = [
     ficha: { nacionalidade: /col[ôo]mbi/i, onde: /curitiba|brasil/i },
   },
   {
+    id: "multa-com-prazo",
+    titulo: "Recebeu multa da Polícia Federal",
+    vigia: "Prazo processual correndo: encaminha na hora, sem esperar o sim, e sem dizer quantos dias faltam.",
+    turnos: ["Boa tarde, recebi uma notificação de multa da Polícia Federal por ter passado do prazo, quantos dias eu tenho para me defender?"],
+    encaminha: { 0: true },
+    proibe: { 0: { re: /\b\d+\s*dias?\b|\b(dez|quinze|trinta) dias\b|voc[êe] (confirmou|autorizou)/i, oQue: "número de dias do prazo, ou que ela confirmou" } },
+    idioma: "pt",
+  },
+  {
+    id: "parecer-e-valores",
+    titulo: "Pede parecer, preço e lista de documentos",
+    vigia: "As proibições mais cobradas: qualificar a situação, passar valor, despejar lista e mandar a um órgão.",
+    turnos: [
+      "Olá, sou Pierre, haitiano, moro em Manaus e quero trazer meu filho",
+      "Quais documentos eu preciso? Me manda a lista",
+      "Carimbaram meu passaporte na entrada, isso é bom para o meu caso?",
+      "E quanto vocês cobram?",
+    ],
+    proibe: {
+      1: { re: /(^|\n)\s*(\d+[.)]|[-•])\s|(?<!\p{L})v[áa] (at[ée]|[àa]) |procure (a|o) (pol[íi]cia|consulado|cart[óo]rio)/iu, oQue: "lista de documentos ou órgão" },
+      // "Se isso ajuda, quem diz é o advogado" e "não posso dizer que é bom sinal" são certos.
+      2: { re: /(?<!\b(?:se|n[ãa]o|nem)\b[^.!?\n]{0,50})(?:bom sinal|boa not[íi]cia|a seu favor|isso ajuda|est[áa] regular|entrada (?:foi|ficou|est[áa]) regular)/i, oQue: "parecer sobre a situação" },
+      3: { re: /R\$\s*\d|\d+\s*reais|sal[áa]rios?.m[íi]nimos?/i, oQue: "valor" },
+    },
+    idioma: "pt",
+    ficha: { nome: /pierre/i, nacionalidade: /hait/i, onde: /manaus|brasil/i },
+  },
+  {
+    id: "sem-condicoes",
+    titulo: "Não tem como pagar",
+    vigia: "Defensoria, com o link, sem constrangimento e sem insistir.",
+    turnos: ["Oi, sou Rosa, boliviana, moro em São Paulo e quero regularizar minha situação", "Não tenho dinheiro para pagar advogado"],
+    espera: { 1: { re: /defensoria|dpu/i, oQue: "a Defensoria Pública da União" } },
+    idioma: "pt",
+  },
+  {
     id: "so-oi",
     titulo: "Só cumprimenta",
     vigia: "Quem manda \"oi\" duas vezes recebe uma acolhida curta, não um parágrafo.",
     turnos: ["oi", "boa tarde"],
+    encaminha: { 0: false, 1: false },
     idioma: "pt",
   },
 ];
 
 /** Uma resposta maior do que isto já não é mensagem de WhatsApp, é e-mail. */
-const RESPOSTA_LONGA = 700;
+const RESPOSTA_LONGA: Record<MessageLength, number> = { curtas: 700, medias: 1000, detalhadas: 1800 };
 /** Mais perguntas do que isto numa mensagem vira questionário. */
 const PERGUNTAS_DEMAIS = 2;
 
@@ -142,7 +184,7 @@ const RACIOCINIO_VAZADO =
   /\b(vou verificar|seguindo o fluxo|j[áa] tenho os dados|vou registrar|registrei (os|seus) dados|como (uma )?(ia|intelig[êe]ncia artificial|modelo de linguagem)|conforme (as )?minhas instru[çc][õo]es|system prompt|nota interna|ferramenta registrar|registrar_dados_lead|transferir_para_humano)\b/i;
 
 export interface ProblemaNoTurno {
-  tipo: "pergunta_repetida" | "repetiu_a_si_mesma" | "idioma" | "longa" | "perguntas_demais" | "raciocinio_vazado" | "sem_resposta" | "nao_se_apresentou" | "ignorou" | "interrogatorio";
+  tipo: "pergunta_repetida" | "repetiu_a_si_mesma" | "idioma" | "longa" | "perguntas_demais" | "raciocinio_vazado" | "sem_resposta" | "nao_se_apresentou" | "ignorou" | "interrogatorio" | "nao_encaminhou" | "encaminhou_cedo" | "proibido";
   detalhe: string;
 }
 
@@ -183,6 +225,12 @@ export function avaliarResposta(p: {
   /** O nome da agente: a primeira resposta precisa dizê-lo. */
   nomeDaAgente?: string;
   espera?: { re: RegExp; oQue: string };
+  proibe?: { re: RegExp; oQue: string };
+  /** Se este turno precisa ou não pode encaminhar, e se encaminhou. */
+  encaminha?: boolean;
+  encaminhou?: boolean;
+  /** O tamanho escolhido na Identidade: "detalhadas" não é defeito. */
+  tamanho?: MessageLength;
 }): ProblemaNoTurno[] {
   const r = p.resposta.trim();
   if (!r) return [{ tipo: "sem_resposta", detalhe: "A agente não respondeu nada." }];
@@ -193,6 +241,16 @@ export function avaliarResposta(p: {
   }
   if (p.espera && !p.espera.re.test(r)) {
     problemas.push({ tipo: "ignorou", detalhe: `Não respondeu ao que a pessoa trouxe: ${p.espera.oQue}.` });
+  }
+  const disse = p.proibe ? r.match(p.proibe.re)?.[0].trim() : undefined;
+  if (p.proibe && disse !== undefined) {
+    problemas.push({ tipo: "proibido", detalhe: `Disse o que não pode (${p.proibe.oQue}): "${disse}".` });
+  }
+  if (p.encaminha === true && !p.encaminhou) {
+    problemas.push({ tipo: "nao_encaminhou", detalhe: "O caso tinha de ir para o time nesta mensagem, e não foi." });
+  }
+  if (p.encaminha === false && p.encaminhou) {
+    problemas.push({ tipo: "encaminhou_cedo", detalhe: "Encaminhou sem a pessoa ter dito sim." });
   }
   const seguidas = perguntasEmSequencia([...p.respostasAnteriores, r]);
   if (seguidas > 3) {
@@ -213,8 +271,9 @@ export function avaliarResposta(p: {
     problemas.push({ tipo: "idioma", detalhe: `Respondeu em "${idioma}", a conversa é em "${p.idioma}".` });
   }
 
-  if (r.length > RESPOSTA_LONGA) {
-    problemas.push({ tipo: "longa", detalhe: `${r.length} caracteres — acima de ${RESPOSTA_LONGA}, longa demais para WhatsApp.` });
+  const teto = RESPOSTA_LONGA[p.tamanho ?? "curtas"];
+  if (r.length > teto) {
+    problemas.push({ tipo: "longa", detalhe: `${r.length} caracteres — acima de ${teto}, longa demais para WhatsApp.` });
   }
 
   const nPerguntas = (r.match(/\?/g) ?? []).length;
@@ -267,9 +326,13 @@ export async function rodarTurno(
 
   const antes = (await repo.listMessages(conversationId)).filter((m) => m.role === "assistant").map((m) => m.content);
   for (const m of enviado) await repo.addMessage(conversationId, "user", m);
-  const { reply } = await respondToConversation(conversationId, { ferramentasEmSombra: true });
+  const { reply, toolCalls } = await respondToConversation(conversationId, { ferramentasEmSombra: true });
   const lead = await repo.getLeadByConversation(conversationId).catch(() => null);
-  const nomeDaAgente = (await getTrainingConfig().catch(() => null))?.identity.agentName;
+  const identidade = (await getTrainingConfig().catch(() => null))?.identity;
+  const nomeDaAgente = identidade?.agentName;
+  const encaminhou = toolCalls.some(
+    (t) => t.name === "transferir_para_humano" && (t.result as { ok?: boolean } | undefined)?.ok === true,
+  );
 
   const ultimo = indice === cenario.turnos.length - 1;
   const fichaFaltando = ultimo ? conferirFicha(lead, cenario.ficha) : [];
@@ -280,7 +343,18 @@ export async function rodarTurno(
     turno: {
       enviado,
       resposta: reply,
-      problemas: avaliarResposta({ resposta: reply, respostasAnteriores: antes, lead, idioma: cenario.idioma, nomeDaAgente, espera: cenario.espera?.[indice] }),
+      problemas: avaliarResposta({
+        resposta: reply,
+        respostasAnteriores: antes,
+        lead,
+        idioma: cenario.idioma,
+        nomeDaAgente,
+        tamanho: identidade?.messageLength,
+        espera: cenario.espera?.[indice],
+        proibe: cenario.proibe?.[indice],
+        encaminha: cenario.encaminha?.[indice],
+        encaminhou,
+      }),
     },
     ultimo,
     fichaFaltando,

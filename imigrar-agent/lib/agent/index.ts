@@ -1,6 +1,8 @@
 ﻿import { getRepository } from "@/lib/data";
 import { getSystemPrompt, getTrainingConfig } from "@/lib/agent/system-prompt";
-import { DEFAULT_IDENTITY } from "@/lib/agent/training";
+import { DEFAULT_IDENTITY, type MessageLength } from "@/lib/agent/training";
+import { BLOCO_COM_RESPONSAVEL, TAMANHO_DA_MENSAGEM } from "@/lib/agent/desempate";
+import { agenteContinuaComResponsavel } from "@/lib/crm/agente-na-transferencia";
 import { conferirAtencao, instrucaoDeAtencao, mereceConferencia } from "@/lib/agent/atencao";
 import { comoResponder, fezPergunta, garantirApresentacao, perguntasEmSequencia } from "@/lib/agent/conversa";
 import { runAgent, type AgentTurn, type ToolCallTrace } from "@/lib/agent/runner";
@@ -94,6 +96,8 @@ export function montarEstadoDoTurno(
   idioma?: string | null,
   /** Como responder a este turno (lib/agent/conversa.ts). Vem antes do resto. */
   instrucoes: string[] = [],
+  /** O tamanho que a equipe escolheu na Identidade. */
+  tamanho: MessageLength = DEFAULT_IDENTITY.messageLength,
 ): string {
   const onde =
     lead?.region ??
@@ -115,8 +119,9 @@ export function montarEstadoDoTurno(
     // em pergunta de ficha, mesmo quando a pessoa tinha perguntado outra coisa.
     "Pergunta é opcional: no máximo UMA, só sobre o que ainda não foi respondido, e só depois de responder a ela.",
     // As respostas de 900 caracteres que o time viu: num texto de 20 mil tokens, "seja
-    // breve" perde para os exemplos longos. Aqui é a última coisa lida.
-    "Escreva curto, como uma pessoa no WhatsApp: no máximo 3 ou 4 frases, sem listas.",
+    // breve" perde para os exemplos longos. Aqui é a última coisa lida — e por isso diz o
+    // tamanho que a EQUIPE escolheu: um número fixo vencia o da tela de treinar.
+    TAMANHO_DA_MENSAGEM[tamanho],
     // Esta nota é em português e vai colada na fala dela: sem o idioma dito pelo nome, ela
     // puxaria a resposta para o português numa conversa em espanhol.
     idioma && idioma !== "pt" ? `Responda em ${nomeDoIdioma(idioma) ?? idioma}, o idioma dela.` : "",
@@ -462,12 +467,14 @@ export async function respondToConversation(
       .join("  "),
   });
 
+  if (agenteContinuaComResponsavel(convBefore)) systemPrompt += BLOCO_COM_RESPONSAVEL;
+
   const blockTools =
     portao.liberado && confirmacao.liberado ? undefined : ["transferir_para_humano"];
 
   if (!confirmacao.liberado) {
     systemPrompt +=
-      `\n\n════════ VOCÊ PEDIU CONFIRMAÇÃO E ELA AINDA NÃO DISSE SIM ════════\nA sua última mensagem perguntou se pode passar o contato dela. O que veio agora não é um sim — é outra coisa que ela quis contar. Resposta que não responde à pergunta não é confirmação, e silêncio sobre a pergunta muito menos.\nEntão: acolha o que ela acabou de dizer, aproveite o dado se ele serve para a ficha, e repita a pergunta uma vez, de leve, no fim da mensagem. NÃO encaminhe e, principalmente, NÃO escreva que já encaminhou nem que ela concordou — dizer que ela confirmou quando ela não confirmou é o tipo de frase que faz alguém parar de contar o que importa.\nSe aparecer prazo correndo, situação irregular, refúgio ou risco, aí você passa na hora, sem esperar resposta — e diz isso com todas as letras ("vou passar o seu caso agora"), nunca como se ela tivesse autorizado.`;
+      `\n\n════════ VOCÊ PEDIU CONFIRMAÇÃO E ELA AINDA NÃO DISSE SIM ════════\nA sua última mensagem perguntou se pode passar o contato dela. O que veio agora não é um sim — é outra coisa que ela quis contar. Resposta que não responde à pergunta não é confirmação, e silêncio sobre a pergunta muito menos.\nEntão: acolha o que ela acabou de dizer, aproveite o dado se ele serve para a ficha, e repita a pergunta uma vez, de leve, no fim da mensagem. NÃO encaminhe e, principalmente, NÃO escreva que já encaminhou nem que ela concordou — dizer que ela confirmou quando ela não confirmou é o tipo de frase que faz alguém parar de contar o que importa.\nSe aparecer prazo processual correndo ou risco à pessoa, aí você passa na hora, sem esperar resposta — e diz isso com todas as letras ("vou passar o seu caso agora"), nunca como se ela tivesse autorizado.`;
   }
 
   if (!portao.liberado) {
@@ -573,6 +580,7 @@ export async function respondToConversation(
       perguntou: falasDeAgora.some(fezPergunta),
       emSequencia: perguntasEmSequencia(respostasDela),
     }),
+    identidade?.messageLength,
   );
   const prazoDoTurno = opts.inicio ? opts.inicio + PRAZO_DESDE_O_WEBHOOK_MS : inicioDoTurno + PRAZO_DO_TURNO_MS;
   const { reply: rawReply, toolCalls, source } = await runAgent({

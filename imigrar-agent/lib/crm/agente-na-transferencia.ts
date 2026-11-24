@@ -17,6 +17,15 @@ export function agenteCalada(conv: Pick<Conversation, "assumedBy" | "status"> | 
   return Boolean(conv?.assumedBy) || conv?.status === "transferred";
 }
 
+const MARCA_CONTINUA = "A agente continua respondendo.";
+
+/** A conversa tem dono, e quem transferiu escolheu que a agente siga atendendo. */
+export function agenteContinuaComResponsavel(
+  conv: Pick<Conversation, "assumedBy" | "status" | "handoffReason"> | null,
+): boolean {
+  return !agenteCalada(conv) && Boolean(conv?.handoffReason?.endsWith(MARCA_CONTINUA));
+}
+
 export async function aplicarAgente(
   repo: Repository,
   conversationId: string,
@@ -33,7 +42,7 @@ export async function aplicarAgente(
   }
   await repo.updateConversation(conversationId, {
     handedOffTo: destino.nome,
-    handoffReason: modo === "continua" ? `${motivo} A agente continua respondendo.` : motivo,
+    handoffReason: modo === "continua" ? `${motivo} ${MARCA_CONTINUA}` : motivo,
   });
 }
 

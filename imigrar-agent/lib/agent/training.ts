@@ -260,7 +260,7 @@ export const BEHAVIOR_RULES: BehaviorRule[] = [
     id: "nao_transferir_sem_avisar",
     label: "Nunca transferir sem avisar e confirmar antes",
     prompt:
-      "Nunca transfira sem avisar. Antes de chamar transferir_para_humano, diga em uma frase por que o caso precisa de um especialista e pergunte se a pessoa quer que o time entre em contato. A única exceção é risco imediato à pessoa. E só diga que encaminhou na mensagem em que realmente chamou a tool.",
+      "Nunca transfira sem avisar. Antes de chamar transferir_para_humano, diga em uma frase por que o caso precisa de um especialista e pergunte se a pessoa quer que o time entre em contato. As exceções são risco imediato à pessoa e prazo processual correndo (multa notificada, indeferimento, notificação de saída): aí encaminhe na hora e avise junto. E só diga que encaminhou na mensagem em que realmente chamou a tool.",
   },
   {
     id: "nao_repetir_pergunta",

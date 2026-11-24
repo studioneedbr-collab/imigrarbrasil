@@ -35,10 +35,10 @@ async function acessosDesde(marca: number) {
 let marca = 0;
 beforeEach(async () => {
   await definirChaveGeral(true, "setup@teste", null);
-  marca = Date.now();
-  // O carimbo de `criadoEm` tem resolução de milissegundo; um passo garante que as
-  // linhas anteriores fiquem de fora do recorte.
+  // O carimbo de `criadoEm` tem resolução de milissegundo; um passo ANTES da marca garante
+  // que a linha gravada acima fique de fora do recorte (depois dela, o teste era instável).
   await new Promise((r) => setTimeout(r, 2));
+  marca = Date.now();
 });
 
 describe("toda mudança de estado vai para o log de auditoria", () => {

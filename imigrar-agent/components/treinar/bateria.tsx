@@ -49,6 +49,9 @@ const ROTULO: Record<string, string> = {
   nao_se_apresentou: "Não se apresentou",
   ignorou: "Ignorou o que foi dito",
   interrogatorio: "Interrogatório",
+  nao_encaminhou: "Não encaminhou",
+  encaminhou_cedo: "Encaminhou sem o sim",
+  proibido: "Disse o que não pode",
 };
 
 export function BateriaDeTestes() {

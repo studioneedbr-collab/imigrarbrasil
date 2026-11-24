@@ -7,6 +7,7 @@ import {
 } from "@/lib/agent/knowledge";
 import { blocoMaterialOficial } from "@/lib/agent/material-oficial";
 import { acervoDoPrompt } from "@/lib/agent/acervo";
+import { blocoDeDesempate } from "@/lib/agent/desempate";
 import {
   DEFAULT_TRAINING,
   buildBehaviorRulesBlock,
@@ -188,6 +189,6 @@ export async function getSystemPrompt(): Promise<string> {
   const material = blocoMaterialOficial(acervo);
   const [kb, training] = await Promise.all([getKnowledgeBase(), getTrainingConfig()]);
   const conversa = blocoDaConversa(training.identity);
-  if (raw) return raw + briefingBlock + faqBlock + material + conversa;
-  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material + conversa;
+  if (raw) return raw + briefingBlock + faqBlock + material + conversa + blocoDeDesempate();
+  return buildSystemPrompt(kb, trainingToOverrides(training)) + briefingBlock + faqBlock + material + conversa + blocoDeDesempate(training.identity.messageLength);
 }

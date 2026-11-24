@@ -308,10 +308,14 @@ export async function POST(req: NextRequest) {
   // DESCARTAR O OVERRIDE LEGADO.
   //
   // Grava string vazia em vez de apagar a linha: o repositório expõe setConfig e não um
-  // delete, e vazio já não passa pelo piso do getPromptCru(). O texto antigo some, que é o
-  // que se pediu — por isso o botão da tela mostra o prompt inteiro antes de perguntar.
+  // delete, e vazio já não passa pelo piso do getPromptCru(). Antes, o texto vai para
+  // `system_prompt_descartado`: pode ser o único lugar em que as instruções da equipe estão.
+  // A cópia vem primeiro: se ela falhar, nada é descartado.
   if (req.nextUrl.searchParams.get("descartar") === "prompt_cru") {
-    await getRepository().setConfig("system_prompt", "");
+    const repo = getRepository();
+    const cru = await getPromptCru();
+    if (cru) await repo.setConfig("system_prompt_descartado", cru);
+    await repo.setConfig("system_prompt", "");
     return NextResponse.json({ ok: true, promptCru: null });
   }
 

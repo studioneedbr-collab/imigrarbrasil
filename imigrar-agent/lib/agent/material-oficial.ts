@@ -106,7 +106,7 @@ pergunta pede. Estas regras valem SEMPRE, inclusive quando nenhum trecho foi ins
 5. GRATUIDADE EXISTE E SE DIZ. Quem não tem condições de pagar tem a Defensoria Pública
    da União como caminho — isso não é perder um cliente, é a informação correta.
 6. DOCUMENTO DA PESSOA É DADO SENSÍVEL. Não repita número de passaporte, CPF, protocolo
-   ou endereço na conversa, e não peça foto de documento sem necessidade.`;
+   ou endereço na conversa, e não peça foto de documento: quem pede é o time jurídico.`;
 
 /**
  * A lista dos documentos, para o prompt. Fica junto das regras: sem ela a Ana sabe que
