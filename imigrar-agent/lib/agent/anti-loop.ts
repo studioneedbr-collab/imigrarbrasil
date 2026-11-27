@@ -187,6 +187,9 @@ export interface ImpasseHandoff {
  * o mais provável é que ela tenha se enrolado numa pergunta. A saída é pedir a que falta,
  * com as palavras dela, e seguir a conversa.
  */
+const DESTRAVAR_JA_ENVIADO =
+  /^(Para seguirmos com o seu atendimento|Para continuar con su atención|To move forward with your case|Pour avancer dans votre dossier)/;
+
 export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
   if (i.jaTransferiu) return null;
   if (ehFechamentoCordial(i.ultimaMensagemDoCliente)) return null;
@@ -199,7 +202,12 @@ export function avaliarImpasse(i: ImpasseInput): ImpasseHandoff | null {
   const setor = i.setor;
 
   const faltam = i.faltamNoDossie ?? [];
-  if (setor === "comercial" && faltam.length > 0) {
+  // DESTRAVAR É UMA VEZ SÓ. A pergunta fixa sai da ficha, e a ficha às vezes não registra
+  // o que a pessoa respondeu ("Dominicana Haitiano" não virou nacionalidade): o mesmo
+  // "Para seguirmos… qual é a sua nacionalidade?" saiu quatro vezes seguidas em 22/11 e a
+  // conversa morreu ali. Se já se tentou destravar e travou de novo, é hora de uma pessoa.
+  const jaDestravou = (i.respostasAnteriores ?? []).some((r) => DESTRAVAR_JA_ENVIADO.test(r ?? ""));
+  if (setor === "comercial" && faltam.length > 0 && !jaDestravou) {
     return {
       acao: "destravar",
       setor,

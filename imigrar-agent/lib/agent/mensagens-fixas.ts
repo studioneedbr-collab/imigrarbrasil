@@ -31,7 +31,7 @@ function idiomaSuportado(idioma?: string | null): Idioma {
 
 /**
  * O aviso de que o caso foi passado a uma pessoa. `proximoRetorno` é a frase em português
- * do expediente ("na segunda-feira a partir das 8h"); fora do português vai o horário
+ * do expediente ("na segunda-feira a partir das 9h"); fora do português vai o horário
  * fixo, que não depende de tradução.
  */
 export function mensagemDeEncaminhamento(p: {
@@ -51,20 +51,20 @@ export function mensagemDeEncaminhamento(p: {
     const abertura = p.motivo === "impasse" ? "Para não repetir a mesma informação, vou encaminhar o seu atendimento. " : "";
     const fecho = " Pode continuar escrevendo por aqui: eles leem tudo o que você mandar.";
     return p.proximoRetorno
-      ? `${abertura}Já deixei o seu caso com ${quem}. O atendimento é de segunda a sexta, das 8h às 18h, então eles te retornam ${p.proximoRetorno}.${fecho}`
+      ? `${abertura}Já deixei o seu caso com ${quem}. O atendimento é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h, então eles te retornam ${p.proximoRetorno}.${fecho}`
       : `${abertura}Já pedi para ${quem} falar com você sobre isso.${fecho}`;
   }
   const fora = Boolean(p.proximoRetorno);
   if (i === "es") {
     const abertura = p.motivo === "impasse" ? "Para no repetir la misma información, voy a derivar su atención. " : "";
-    return `${abertura}Ya dejé su caso con ${quem}.${fora ? " Atendemos de lunes a viernes, de 8 a 18 h (hora de Brasilia), y le responderán en el próximo horario de atención." : ""} Puede seguir escribiendo por aquí: leen todo lo que usted envíe.`;
+    return `${abertura}Ya dejé su caso con ${quem}.${fora ? " Atendemos de lunes a viernes, de 9 a 18 h, y los sábados, de 9 a 13 h (hora de Brasilia), y le responderán en el próximo horario de atención." : ""} Puede seguir escribiendo por aquí: leen todo lo que usted envíe.`;
   }
   if (i === "en") {
     const abertura = p.motivo === "impasse" ? "So as not to repeat the same information, I am passing your case on. " : "";
-    return `${abertura}I have passed your case to ${quem}.${fora ? " Our hours are Monday to Friday, 8 am to 6 pm (Brasília time), and they will get back to you during the next business hours." : ""} You can keep writing here: they read everything you send.`;
+    return `${abertura}I have passed your case to ${quem}.${fora ? " Our hours are Monday to Friday, 9 am to 6 pm, and Saturday, 9 am to 1 pm (Brasília time), and they will get back to you during the next business hours." : ""} You can keep writing here: they read everything you send.`;
   }
   const abertura = p.motivo === "impasse" ? "Pour ne pas répéter la même information, je transmets votre dossier. " : "";
-  return `${abertura}J'ai transmis votre dossier à ${quem}.${fora ? " Nous sommes ouverts du lundi au vendredi, de 8 h à 18 h (heure de Brasília), et ils vous répondront dès le prochain horaire d'ouverture." : ""} Vous pouvez continuer à écrire ici : ils lisent tout ce que vous envoyez.`;
+  return `${abertura}J'ai transmis votre dossier à ${quem}.${fora ? " Nous sommes ouverts du lundi au vendredi, de 9 h à 18 h, et le samedi, de 9 h à 13 h (heure de Brasília), et ils vous répondront dès le prochain horaire d'ouverture." : ""} Vous pouvez continuer à écrire ici : ils lisent tout ce que vous envoyez.`;
 }
 
 /**

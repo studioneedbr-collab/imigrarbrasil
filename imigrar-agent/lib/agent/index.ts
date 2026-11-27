@@ -10,7 +10,7 @@ import { computeLeadScore } from "@/lib/agent/lead-score";
 import { executeTool } from "@/lib/agent/tools";
 import { classifyRouting } from "@/lib/agent/routing-net";
 import { avaliarImpasse } from "@/lib/agent/anti-loop";
-import { PEDIDO_DE_CONFIRMACAO, avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-gate";
+import { CLIENTE_DA_CASA, PEDIDO_DE_CONFIRMACAO, QUER_CONTRATAR, avaliarConfirmacao, avaliarTransferencia } from "@/lib/agent/transfer-gate";
 import { revisarTurno } from "@/lib/agent/verificador-de-saida";
 import { proximoAtendimento } from "@/lib/agent/expediente";
 import { capturarDadosDoLead, qualificacaoFaltando } from "@/lib/agent/lead-capture";
@@ -243,7 +243,7 @@ Hoje é ${diaSemana}, ${data}, e agora são ${relogio}.
 A saudação correta NESTE MOMENTO é "${saudacao}" — traduzida para o idioma da conversa. Se for cumprimentar, use essa e nenhuma outra.
 NUNCA copie a saudação que a pessoa usou: ela pode escrever "boa noite" de manhã, ou a mensagem dela pode ter chegado horas atrás — e quem escreve de outro fuso erra isso o tempo todo. Quem manda é o relógio acima.
 Só cumprimente na PRIMEIRA mensagem da conversa. No meio de um atendimento que já está rolando, "boa tarde" de novo entrega robô — vá direto ao assunto.
-Estamos ${dentroDoExpediente ? "DENTRO" : "FORA"} do horário de atendimento humano (Seg a Sex, 08h às 18h).${
+Estamos ${dentroDoExpediente ? "DENTRO" : "FORA"} do horário de atendimento humano (Seg a Sex, 9h às 18h; Sáb, 9h às 13h; domingo e feriado, só você).${
     dentroDoExpediente
       ? ""
       : `\nVocê continua atendendo normalmente: acolher e informar o que é informação geral não depende de ninguém estar no escritório, e quem escreve de madrugada costuma estar com medo justamente por isso.\nO que você NÃO faz é prometer retorno imediato de uma PESSOA: não há ninguém no escritório agora. Ao encaminhar para o time jurídico, diga que eles retornam ${quando} — com essas palavras, não "em instantes" nem "em até 30 minutos".`
@@ -471,6 +471,16 @@ export async function respondToConversation(
 
   const blockTools =
     portao.liberado && confirmacao.liberado ? undefined : ["transferir_para_humano"];
+
+  // TRANSBORDO IMEDIATO — a regra que a equipe escreveu no painel, com o gatilho
+  // determinístico. Sem este bloco o modelo seguia a entrevista e o teste de intenção com
+  // quem já tinha dito "estou pronto" (27/11: nove "deseja que eu encaminhe?").
+  const ultimasDela = rawMsgs.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join("  ");
+  if (QUER_CONTRATAR.test(ultimasDela) || CLIENTE_DA_CASA.test(ultimasDela)) {
+    systemPrompt += CLIENTE_DA_CASA.test(ultimasDela)
+      ? `\n\n════════ ESTA PESSOA JÁ É CLIENTE DA IMIGRAR BRASIL ════════\nEla fala de boleto, parcela, pagamento ou do advogado que já cuida dela. NÃO faça triagem de lead novo (nome, nacionalidade, onde está) nem o teste de intenção. Responda o que ela perguntou, se for geral; o que for do processo ou do pagamento dela, diga que está passando agora para o responsável, e chame transferir_para_humano neste turno.`
+      : `\n\n════════ TRANSBORDO IMEDIATO — ELA QUER CONTRATAR ════════\nEla disse que quer contratar, começar, pagar ou que está pronta. Não prolongue a triagem, não faça o teste de intenção e não pergunte se pode encaminhar. Se ainda não sabe o nome dela, pergunte só isso junto do aviso. Chame transferir_para_humano NESTE turno e diga, no idioma dela, que está passando o atendimento agora para a equipe que dá continuidade, com o que ela já contou.`;
+  }
 
   if (!confirmacao.liberado) {
     systemPrompt +=

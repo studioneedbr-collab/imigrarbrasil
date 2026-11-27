@@ -4,7 +4,7 @@ Documento de contexto. Serve para quem chega agora (ou para nós daqui a três m
 entender **o que é isto, por que foi feito assim, o que já está pronto e o que falta** —
 sem precisar reconstituir conversa de WhatsApp.
 
-Última atualização: **28/08/2026** (a etapa comercial no CRM e o follow-up por motivo de espera — seções 9 e 10; o modo sombra sem efeito no mundo e o webhook fechado — seções 7 e 8; a Z-API no ar e o primeiro WhatsApp real atendido — seção 13).
+Última atualização: **27/11/2026** (auditoria das conversas reais de outubro e novembro, com o que foi corrigido no código e o que depende de decisão da equipe — seção 7-A; o provedor da agente hoje — §7). Anterior: 28/08/2026 (a etapa comercial no CRM e o follow-up por motivo de espera — seções 9 e 10; o modo sombra sem efeito no mundo e o webhook fechado — seções 7 e 8; a Z-API no ar e o primeiro WhatsApp real atendido — seção 13).
 
 ---
 
@@ -32,6 +32,11 @@ Quando precisa, o Walter puxa o contato para o número pessoal dele de advogado.
 > é visto por quem abrir o painel.
 
 ---
+
+> **O nome da agente é o que a equipe grava no painel.** Este documento nasceu chamando-a
+> de **Ana**, que era o padrão do código. Desde novembro a equipe a configurou como
+> **Cláudia**, com tom formal (Treinar → Identidade). Onde este texto diz "a Ana", leia "a
+> agente": o nome em produção é sempre o do painel.
 
 ## 2. De onde este código veio (e por que isso importa)
 
@@ -321,7 +326,20 @@ acabou de dizer: "entendi, você entrou por Corumbá com o passaporte carimbado 
 > segunda língua. Se um dia mudar o número num arquivo, mude no outro.
 > Testes: `tests/tamanho-da-mensagem.test.ts`.
 
-**Idioma**: detectado e gravado no contato. Importa em dois lugares que o prompt não alcança
+**Provedor do modelo** (`lib/agent/llm.ts`): escolhido no painel (Integrações), com o
+outro de reserva. **Desde 23/11/2026 quem responde é a OpenAI (`gpt-4.1-mini`)**; o
+DeepSeek respondeu de 27/08 a 22/11 e ficou de reserva. Trocar de provedor é configuração,
+não obra. E trocar de provedor não corrige erro de regra: o caso do idioma de 27/11 (§7-A)
+aconteceu já com a OpenAI, porque quem mandava "continue em francês" era o nosso código.
+
+**Idioma**: detectado e gravado no contato. Três regras, todas vindas do texto que a equipe
+escreveu no raciocínio (rac_8): (1) mensagem curta sem língua clara ("ok", "yes") não muda
+o idioma; (2) **pedido explícito troca na hora** — "habla español?", "do you speak
+English?", "fala português?", mesmo com erro de digitação ("ablas espanhol"), reconhecido
+por `pedidoDeIdioma` em `lib/agent/idioma.ts`; (3) **portunhol vai para o português**. A
+mensagem pronta do botão do site ("Olá, estive no site… Gostaria de mais informações") é
+português — até 27/11 o detector a lia como francês ("mais" e "de" pontuavam francês) e
+travava a conversa inteira nessa língua. Importa em dois lugares que o prompt não alcança
 — o follow-up automático (que sairia sempre em português) e o atendente humano, que precisa
 saber em que língua responder **antes** de abrir a conversa. Por isso o código do idioma é a
 primeira coisa em cada linha da fila.
@@ -378,6 +396,89 @@ follow-up e o resto das travas estão na §10.
 > mandava prova nenhuma entrava**. Testes: `tests/webhook-auth.test.ts`.
 
 ---
+
+## 7-A. O atendimento em novembro: o que as conversas reais mostraram (27/11/2026)
+
+Em 27/11 foram lidas **todas as 75 conversas do banco** (68 de produção, 7 de teste; 1.750
+mensagens), usando como gabarito **o que a equipe escreveu no painel**: identidade,
+persona, briefing, guardrails, FAQ, as 36 seções da base, os 11 passos de raciocínio, as 18
+regras de encaminhamento e as 30 objeções. A leitura foi de quem faz SDR: a agente
+obedeceu a equipe? qualificou? deixou lead quente esfriar? Nenhum nome ou dado de cliente
+entra aqui — este repositório é público.
+
+**A conclusão que importa para a equipe: a maior parte dos erros que ainda acontecem não
+era o modelo desobedecendo — era o nosso código passando por cima do que a equipe
+escreveu.** As instruções do painel estavam certas em quase todos os casos.
+
+### O que foi corrigido no código
+
+| Erro visto nas conversas | O que a equipe tinha escrito | Causa | Correção |
+|---|---|---|---|
+| Cliente pede espanhol, inglês, português — e a agente segue em francês | rac_8: "se a pessoa pedir para trocar de idioma, troque IMEDIATAMENTE" | detector lia a mensagem do site como francês; pedido explícito não era reconhecido; bloco do código mandava "continue em francês" | `idioma.ts` (`pedidoDeIdioma`, portunhol → pt), `conducao.ts` (regra absoluta reescrita com o texto da equipe) |
+| "Estou pronto, quero agora" → "deseja que eu encaminhe?" nove vezes; "Por favor" não contava como sim | TRANSBORDO IMEDIATO: "não retenha um cliente claramente pronto para contratar" | o portão comercial só liberava a tool com a ficha completa (inclusive o teste de intenção) | `transfer-gate.ts` (`QUER_CONTRATAR`, "por favor" é sim), bloco de transbordo imediato no turno (`index.ts`) |
+| Teste de intenção ("prefere fazer por conta própria?") feito para quem já queria contratar, e repetido | o teste **não existe no painel** — era só do código | prompt do código | `knowledge.ts`: só quando a intenção não está clara, reformulado sem oferecer o faça-você-mesmo, e "depois do sim, encaminhe" |
+| Cliente da casa (boleto, parcela, advogado já atribuído) passando por triagem de lead novo | lacuna | — | `CLIENTE_DA_CASA`: vai direto ao responsável |
+| "Retornam segunda a partir das **8h**"; "fora do horário" num **sábado** às 10h; "funciona normalmente hoje" no feriado de Finados | Briefing: seg–sex 9h–18h, **sáb 9h–13h**; domingos e feriados, só WhatsApp | `expediente.ts` dizia 8h–18h, seg–sex, sem feriado | `expediente.ts` com a grade do briefing e feriados nacionais (Carnaval e Corpus Christi ficaram fora: são ponto facultativo) |
+| "Para seguirmos… qual é a sua nacionalidade?" quatro vezes, depois de a pessoa responder | Regra da pergunta inteligente | a mensagem fixa repetia enquanto a ficha não registrava o dado | `anti-loop.ts`: destravar é uma vez só; se travar de novo, encaminha |
+
+Testes: `tests/idioma-pedido.test.ts` (o caso do idioma turno a turno, o transbordo
+imediato, o "por favor", o destravar), `tests/expediente.test.ts` (sábado, feriado).
+
+### O que já estava corrigido antes desta leitura
+
+Mensagens duplicadas e resposta antes de ler a mensagem seguinte (corrida, 23/11);
+"acho que me embolei aqui" (03–04/11 e 23/11); pergunta repetida (23/11); a agente não
+dizer o nome (24/11); português para quem escreveu em espanhol ou inglês (23/11 e 27/11).
+
+### O que continua dependendo do modelo (e não de regra)
+
+Mesmo depois de 24/11 apareceram: **informação inventada dita com certeza** (um visto
+que não existe para a nacionalidade da pessoa, regras de CPF erradas, "documentos
+franceses exigem apostila" quando o acordo Brasil–França dispensa), **lista de documentos
+e modalidade antes de saber nome, nacionalidade e onde a pessoa está** (rac_2), e
+fechamentos passivos ("fico à disposição") contra a seção Condução Comercial. As regras
+para isso já existem e estão claras. O `gpt-4.1-mini` é o modelo pequeno da família; com um
+prompt de ~20 mil tokens ele segue pior as regras do meio do texto. **Recomendação:**
+testar `gpt-4.1` (ou o modelo maior disponível) por uma semana no painel, com a bateria de
+testes, e comparar custo por conversa (§ métricas de custo) contra a taxa de erro.
+
+### Decisões que são da equipe (o painel se contradiz)
+
+Estas contradições estão no texto que a equipe gravou. O código não escolhe por ela — o
+desempate atual (`desempate.ts`) evita o pior, mas a resposta certa é a equipe editar:
+
+1. **Preço.** O guardrail "não falar de honorários" está ligado, mas o FAQ "Preço" manda
+   informar "conforme a tabela comercial vigente" — e **não há tabela cadastrada**. Nas
+   conversas o advogado passa valores fixos de serviços padrão. Decidir: cadastrar a tabela
+   (aí a agente informa) ou tirar a frase do FAQ.
+2. **Pedir documento.** O guardrail "não pedir documento" contradiz "Solicitação de
+   documentos", "O que você atende" e "Proteção de dados" (que indica o e-mail do jurídico).
+3. **Uma pergunta por vez × exemplos do FAQ** (Empresa, Nômade digital), que fazem três a
+   cinco perguntas na mesma mensagem.
+4. **Modalidade antes da triagem.** rac_2 proíbe; o FAQ "Reunião familiar" responde "sim,
+   pode constituir fundamento" logo de saída.
+5. **"Quero falar com advogado".** O exemplo 8 do raciocínio manda não transferir
+   automaticamente; TRANSBORDO IMEDIATO diz que é gatilho imediato. (O código segue o
+   transbordo.)
+6. **Idiomas.** A persona diz "português, inglês e espanhol" e, na dúvida, "pergunte qual
+   língua"; rac_8 diz "responda em português E espanhol"; a seção Idioma diz "qualquer
+   idioma". Vale um texto só.
+7. **Regras de encaminhamento com o id trocado** (ex.: `refugio_e_protecao` descreve
+   recurso; `recusa_da_policia_federal` descreve cliente pronto para contratar). Não muda a
+   resposta da agente, mas confunde quem edita e o relatório por categoria.
+8. **Persona com um parágrafo inteiro duplicado** (os "limites institucionais") e a
+   instrução "espere alguns segundos antes de responder", que a agente não tem como cumprir
+   (o ritmo de envio é do sistema).
+
+### Lacunas que apareceram nas conversas (não há regra nenhuma)
+
+Quem quer **emigrar do Brasil** (a agente recusou; no mesmo dia o jurídico disse que o
+serviço vai abrir); **CPF** para estrangeiro (a empresa vende, a base não cobre — e a
+agente inventou); **brasileiro no exterior** (passaporte, a agente perguntou de CRNM);
+**quem escreve por outra pessoa** (o nome e o contato do interessado deveriam ser
+obrigatórios); **fornecedor e parceria**; **endereço do escritório**; **outra automação
+escrevendo para o número** (um robô de atendimento de terceiros foi atendido como cliente
+e transferido).
 
 ## 8. Ligar e desligar a Ana
 
@@ -1121,8 +1222,8 @@ passando**.
       legislação 844, doutrina 567), embeddings de 1.024 dimensões, custo US$ 0,08.
       `npm run test:rag` passa 25/25: as dez consultas da auditoria recuperam o trecho
       certo dentro do top-6 e sobrevivem ao corte de relevância.
-- [ ] `OPENAI_API_KEY` nas variáveis da Vercel — sem ela, em produção continuam
-      desligados a busca no material oficial E a transcrição de áudio.
+- [x] `OPENAI_API_KEY` nas variáveis da Vercel — em uso: embeddings, transcrição e, desde
+      23/11, a própria conversa (`gpt-4.1-mini`).
 - [x] **DeepSeek ligado e pagando** — US$ 5 de saldo, respondendo de verdade em produção
 - [x] **`AUTH_SECRET` e as variáveis de base** já estão na Vercel
 - [ ] **Z-API — a instância do 4664.** É o único bloqueio para virar operação de verdade:
@@ -1130,6 +1231,18 @@ passando**.
 - [ ] número pessoal do Walter → `TEAM_WHATSAPP` → aviso ativo do bloco 1
 - [x] **as migrations estão aplicadas em produção** — as 29, conferidas coluna a
       coluna e não só pela mensagem do runner (ver §13)
+
+**Do atendimento (auditoria de 27/11 — ver §7-A)**
+
+- [ ] a equipe decidir as oito contradições do painel (preço, documento, uma pergunta por
+      vez, modalidade antes da triagem, pedido de advogado, idiomas, ids das regras, persona
+      duplicada)
+- [ ] cadastrar o conteúdo das lacunas: emigração, CPF, brasileiro no exterior, quem fala
+      por terceiro, fornecedor, endereço
+- [ ] testar um modelo maior que o `gpt-4.1-mini` e comparar custo × erro
+- [ ] filtrar mensagens de outras automações (robôs de terceiros) antes do atendimento
+- [ ] confirmar com o escritório se Carnaval e Corpus Christi fecham (hoje contam como dia
+      de expediente)
 
 **Feito depois da v1 (26/08, noite)**
 

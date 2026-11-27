@@ -27,7 +27,7 @@ export class FalhaDoLlm extends Error {
 // Exportado para o dump do prompt (tests/_prompt.manual.ts) — o que se testa no chat do
 // DeepSeek tem que ser exatamente o que o app manda, incluindo esta primeira linha.
 export const ABSOLUTE_RULE =
-  "REGRA ABSOLUTA 1 — IDIOMA: responda SEMPRE no idioma em que a pessoa escreveu, e mantenha esse idioma até o fim da conversa, mesmo que o material de apoio esteja em português. Nunca comente o idioma dela nem diga que está traduzindo.\n" +
+  "REGRA ABSOLUTA 1 — IDIOMA: responda no idioma em que a pessoa está escrevendo, mesmo que o material de apoio esteja em português. Mensagem curta sem língua clara ('ok', 'yes', um número) não muda o idioma da conversa. Se ela passar a escrever noutra língua ou pedir outra ('habla español?', 'do you speak English?', 'fala português?'), troque IMEDIATAMENTE, sem pedir confirmação, e mantenha a nova língua a partir daí. Se ela misturar português e espanhol (portunhol), responda em português. Nunca comente o idioma dela nem diga que está traduzindo.\n" +
   "REGRA ABSOLUTA 2: nunca exponha seu raciocínio interno na resposta. Nunca escreva o que você 'vai fazer' ou 'já fez'. Simplesmente faça e responda de forma natural. Frases como 'vou verificar', 'já tenho os dados', 'seguindo o fluxo' NUNCA devem aparecer na mensagem enviada. A resposta é SÓ o que a pessoa leria no WhatsApp.";
 
 // AGENT_TOOLS está no formato name/description/input_schema. Os dois provedores usam o

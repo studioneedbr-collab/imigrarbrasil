@@ -25,6 +25,27 @@ export const CASO_JURIDICO =
 export const PEDIU_HUMANO =
   /\b(falar|conversar|atendimento)\s+com\s+(um[a]?\s+)?(atendente|humano|pessoa|algu[ée]m|respons[áa]vel|consultor|especialista|supervisor|gerente|vendedor|advogad[oa]|doutor[a]?)\b|\bme\s+(transfere|passa para)\b|\bquero\s+(um[a]?\s+)?(atendente|humano|consultor|advogad[oa]|especialista)\b|\bchama[r]?\s+(o|a)\s+(respons[áa]vel|advogad[oa])\b|(^|[^a-zà-ú])rob[ôo](?![a-zà-ú])|\b(hablar|conversar)\s+con\s+(un[a]?\s+)?(abogad[oa]|persona|alguien|humano|asesor|especialista|responsable)\b|\bquiero\s+(un[a]?\s+)?(abogad[oa]|persona|humano|asesor|especialista)\b|\b(speak|talk)\s+(to|with)\s+(a\s+)?(lawyer|attorney|human|person|someone|solicitor)\b/i;
 
+/**
+ * QUEM JÁ QUER CONTRATAR. É o primeiro gatilho do "TRANSBORDO IMEDIATO" que a equipe
+ * escreveu no painel: "cliente declara que quer contratar, agendar, pagar ou iniciar o
+ * procedimento" — e "não retenha um cliente claramente pronto para contratar".
+ *
+ * Antes isto não existia aqui, e o portão comercial só liberava com a ficha mínima
+ * completa (inclusive o teste de intenção). Resultado, em 27/11: "Eu quero agora / Estou
+ * pronto / Tenho todos os documentos" e a agente perguntou "deseja que eu encaminhe?"
+ * nove vezes, porque a tool sumia a cada turno. O humano só entrou 45 minutos depois.
+ */
+export const QUER_CONTRATAR =
+  /\b(quero|queremos|gostaria de|desejo|vamos)\s+(contratar|fechar|come[çc]ar|iniciar|dar entrada|seguir|avan[çc]ar|agendar|marcar)|\bquero\s+agora\b|\b(estou|estamos)\s+pront[oa]s?\b|\bcomo\s+(fa[çc]o|fazemos)\s+(para|pra)\s+(contratar|fechar|pagar|come[çc]ar)|\b(pode|podem)\s+(encaminhar|passar|chamar|seguir)\b|\bquero\s+que\s+(voc[êe]s|o escrit[óo]rio)\s+(cuide|fa[çc]a|resolva)|\bresolv[ae]\s+(isso\s+)?(para|pra)\s+mim\b|\b(quiero|queremos)\s+(contratar|empezar|comenzar|iniciar|avanzar|agendar)|\b(estoy|estamos)\s+list[oa]s?\b|\bc[óo]mo\s+(hago|hacemos)\s+para\s+(contratar|pagar|empezar)|\b(i|we)\s+(want|would like|wish)\s+to\s+(hire|start|proceed|begin|book|go ahead)|\b(i'?m|we'?re|i am|we are)\s+ready\b|\bgo\s+ahead\b|\bje\s+(veux|voudrais)\s+(commencer|engager|avancer)|\bje\s+suis\s+pr[êe]t/i;
+
+/**
+ * QUEM JÁ É CLIENTE DA CASA: boleto, parcela, pagamento, o advogado que já cuida dele.
+ * Triagem de lead novo para essa pessoa ("qual é a sua nacionalidade?") é o atendimento
+ * mais mecânico possível — ela já contou tudo a alguém daqui. Vai direto ao time.
+ */
+export const CLIENTE_DA_CASA =
+  /\b(boleto|parcela|segunda via|comprovante de pagamento|j[áa] paguei|meu pagamento|j[áa] sou cliente|meu advogado|minha advogada|dr\.?\s+walter|doutor walter|meu contrato com voc[êe]s|j[áa] (contratei|fechei)|cuota|ya pagu[ée]|ya soy cliente|mi abogado|invoice|already (paid|a client)|my lawyer)\b/i;
+
 export interface TransferGateInput {
   /** Quantas mensagens o cliente já mandou nesta conversa. */
   userTurns: number;
@@ -44,6 +65,8 @@ export function avaliarTransferencia(i: TransferGateInput): TransferGateResult {
   const texto = i.ultimaMensagem ?? "";
   if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "risco à pessoa" };
   if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };
+  if (QUER_CONTRATAR.test(texto)) return { liberado: true, motivo: "a pessoa quer contratar" };
+  if (CLIENTE_DA_CASA.test(texto)) return { liberado: true, motivo: "já é cliente da casa" };
   if (CASO_JURIDICO.test(texto)) return { liberado: true, motivo: "caso que exige advogado" };
   if (i.userTurns < 2) {
     return { liberado: false, motivo: "primeira mensagem, sem nenhum sinal de caso concreto" };
@@ -95,6 +118,8 @@ export function avaliarEncaminhamentoComercial(
   const texto = i.textoRecente ?? "";
   if (EMERGENCIA.test(texto)) return { liberado: true, motivo: "risco à pessoa" };
   if (PEDIU_HUMANO.test(texto)) return { liberado: true, motivo: "a pessoa pediu um humano" };
+  if (QUER_CONTRATAR.test(texto)) return { liberado: true, motivo: "a pessoa quer contratar — transbordo imediato" };
+  if (CLIENTE_DA_CASA.test(texto)) return { liberado: true, motivo: "já é cliente da casa" };
   if (CASO_JURIDICO.test(texto)) return { liberado: true, motivo: "caso que exige advogado" };
   if (i.assuntoExigePessoa) return { liberado: true, motivo: "assunto que exige análise jurídica" };
   if (i.dossieCompleto) return { liberado: true, motivo: "ficha mínima completa" };
@@ -152,6 +177,10 @@ const AFIRMATIVAS = new Set([
   "ok", "okay", "okey", "vale", "dale", "bueno", "beleza", "ta", "pode", "podem",
   "quero", "quiero", "please", "porfa", "manda", "manden", "perfeito", "perfecto",
   "combinado", "acuerdo", "aham", "uhum",
+  // "Por favor" foi a resposta do Nikolas (25/11) a "posso encaminhar?", duas vezes, e não
+  // contava como sim. Nem "sure", "adelante", "certo", "pode encaminhar".
+  "favor", "sure", "adelante", "certo", "certamente", "encaminha", "encaminhe", "encaminhar",
+  "absolutely", "definitely", "obviamente", "dacord", "daccord",
 ]);
 
 /**
@@ -216,6 +245,9 @@ export function avaliarConfirmacao(i: ConfirmacaoInput): ConfirmacaoResult {
   }
   if (PEDIU_HUMANO.test(recente)) {
     return { liberado: true, motivo: "a pessoa pediu um humano", confirmacaoPendente: false };
+  }
+  if (QUER_CONTRATAR.test(recente) || CLIENTE_DA_CASA.test(recente)) {
+    return { liberado: true, motivo: "a pessoa quer contratar ou já é cliente", confirmacaoPendente: false };
   }
   if (CASO_JURIDICO.test(recente)) {
     return {

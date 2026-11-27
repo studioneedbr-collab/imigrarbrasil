@@ -108,7 +108,10 @@ describe("v3 — o relógio do caso", () => {
 describe("v3 — o teste de intenção", () => {
   it("está no prompt, é feito uma vez e não é o 'posso pedir para o time te orientar?'", () => {
     expect(AGENT_REASONING).toMatch(/TESTE DE INTENÇÃO/);
-    expect(AGENT_REASONING).toMatch(/tocar o processo por conta própria/);
+    expect(AGENT_REASONING).toMatch(/quer que a Imigrar Brasil conduza o seu processo/);
+    // Quem já disse que quer contratar não faz teste nenhum: é transbordo imediato.
+    expect(AGENT_REASONING).toMatch(/QUANDO NÃO FAZER/);
+    expect(AGENT_REASONING).toMatch(/DEPOIS DO SIM, ENCAMINHE/);
     expect(AGENT_REASONING).toMatch(/UMA VEZ SÓ/);
     expect(AGENT_REASONING).toMatch(/não separa nada, porque toda pessoa aceita ajuda de graça/);
   });

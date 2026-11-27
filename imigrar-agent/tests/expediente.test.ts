@@ -26,30 +26,47 @@ describe("próximo atendimento humano", () => {
   it("domingo não tem ninguém — o retorno é na segunda", () => {
     const r = proximoAtendimento(utc("2026-08-16T18:00:00Z")); // domingo, 15h no Rio
     expect(r.dentroDoExpediente).toBe(false);
-    expect(r.quando).toBe("na segunda-feira a partir das 8h");
+    expect(r.quando).toBe("na segunda-feira a partir das 9h");
   });
 
-  it("sábado à tarde também espera a segunda", () => {
+  // Horário do briefing da equipe: sábado das 9h às 13h.
+  it("sábado de manhã tem atendimento", () => {
+    const r = proximoAtendimento(utc("2026-08-15T13:20:00Z")); // sábado, 10h20 no Rio
+    expect(r.dentroDoExpediente).toBe(true);
+  });
+
+  it("sábado depois das 13h espera a segunda", () => {
     expect(proximoAtendimento(utc("2026-08-15T17:00:00Z")).quando).toBe(
-      "na segunda-feira a partir das 8h",
+      "na segunda-feira a partir das 9h",
     );
   });
 
-  it("sexta depois das 18h espera a segunda (e não 'amanhã')", () => {
+  it("sexta depois das 18h: o próximo atendimento é sábado (e não 'amanhã')", () => {
     const r = proximoAtendimento(utc("2026-08-22T01:00:00Z")); // sexta, 22h no Rio
-    expect(r.quando).toBe("na segunda-feira a partir das 8h");
+    expect(r.quando).toBe("no sábado a partir das 9h");
+  });
+
+  it("feriado nacional não tem gente no escritório", () => {
+    const r = proximoAtendimento(utc("2026-11-02T14:00:00Z")); // Finados, segunda, 11h no Rio
+    expect(r.dentroDoExpediente).toBe(false);
+    expect(r.quando).toBe("na terça-feira a partir das 9h");
+  });
+
+  it("Sexta-feira Santa é feriado", () => {
+    // Páscoa de 2027 é 28/03 — a Sexta-feira Santa cai em 26/03.
+    expect(proximoAtendimento(utc("2027-03-26T14:00:00Z")).dentroDoExpediente).toBe(false);
   });
 
   // Nunca "amanhã": a mensagem fica parada no WhatsApp e pode ser lida no dia seguinte.
   it("terça à noite, nomeia a quarta", () => {
     expect(proximoAtendimento(utc("2026-08-19T00:00:00Z")).quando).toBe(
-      "na quarta-feira a partir das 8h",
+      "na quarta-feira a partir das 9h",
     ); // terça, 21h no Rio
   });
 
   it("dia útil antes de abrir, o time chega hoje mesmo", () => {
     expect(proximoAtendimento(utc("2026-08-17T09:00:00Z")).quando).toBe(
-      "hoje a partir das 8h",
+      "hoje a partir das 9h",
     ); // segunda, 6h no Rio
   });
 });

@@ -133,8 +133,8 @@ describe("o relógio do SLA conta só expediente", () => {
   // Segunda-feira, 17h55 em Brasília = 20h55 UTC.
   const sextaTarde = new Date("2026-08-28T20:55:00.000Z"); // sexta 17h55 BRT
 
-  it("30 minutos a partir das 17h55 de sexta não estouram no sábado", () => {
-    const sabado = new Date("2026-08-29T14:00:00.000Z");
+  it("30 minutos a partir das 17h55 de sexta não estouram antes de o sábado abrir", () => {
+    const sabado = new Date("2026-08-29T11:30:00.000Z"); // sábado 08h30 BRT
     expect(slaHumanoEstourado(sextaTarde.toISOString(), 30, sabado)).toBe(false);
   });
 
@@ -151,10 +151,16 @@ describe("o relógio do SLA conta só expediente", () => {
     expect(slaHumanoEstourado(dez.toISOString(), 90, onze)).toBe(false);
   });
 
-  it("fim de semana inteiro não conta nenhum minuto", () => {
-    const sabado = new Date("2026-08-29T12:00:00.000Z");
-    const domingo = new Date("2026-08-30T12:00:00.000Z");
-    expect(minutosDeExpedienteEntre(sabado, domingo)).toBe(0);
+  it("depois das 13h de sábado até segunda cedo não conta nenhum minuto", () => {
+    const sabado = new Date("2026-08-29T17:00:00.000Z"); // sábado 14h BRT
+    const segunda = new Date("2026-08-31T11:00:00.000Z"); // segunda 08h BRT
+    expect(minutosDeExpedienteEntre(sabado, segunda)).toBe(0);
+  });
+
+  it("sábado de manhã conta (9h às 13h, como no briefing)", () => {
+    const sabado9 = new Date("2026-08-29T12:00:00.000Z"); // sábado 09h BRT
+    const sabado11 = new Date("2026-08-29T14:00:00.000Z"); // sábado 11h BRT
+    expect(minutosDeExpedienteEntre(sabado9, sabado11)).toBe(120);
   });
 
   it("sem relógio aberto, nada estoura", () => {

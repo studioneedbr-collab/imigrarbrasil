@@ -53,7 +53,14 @@ const ESCRITAS: { idioma: IdiomaSuportado; re: RegExp }[] = [
  */
 const MARCADORES: { idioma: IdiomaSuportado; peso: number; re: RegExp }[] = [
   // ── português
-  { idioma: "pt", peso: 3, re: /\b\w*[çc][ãa]o\b|\bções\b|ção\b/i },
+  // "ção"/"ções" NO FIM DA PALAVRA, e não como palavra solta. O antigo `\bções\b` exigia
+  // borda antes do "ç" e nunca casava "informações" — a palavra mais comum da mensagem
+  // pronta do site.
+  { idioma: "pt", peso: 3, re: /ç[ãa]o\b|ções\b|[cç]ão\b/i },
+  // "ã" e "õ" não existem em espanhol, francês nem inglês: entre as línguas desta
+  // operação, são assinatura do português.
+  { idioma: "pt", peso: 3, re: /[ãõ]/i },
+  { idioma: "pt", peso: 3, re: /\b(olá|ola|gostaria|estive|informações|informacoes|português|portugues)\b/i },
   { idioma: "pt", peso: 3, re: /\b(não|nao|você|voce|vocês)\b/i },
   { idioma: "pt", peso: 3, re: /\b(obrigad[oa]|estou|sou|então|entao|também|tambem)\b/i },
   { idioma: "pt", peso: 2, re: /\b(preciso|quero|meu|minha|muito|aqui|mas|com|pra|para|fazer|tenho)\b/i },
@@ -82,7 +89,11 @@ const MARCADORES: { idioma: IdiomaSuportado; peso: number; re: RegExp }[] = [
   { idioma: "en", peso: 1, re: /\b(to|of|in|for|with|about|from)\b/i },
   // ── francês
   { idioma: "fr", peso: 3, re: /\b(je|j'ai|nous|vous|est-ce|qu'est|bonjour|merci|s'il vous plaît|besoin)\b/i },
-  { idioma: "fr", peso: 2, re: /\b(les|des|une|dans|pour|avec|mais|comment|où|papiers|séjour|demande)\b/i },
+  // SEM "mais": em português é "mais" (mais informações) e valia 2 pontos de francês. Junto
+  // com o "de", fazia "Olá, estive no site da Imigrar Brasil. Gostaria de mais informações."
+  // — a mensagem pronta do botão do site — ser gravada como FRANCÊS, e a conversa inteira
+  // seguia em francês com a pessoa pedindo espanhol, inglês e português.
+  { idioma: "fr", peso: 2, re: /\b(les|des|une|dans|pour|avec|comment|où|papiers|séjour|demande)\b/i },
   { idioma: "fr", peso: 1, re: /\b(le|la|de|du|et|est|pas|plus)\b/i },
   // ── crioulo haitiano
   { idioma: "ht", peso: 3, re: /\b(mwen|nou|yo|ki|kijan|kisa|tanpri|mèsi|paske|pou mwen|bezwen)\b/i },
@@ -131,8 +142,58 @@ export function detectarIdioma(texto: string): string | undefined {
 
   const [melhor, placar] = ordenado[0];
   const segundo = ordenado[1]?.[1] ?? 0;
-  if (placar < PONTOS_MINIMOS || placar - segundo < MARGEM_MINIMA) return undefined;
+  if (placar < PONTOS_MINIMOS || placar - segundo < MARGEM_MINIMA) {
+    // PORTUNHOL VAI PARA O PORTUGUÊS. Regra da operação: quem mistura português e espanhol
+    // sem que um dos dois vença está tentando falar a nossa língua — e é em português que
+    // o time consegue continuar o atendimento.
+    const pt = pontos.pt ?? 0;
+    const es = pontos.es ?? 0;
+    if (pt >= 2 && es >= 2 && Math.abs(pt - es) < MARGEM_MINIMA) return "pt";
+    return undefined;
+  }
   return melhor;
+}
+
+/**
+ * O IDIOMA QUE A PESSOA PEDIU, com todas as letras.
+ *
+ * "Habla español?", "Ablas espanhol", "Do you speak English?", "Fala português?",
+ * "en français s'il vous plaît". São mensagens curtas, cheias de erro de digitação e que
+ * misturam línguas — o detector por marcadores desiste delas, e eram justamente o cliente
+ * dizendo, com todas as letras, em que língua quer ser atendido. Foi assim que o Ricardo
+ * pediu espanhol, inglês e português e continuou recebendo francês.
+ *
+ * Exige um verbo ou preposição de pedido antes do nome da língua: "sou espanhol" é
+ * nacionalidade, não pedido de idioma.
+ */
+const NOME_PEDIDO: { idioma: IdiomaSuportado; re: string }[] = [
+  { idioma: "es", re: "espa[nñ]h?ol|castellano|castelhano|spanish|espagnol" },
+  { idioma: "en", re: "ingl[eêé]s|english|anglais" },
+  { idioma: "pt", re: "portugu[eêé]s|portuguese|portugais|portugu[eê]se" },
+  { idioma: "fr", re: "franc[eêé]s|french|fran[cç]ais" },
+  { idioma: "ht", re: "kr[eé]y[oò]l|crioulo|criollo|creole|cr[eé]ole" },
+];
+const VERBO_DE_PEDIDO =
+  "h?abl[ao]s?|h?ablan|h?ablar|h?able|falas?|falam|falar|fale|speaks?|talk|parlez|parles?|parler|" +
+  "em|en|in|prefiro|prefiero|prefer|pode ser|puede ser|can we|podemos|please|por favor";
+
+export function pedidoDeIdioma(texto: string): IdiomaSuportado | undefined {
+  const t = (texto ?? "").trim();
+  if (!t || t.length > 160) return undefined;
+  for (const { idioma, re } of NOME_PEDIDO) {
+    const r = new RegExp(
+      `(?<![\\p{L}])(?:${VERBO_DE_PEDIDO})(?![\\p{L}])[^\\p{L}]*(?:\\p{L}+[^\\p{L}]+){0,2}?(?:${re})(?![\\p{L}])`,
+      "iu",
+    );
+    if (r.test(t)) return idioma;
+  }
+  // Só o nome da língua, sozinho ou com interrogação: "Español?", "English please".
+  for (const { idioma, re } of NOME_PEDIDO) {
+    if (new RegExp(`^[^\\p{L}]*(?:${re})[^\\p{L}]*(?:please|por favor|s'il vous pla[iî]t)?[^\\p{L}]*$`, "iu").test(t)) {
+      return idioma;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -180,7 +241,7 @@ export async function registrarIdioma(conversationId: string, idioma?: string): 
  * gravado como rede. A mensagem de agora vence — quem pediu para trocar de idioma trocou.
  */
 export function idiomaEfetivo(textoAtual: string, gravado?: string | null): string | undefined {
-  return detectarIdioma(textoAtual) ?? gravado ?? undefined;
+  return pedidoDeIdioma(textoAtual) ?? detectarIdioma(textoAtual) ?? gravado ?? undefined;
 }
 
 /**
@@ -220,7 +281,28 @@ export function idiomaDaConversa(
   conversaInteira: string,
   gravado?: string | null,
 ): string | undefined {
-  return detectarIdioma(ultimaMensagem) ?? detectarIdioma(conversaInteira) ?? gravado ?? undefined;
+  return (
+    pedidoDeIdioma(ultimaMensagem) ??
+    detectarIdioma(ultimaMensagem) ??
+    pedidoMaisRecente(conversaInteira) ??
+    detectarIdioma(conversaInteira) ??
+    gravado ??
+    undefined
+  );
+}
+
+/**
+ * Um pedido de idioma feito ANTES continua valendo: quem escreveu "fala português?" e
+ * depois "ok" segue em português, e o acumulado da conversa (que pode ter frases noutra
+ * língua) não pode desfazer o pedido. As falas chegam separadas por dois espaços.
+ */
+function pedidoMaisRecente(conversaInteira: string): IdiomaSuportado | undefined {
+  const falas = (conversaInteira ?? "").split(/ {2,}/);
+  for (let i = falas.length - 1; i >= 0; i--) {
+    const p = pedidoDeIdioma(falas[i]);
+    if (p) return p;
+  }
+  return undefined;
 }
 
 /**
@@ -243,5 +325,6 @@ export function buildIdiomaBlock(gravado?: string | null): string {
   const continue_ = conhecido ? `Continue em ${conhecido}` : "Continue nesse mesmo idioma";
   return `\n\n════════ IDIOMA DESTE CONTATO ════════
 Esta pessoa vem falando ${nome} nesta conversa. ${continue_}, mesmo que o material oficial que você recebeu esteja em português — traduza o conteúdo, nunca devolva o trecho em português.
-Se a mensagem de agora vier em outra língua, siga a língua de agora: ela trocou, e você troca junto. Não comente a troca.`;
+Se a mensagem de agora vier em outra língua, siga a língua de agora: ela trocou, e você troca junto. Não comente a troca.
+Se ela PEDIR outra língua ("habla español?", "do you speak English?", "fala português?"), passe a escrever nessa língua já nesta resposta, sem pedir confirmação. Se ela misturar português com espanhol (portunhol), responda em português.`;
 }
