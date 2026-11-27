@@ -4,6 +4,8 @@ import PostCard from "../components/PostCard.astro";
 import posts from "../data/posts.json";
 ---
 <Base titulo="Página não encontrada" noindex>
+  <!-- Regra da casa: volta ao início em 3 s (o status continua 404, pelo error_page do Vhost). -->
+  <meta slot="head" http-equiv="refresh" content="3;url=/" />
   <section class="secao">
     <div class="container" style="max-width:720px;text-align:center">
       <span class="sobretitulo" style="justify-content:center">Erro 404</span>

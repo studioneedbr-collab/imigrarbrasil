@@ -244,6 +244,8 @@ function pagina_artigo(array $p, array $posts): string
         $indice[] = ['id' => $id, 'texto' => $texto];
         return '<h2 id="' . $id . '">' . $m[1] . '</h2>';
     }, $p['html']);
+    // Imagens do texto carregam só ao chegar nelas (o limpar_html tira esses atributos ao salvar).
+    $html = preg_replace('/<img(?![^>]*\bloading=)/i', '<img loading="lazy" decoding="async"', $html);
 
     // Relacionados: mais palavras-chave em comum; empate, o mais recente.
     $minhas = array_flip(array_map(fn($k) => mb_strtolower($k), $p['keywords']));
